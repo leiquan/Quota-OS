@@ -1,0 +1,171 @@
+/*
+ * 只解析 QEMU virt 设备树里的 memory 节点，用来知道这台“设备”到底有多少 RAM。
+ * 旧机器场景（-m 64M）和 128M 走的是同一段代码，差别只来自这里读到的数字。
+ */
+#include "quotaos.h"
+
+static volatile int expect_fault;
+static volatile int fault_hit;
+
+int dtb_fault_expected(void)
+{
+    return expect_fault;
+}
+
+void dtb_note_fault(void)
+{
+    fault_hit = 1;
+    expect_fault = 0;
+}
+
+static int probe32(uint64_t addr, uint32_t *out)
+{
+    uint32_t v = 0;
+    fault_hit = 0;
+    expect_fault = 1;
+    asm volatile("ldr %w0, [%1]" : "=r"(v) : "r"(addr) : "memory");
+    int hit = fault_hit;
+    expect_fault = 0;
+    if (hit)
+        return -1;
+    *out = v;
+    return 0;
+}
+
+static uint32_t bswap32(uint32_t x)
+{
+    return (x >> 24) | ((x >> 8) & 0xff00u) | ((x << 8) & 0xff0000u) | (x << 24);
+}
+
+static uint64_t detect_ram_span(void)
+{
+    uint64_t base = 0x40000000ull;
+    uint64_t size = 0;
+    for (uint64_t mb = 16; mb <= 2048; mb += 16) {
+        uint32_t dummy;
+        uint64_t addr = base + mb * 1024ull * 1024ull - 4ull;
+        if (probe32(addr, &dummy) != 0)
+            break;
+        size = mb * 1024ull * 1024ull;
+    }
+    if (size == 0)
+        size = 128ull << 20;
+    return size;
+}
+
+static int looks_like_dtb(uint64_t p)
+{
+    uint32_t magic, total;
+    if (probe32(p, &magic) || probe32(p + 4, &total))
+        return 0;
+    if (magic != 0xedfe0dd0u)
+        return 0;
+    total = bswap32(total);
+    return total >= 64 && total <= 2u * 1024u * 1024u;
+}
+
+static uint32_t be32_at(const uint8_t *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
+static uint64_t parse_memory(const uint8_t *dtb)
+{
+    uint32_t off_struct = be32_at(dtb + 8);
+    uint32_t off_strings = be32_at(dtb + 12);
+    uint32_t totalsize = be32_at(dtb + 4);
+    const uint8_t *p = dtb + off_struct;
+    const uint8_t *end = dtb + totalsize;
+    const uint8_t *strings = dtb + off_strings;
+    int ac = 2, sc = 2, depth = 0, in_mem = 0;
+    uint64_t ram = 0;
+
+    while (p + 4 <= end) {
+        uint32_t tok = be32_at(p);
+        p += 4;
+        if (tok == 1) {
+            const uint8_t *s = p;
+            while (p < end && *p)
+                p++;
+            if (p < end)
+                p++;
+            p = (const uint8_t *)(((uintptr_t)p + 3u) & ~(uintptr_t)3u);
+            depth++;
+            in_mem = (depth > 1 && s[0] == 'm' && s[1] == 'e' && s[2] == 'm');
+        } else if (tok == 2) {
+            if (depth > 0)
+                depth--;
+            in_mem = 0;
+        } else if (tok == 3) {
+            if (p + 8 > end)
+                break;
+            uint32_t len = be32_at(p);
+            uint32_t nameoff = be32_at(p + 4);
+            p += 8;
+            if (p + len > end)
+                break;
+            const char *name = (const char *)(strings + nameoff);
+            if (depth == 1 && name[0] == '#' && name[1] == 'a' && len >= 4) {
+                ac = (int)be32_at(p);
+            } else if (depth == 1 && name[0] == '#' && name[1] == 's' && len >= 4) {
+                sc = (int)be32_at(p);
+            } else if (in_mem && name[0] == 'r' && name[1] == 'e' && name[2] == 'g') {
+                int cells = ac + sc;
+                int n = cells ? (int)(len / 4) / cells : 0;
+                const uint8_t *r = p;
+                for (int i = 0; i < n; i++) {
+                    uint64_t sz = 0;
+                    const uint8_t *scell = r + (ac * 4);
+                    for (int k = 0; k < sc; k++)
+                        sz = (sz << 32) | be32_at(scell + k * 4);
+                    ram += sz;
+                    r += cells * 4;
+                }
+            }
+            p += (len + 3u) & ~3u;
+        } else if (tok == 4) {
+            continue;
+        } else {
+            break;
+        }
+    }
+    return ram;
+}
+
+uint64_t dtb_ram_bytes(uint64_t hinted)
+{
+    uint64_t span = detect_ram_span();
+    uint64_t dtb = 0;
+    printf("[boot] x0=0x%lx physical RAM span %lu MB (probed)\n", hinted, span >> 20);
+
+    if (hinted >= 0x40000000ull && hinted + 8 < 0x40000000ull + span) {
+        uint32_t magic = *(volatile uint32_t *)hinted;
+        if (magic == 0xedfe0dd0u)
+            dtb = hinted;
+    }
+
+    if (!dtb) {
+        for (uint64_t p = 0x40000000ull; p + 64 < 0x40000000ull + span; p += 0x1000) {
+            uint32_t magic = *(volatile uint32_t *)p;
+            if (magic == 0xedfe0dd0u) {
+                dtb = p;
+                break;
+            }
+        }
+    }
+
+    if (!dtb) {
+        printf("[boot] DTB not found, using probed RAM size\n");
+        return span;
+    }
+
+    printf("[boot] DTB at 0x%lx\n", dtb);
+    uint64_t ram = parse_memory((const uint8_t *)dtb);
+    if (ram == 0) {
+        printf("[boot] DTB has no memory node, using probed size\n");
+        return span;
+    }
+    printf("[boot] DTB memory %lu bytes\n", ram);
+    return ram;
+}
