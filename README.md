@@ -254,6 +254,8 @@ qa 其他计时演示的中断进入最大都是 3 tick。GICv3 菜单 9 的 5 t
 | 9 带宽限流不欠账 | `mem-hog`（Tier 3，每 tick 4 次，预算 150000）1000 个周期都被停住；每周期 150012 次，最多超出 12 次（上限 81 = 20 tick 的访存）；停住后同一周期再跑 0 次；停住的下一个周期又用到 150012（额度恢复）。`cam-app`（Tier 2，预算 400000）每周期最多 375006 次，被停 0 次，CPU 每周期最少 3000 us（最低值 3000）。准入：`bw-greedy` 申请 1700000 被拒（100000 + 250000 + 0 + 1700000 = 2050000 > 2000000）。Tier 1 错过 0。`E4 item9 PASS` × 60 | 缺真实板子 |
 | 10 Tier 1 物理页颜色正确 | 128 MB：页池 28672 页、每色 896 页；5 项 Tier 1 共 3328 页占 7 种颜色，颜色正确 3328 页、主人标记完好 3328 页；Tier 3 申请 512 页全部来自共用颜色，落在 Tier 1 颜色里 0 页。`E4 item10 PASS` × 60 | 缺真实板子（QEMU 没有缓存模型） |
 
+长跑（`python3 tools/acceptance.py prebuilt/quotaos.bin <out> icount qa-long <2|3>`，菜单 9 的负载跑 100000 个周期，内核就是 v012 的 `prebuilt/quotaos.bin`）：GICv2、GICv3 各一次，日志在 `docs/qa-long-v012/`（两份只差 GIC 那一行开机信息）。Tier 1 两个任务各 100000 个作业，错过 0，起点 41 tick、抖动 0；Tier 2/3 在 Tier 1 槽内 0 tick；game 每周期收到 3000 us（最低值 2000），低于最低值 0 个周期；audio-mix 100000 个作业错过 0，最长响应 492 us（期限 4000 us）；内核每周期平均 17558、最多 20549 tick（预留 21875，超出 0 次）；timer IRQ entry - CVAL 最大 5 tick（n=1400000，即上面的 3/5 tick 现象）；保护区余量最小 592 tick；Tier 2 预算最多超出 3 tick。每次宿主机耗时 287 s。
+
 普通模式只作参考（`docs/accept-v012/e4-normal-gicv2.txt`，共用宿主机）：第 10 项 PASS；第 9 项 FAIL：宿主机停顿时 `mem-hog` 一个周期最多超出 62864 次，Tier 1 错过 4 次（class a 时钟跳动，class b 0）。
 
 旧功能（icount）：e1 三项 PASS（`docs/accept-v012/e1-icount-gicv{2,3}.txt`）；e3 第 1、3、5、6、7 项和策略检查 PASS（`docs/accept-v012/e3-icount-gicv{2,3}.txt`）；e2 见上。qa 与 v011 的比较（`docs/accept-v012/compare-qa-icount-v011-v012-gicv{2,3}.txt`）只多出版本行、着色开机行、应用可用内存（101376 → 89600 KB 及相关数字）、拒绝理由里的「color padding」和新诊断行。菜单回归（`docs/regress-v012/menus-v012-gicv{2,3}.txt`，与 v011 的比较见 `docs/regress-v012/compare-v011-v012.txt`，普通模式）：开机验证两次都通过；除了上面这些，多出菜单 16、17 和帮助两行；其余差别是普通模式下每次都不同的计数（调用次数、作业数、中断数、实测耗时）。最宽一行不超过 80 列。
@@ -408,7 +410,7 @@ kernel/      串口、设备树、GIC、定时器、资源账本、调度、菜�
 include/     公共类型
 prebuilt/    编好的 quotaos.bin / quotaos.elf
 docs/demo-output.txt     串口实录
-docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/ docs/accept-v008/ docs/regress-v008/ docs/accept-v009/ docs/regress-v009/ docs/accept-v010/ docs/regress-v010/ docs/accept-v011/ docs/regress-v011/ docs/accept-v012/ docs/regress-v012/   各提交的验收日志
+docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/ docs/accept-v008/ docs/regress-v008/ docs/accept-v009/ docs/regress-v009/ docs/accept-v010/ docs/regress-v010/ docs/accept-v011/ docs/regress-v011/ docs/accept-v012/ docs/regress-v012/ docs/qa-long-v012/   各提交的验收日志
 tools/qemu_serial.py     驱动 QEMU 串口的公共模块
 tools/capture_demos.py   自动按菜单跑完并检查提示符
 tools/menu_regress.py    菜单功能回归：跑固定流程，屏蔽计时数字后逐行比较
