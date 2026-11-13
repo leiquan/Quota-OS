@@ -102,10 +102,11 @@ UTM 是沙盒应用，在 QEMU 参数里手写 `-kernel /路径/quotaos.bin` 会
 5. 不加磁盘，向导加了就删掉，这个系统不读盘。保存。
 6. 编辑这台虚拟机：
    - System 里机器类型确认是 `virt`。
-   - QEMU → Arguments 里加上 `-machine virt,gic-version=2 -cpu cortex-a72`。**不要**再写 `-kernel`，UTM 会自己加。和 UTM 生成的 `-machine` 重复的话，只保留带 `gic-version=2` 的那个。
+   - **QEMU Machine Properties** 一栏填 `gic-version=2`（新版在 QEMU 页、Arguments 上方；旧版在 System 页，要先打开 Show Advanced Settings）。这一步是关键：只在 Arguments 里写 `-machine virt,gic-version=2` 会被 UTM 自己生成的 `-machine` 盖掉，启动后会 PANIC。
+   - QEMU → Arguments 里可加 `-cpu cortex-a72`。**不要**写 `-kernel`，UTM 会自己加。
    - 左边栏 Devices 下把 Display 删掉。不用另外新建 Serial，没有显示设备时 UTM 会自动打开串口终端窗口。
 7. 启动。串口窗口里出现和下面「菜单」相同的界面。
-8. 如果第一屏是 `timer IRQ did not fire`，或者在 `[boot] tier-1 reserved …` 之后出现 `PANIC sync ec=0x25 esr=0x96000050 elr=0x400821e0`，说明中断控制器不是 GICv2（UTM 给的是 GICv3），回到第 6 步强制 `gic-version=2`。在 QEMU 页底部看 UTM 生成的完整命令，确认生效的 `-machine` 带着 `gic-version=2`。
+8. 如果第一屏是 `timer IRQ did not fire`，或者在 `[boot] tier-1 reserved …` 之后出现 `PANIC sync ec=0x25 esr=0x96000050 elr=0x400821e0`，说明中断控制器不是 GICv2（UTM 给的是 GICv3），回到第 6 步，确认 QEMU Machine Properties 里填了 `gic-version=2`。在 QEMU 页底部看 UTM 生成的完整命令，确认生效的 `-machine` 带着 `gic-version=2`。
 
 UTM 里看到的时延只作演示参考，验收数据以命令行固定 QEMU 配置的回归结果为准。
 
