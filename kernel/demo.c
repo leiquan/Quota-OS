@@ -67,7 +67,8 @@ static void cmd_help(void)
     printf("  8  制造内存压力，收回弹性配额\n");
     printf("  9  测量这台 QEMU 上有意义的最小 CPU 切片\n");
     printf("  10 启动几十个带独立切片的 tier-2 应用\n");
-    printf("  11 诊断 tier-1 预算超支（只计时，不改策略）\n");
+    printf("  11 失范任务跑 10000 周期，记录每周期用量（当前预算策略）\n");
+    printf("  12 切换预算策略：新=欠账扣回+定时器提前，旧=原来的做法\n");
     printf("  h  帮助    q  提示如何退出 QEMU\n");
 }
 
@@ -365,7 +366,8 @@ static void cmd_contain(void)
 static void cmd_diag(void)
 {
     printf("\n=== tier-1 budget overrun probe ===\n");
-    printf("same task set as containment, same scheduler, 1100 periods.\n");
+    printf("same task set as containment, %s policy, 10000 periods.\n",
+           sched_payback() ? "new" : "old");
     printf("records bad-driver slices whose timer was armed to the remaining budget.\n");
     int saved = sched_tiering();
     sched_set_tiering(1);
@@ -410,7 +412,7 @@ static void cmd_diag(void)
     hog->bench_owned = 1;
     task_reset_window(bad_drv);
     diag_watch(bad_drv);
-    bench_begin(1100);
+    bench_begin(10000);
     block_for_bench();
     printf("tier-1 bad-driver recv_avg %u us over %u periods (cap 400)\n",
            avg_u(bad_drv->w_sum_recv, bad_drv->w_periods), bad_drv->w_periods);
@@ -718,7 +720,12 @@ void shell_main(void)
         readline(line, sizeof line);
         if (line[0] == 0)
             continue;
-        if (strcmp(line, "11") == 0)
+        if (strcmp(line, "12") == 0) {
+            sched_set_payback(!sched_payback());
+            printf("预算策略: %s  提前量 %lu ns（%lu ticks，启动时实测）\n",
+                   sched_payback() ? "新（欠账扣回 + 定时器提前）" : "旧（不扣账、不提前）",
+                   (unsigned long)sched_advance_ns(), sched_advance_ticks());
+        } else if (strcmp(line, "11") == 0)
             cmd_diag();
         else if (strcmp(line, "10") == 0)
             cmd_many();

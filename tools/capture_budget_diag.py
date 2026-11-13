@@ -16,7 +16,7 @@ def main():
         "-machine", "virt,gic-version=2",
         "-cpu", "cortex-a72",
         "-m", "128M",
-        "-nographic",
+        "-nographic", "-nic", "none",
         "-kernel", KERNEL,
     ]
     proc = subprocess.Popen(

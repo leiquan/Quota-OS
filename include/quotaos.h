@@ -52,6 +52,7 @@ struct task {
     uint32_t budget_us;
     uint32_t elastic_us;
     uint32_t used_us;
+    uint32_t debt_us;       /* 上一周期多用的，从下一周期保底里扣 */
     uint32_t rel_deadline_us;
     uint32_t work_us;
 
@@ -134,6 +135,7 @@ void gic_eoi(uint32_t iar);
 
 void timer_init(void);
 uint64_t timer_arm_us(uint64_t us);
+uint64_t timer_arm_ticks(uint64_t ticks);
 uint64_t timer_read_pct(void);
 uint64_t timer_read_cval(void);
 int64_t timer_ticks_to_ns(int64_t ticks);
@@ -172,6 +174,11 @@ struct task *task_create(const char *name, int tier, void (*entry)(void));
 void task_reset_window(struct task *t);
 void sched_set_tiering(int on);
 int sched_tiering(void);
+void sched_set_payback(int on);
+int sched_payback(void);
+uint64_t sched_advance_ns(void);
+uint64_t sched_advance_ticks(void);
+void timer_calibrate(void);
 void sched_set_count_guarantees(int on);
 void sched_arm_shell_timeout(uint64_t abs_us);
 struct task *sched_shell(void);

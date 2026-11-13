@@ -20,6 +20,7 @@ void kmain(uint64_t dtb)
     printf("[boot] CNTFRQ %lu Hz, cntpct %lu -> %lu us\n", timer_freq(), a, b);
 
     sched_init();
+    timer_calibrate();
     services_start();
     printf("[boot] tier-1 display-vsync and timer-server are reserved and armed\n");
     sched_start(shell_main);
