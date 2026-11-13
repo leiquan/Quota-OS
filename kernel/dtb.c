@@ -254,3 +254,40 @@ int dtb_find_compatible(const char *want, uint64_t *out, int max)
     }
     return 0;
 }
+
+/* /chosen/bootargs（QEMU -append）。没有就返回空串。 */
+const char *dtb_bootargs(void)
+{
+    if (!dtb_base)
+        return "";
+    const uint8_t *dtb = dtb_base;
+    const uint8_t *p = dtb + be32_at(dtb + 8);
+    const uint8_t *end = dtb + be32_at(dtb + 4);
+    const char *strings = (const char *)(dtb + be32_at(dtb + 12));
+    int depth = 0, in_chosen = 0;
+    while (p + 4 <= end) {
+        uint32_t tok = be32_at(p);
+        p += 4;
+        if (tok == 1) {
+            const char *name = (const char *)p;
+            depth++;
+            in_chosen = depth == 2 && strcmp(name, "chosen") == 0;
+            while (p < end && *p)
+                p++;
+            p = (const uint8_t *)(((uintptr_t)p + 4u) & ~(uintptr_t)3u);
+        } else if (tok == 2) {
+            depth--;
+            in_chosen = 0;
+        } else if (tok == 3) {
+            uint32_t len = be32_at(p);
+            const char *name = strings + be32_at(p + 4);
+            p += 8;
+            if (in_chosen && strcmp(name, "bootargs") == 0 && len > 0)
+                return (const char *)p;
+            p += (len + 3u) & ~3u;
+        } else if (tok != 4) {
+            break;
+        }
+    }
+    return "";
+}

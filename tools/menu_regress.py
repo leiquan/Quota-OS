@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Functional regression for the boot menu (commit A: 2259e51 menus 1-8 and 10).
+"""Functional regression for the boot menu (commit D: the ten intent-named demos).
 
   run:     python3 tools/menu_regress.py run <kernel.bin> <out.txt> [gic-version]
   compare: python3 tools/menu_regress.py compare <a.txt> <b.txt>
 
-`compare` masks timing numbers (latency, hits, jiffies, recv_avg, ...) and
-the per-period sample rows, then diffs everything else byte for byte:
-admission results, REFUSED texts, resource tables and the menu flow.
+`compare` masks only the numbers on timing lines (ticks, latencies, received
+CPU, kernel overhead, ...) and collapses T1MISS rows, then diffs everything
+else byte for byte: admission results, REFUSED texts, tables and menu flow.
 """
 import difflib
 import re
@@ -16,31 +16,37 @@ sys.path.insert(0, __file__.rsplit("/", 1)[0])
 from qemu_serial import Session  # noqa: E402
 
 P = "select> "
+A = "app> "
+Y = "allow> "
 BIG = [
-    ("1\n", P, 20), ("4\n", P, 30), ("5\n", P, 10), ("4\n", P, 30), ("5\n", P, 10),
-    ("6\n", P, 30),
-    ("2\n", "app> ", 10), ("1\n", "allow> ", 10), ("n\n", P, 10),
-    ("2\n", "app> ", 10), ("1\n", "allow> ", 10), ("y\n", P, 10),
-    ("2\n", "app> ", 10), ("2\n", "allow> ", 10), ("y\n", P, 10),
-    ("2\n", "app> ", 10), ("3\n", "allow> ", 10), ("y\n", P, 10),
-    ("3\n", "close> ", 10), ("1\n", P, 10),
-    ("2\n", "app> ", 10), ("3\n", "allow> ", 10), ("y\n", P, 10),
-    ("1\n", P, 10), ("8\n", P, 15), ("7\n", P, 10),
-    ("10\n", P, 10),
-    ("3\n", "close> ", 10), ("a\n", P, 10),
-    ("3\n", P, 10),
-    ("10\n", P, 60), ("8\n", P, 10), ("1\n", P, 10),
-    ("x\n", P, 10), ("h\n", P, 10),
+    ("1\n", P, 20),
+    ("2\n", A, 10), ("1\n", Y, 10), ("n\n", P, 10),     # deny Pixel Racer
+    ("2\n", A, 10), ("1\n", Y, 10), ("y\n", P, 10),     # Pixel Racer
+    ("2\n", A, 10), ("2\n", Y, 10), ("y\n", P, 10),     # Cinema Play
+    ("2\n", A, 10), ("3\n", P, 10),                     # Studio Cut refused
+    ("2\n", A, 10), ("s1\n", P, 10),                    # stop Pixel Racer
+    ("2\n", A, 10), ("3\n", Y, 10), ("y\n", P, 10),     # Studio Cut fits now
+    ("1\n", P, 10),
+    ("2\n", A, 10), ("s1\n", P, 10), ("2\n", A, 10), ("s1\n", P, 10),
+    ("3\n", Y, 10), ("y\n", P, 20),
+    ("4\n", P, 10),
+    ("5\n", P, 60), ("6\n", P, 60), ("7\n", P, 60), ("8\n", P, 120),
+    ("9\n", P, 60), ("10\n", P, 60),
+    ("1\n", P, 10), ("x\n", P, 10), ("h\n", P, 10),
 ]
 SMALL = [
-    ("1\n", P, 20), ("2\n", "app> ", 10), ("1\n", "allow> ", 10), ("y\n", P, 10),
-    ("2\n", "app> ", 10), ("4\n", P, 10), ("2\n", "app> ", 10), ("5\n", P, 10), ("1\n", P, 10),
+    ("1\n", P, 20), ("4\n", P, 10),
+    ("2\n", A, 10), ("4\n", P, 10),                     # Neural Forge: device too small
+    ("2\n", A, 10), ("1\n", Y, 10), ("y\n", P, 10),     # Pixel Racer fits
+    ("1\n", P, 10),
 ]
 
 TIMING = re.compile(
-    r"^\[boot\] (x0=|DTB at|CNTFRQ|timer latency|timer IRQ)|内核调度最长|hits=|jiffies|"
-    r"summary:|window misses|jobs=|throttled|recv_avg|max_recv=|^app-\d\d |^TOTAL |^结果:|^截止期:|^T1STAT")
-SAMPLE = re.compile(r"^\s+\d+\s+\d+\s+\d+\s+\d+\s+(OK|MISS)$")
+    r"^\[boot\] (x0=|DTB at|kernel image|slot table)|^  (display-vsync|timer-server|gic-server|"
+    r"blk-driver) |last release|measured since boot|^misses: class|^kernel per period|"
+    r"^timer IRQ entry|^kernel entry|^slot guard|^wait loop|^clock jumps|^Tier 2/3 ticks|"
+    r"of which not covered|^\s+\d+ \S+\s+\d+\s+\d+\s+\d+|^  (app-A|app-B|game|greedy-app) |"
+    r"^bad-|cut by the slot-end|audio-mix: jobs|^tier-3 per loop|^结果:|over \d+ periods")
 
 
 def run(kernel, out, gic="2"):
@@ -59,13 +65,10 @@ def run(kernel, out, gic="2"):
 def normalize(text):
     out = []
     for line in text.splitlines():
-        if SAMPLE.match(line) or line.startswith("T1JUMP "):
-            tag = "<samples>" if SAMPLE.match(line) else "<clock jumps>"
-            if out and out[-1] == tag:
+        if line.startswith("T1MISS "):
+            if out and out[-1] == "<T1MISS rows>":
                 continue
-            out.append(tag)
-        elif line.startswith("T1HIST "):
-            out.append(" ".join(line.split()[:2]) + " <histogram>")
+            out.append("<T1MISS rows>")
         elif TIMING.search(line):
             out.append(re.sub(r"\s+", " ", re.sub(r"\d+", "#", line)))
         else:

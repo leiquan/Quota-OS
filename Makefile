@@ -7,8 +7,13 @@ CC := $(CROSS)gcc
 CFLAGS := -std=gnu11 -Wall -Wextra -Werror -O2 \
 	-ffreestanding -fno-stack-protector -fno-builtin -fno-pic -fno-pie \
 	-mgeneral-regs-only -mstrict-align -fno-asynchronous-unwind-tables \
-	-ffile-prefix-map=$(CURDIR)/= -I include
+	-ffile-prefix-map=$(CURDIR)/= -I include -I build
 LDFLAGS := -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none
+
+# 启动横幅里的提交号：构建时的 git rev-parse --short=7 HEAD。
+# 每个版本的提交连同 prebuilt/ 一起提交，所以横幅显示的是这个版本所基于的提交（它的父提交）。
+# 映像里不放时间戳。
+SRC_COMMIT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
 
 SRCS := boot/startup.S boot/vectors.S \
 	kernel/main.c kernel/uart.c kernel/printf.c kernel/string.c \
@@ -19,6 +24,18 @@ OBJS := $(patsubst %,build/%.o,$(basename $(SRCS)))
 .PHONY: all clean run run-small
 
 all: build/quotaos.elf build/quotaos.bin prebuilt/quotaos.elf prebuilt/quotaos.bin
+
+# 提交号变了才重写这个文件，main.c 依赖它。
+build/commit.h: FORCE
+	@mkdir -p build
+	@echo '#define QUOTAOS_COMMIT "$(SRC_COMMIT)"' > $@.tmp
+	@cmp -s $@.tmp $@ || mv $@.tmp $@
+	@rm -f $@.tmp
+
+build/kernel/main.o: build/commit.h
+
+.PHONY: FORCE
+FORCE:
 
 build/%.o: %.c include/quotaos.h Makefile
 	@mkdir -p $(dir $@)

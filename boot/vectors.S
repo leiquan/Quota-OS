@@ -84,27 +84,76 @@ vectors:
     add     sp, sp, #272
 .endm
 
-/* IRQ 入口时间戳（CNTPCT），启动时用来校准定时器触发延迟。 */
-.global irq_entry_pct
+/*
+ * 进出内核的时间戳和定时器装填，调度器（kernel/sched.c）读写这些变量：
+ *   k_entry_ts    异常入口第一条指令读到的 CNTVCT
+ *   k_eret_ts     出口 eret 前读到的 CNTVCT；任务这次运行记为 [k_eret_ts, 下一次 k_entry_ts)
+ *   k_release_at  非 0：Tier 1 槽起点。出口先原地等到这一刻再 eret
+ *   k_spin_late   等待循环退出时比 k_release_at 晚了多少 tick
+ *   k_arm_abs     下一个绝对期限（槽尾、守卫起点、周期边界）
+ *   k_arm_rel     非 0：预算剩余量，期限 = min(k_eret_ts + k_arm_rel, k_arm_abs)
+ *   k_cval        实际写进 CNTV_CVAL 的值
+ */
+.macro stamp_entry
+    stp     x16, x17, [sp, #-16]!
+    mrs     x16, cntvct_el0
+    adrp    x17, k_entry_ts
+    str     x16, [x17, :lo12:k_entry_ts]
+    ldp     x16, x17, [sp], #16
+.endm
 
 el1_irq:
-    stp     x16, x17, [sp, #-16]!
-    mrs     x16, cntpct_el0
-    ldr     x17, =irq_entry_pct
-    str     x16, [x17]
-    ldp     x16, x17, [sp], #16
+    stamp_entry
     save_regs
     mov     x0, sp
     bl      handle_irq          /* 返回值 x0 = 下一个任务的栈（可能已切换） */
-    mov     sp, x0
-    restore_regs
-    eret
+    b       k_exit
 
 el1_sync:
+    stamp_entry
     save_regs
     mov     x0, sp
     bl      handle_sync          /* SVC 主动让出时，返回值是下一个任务的栈 */
+    b       k_exit
+
+/*
+ * 出口。等待循环每圈 3 条指令（icount 下 3 tick），所以退出时比槽起点晚 0、1 或 2 tick。
+ * 晚 d tick 就少执行 d 条 nop，eret 落在槽起点之后固定的指令数上。
+ */
+k_exit:
     mov     sp, x0
+    adrp    x0, k_release_at
+    add     x0, x0, :lo12:k_release_at
+    ldr     x1, [x0]
+    cbz     x1, 5f
+1:  mrs     x2, cntvct_el0
+    cmp     x2, x1
+    b.lo    1b
+    sub     x3, x2, x1
+    str     xzr, [x0]
+    adrp    x4, k_spin_late
+    str     x3, [x4, :lo12:k_spin_late]
+    cmp     x3, #2
+    b.hi    5f
+    adr     x4, 4f
+    add     x4, x4, x3, lsl #2
+    br      x4
+4:  nop
+    nop
+5:  mrs     x2, cntvct_el0
+    adrp    x0, k_eret_ts
+    str     x2, [x0, :lo12:k_eret_ts]
+    adrp    x0, k_arm_rel
+    ldr     x1, [x0, :lo12:k_arm_rel]
+    adrp    x0, k_arm_abs
+    ldr     x3, [x0, :lo12:k_arm_abs]
+    cbz     x1, 6f
+    add     x1, x2, x1
+    cmp     x1, x3
+    csel    x3, x1, x3, lo
+6:  msr     cntv_cval_el0, x3
+    adrp    x0, k_cval
+    str     x3, [x0, :lo12:k_cval]
     restore_regs
     eret
 
@@ -127,6 +176,27 @@ unhandled_irq:
 /* 第一次进入任务：x0 指向伪造好的 irq_frame。 */
 .global start_first_task
 start_first_task:
-    mov     sp, x0
-    restore_regs
-    eret
+    b       k_exit
+
+/*
+ * 周期作业任务的循环。第一次被派上 CPU 就从 job_resume 开始，
+ * 以后每次都从 svc 的下一条开始，所以 eret 之后第一条指令总是读 CNTVCT。
+ */
+.global job_resume
+job_loop:
+    svc     #0
+job_resume:
+    mrs     x0, cntvct_el0
+    bl      job_body
+    b       job_loop
+
+.section .bss
+.align 3
+.global k_entry_ts, k_eret_ts, k_release_at, k_spin_late, k_arm_abs, k_arm_rel, k_cval
+k_entry_ts:   .quad 0
+k_eret_ts:    .quad 0
+k_release_at: .quad 0
+k_spin_late:  .quad 0
+k_arm_abs:    .quad 0
+k_arm_rel:    .quad 0
+k_cval:       .quad 0

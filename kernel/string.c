@@ -1,8 +1,17 @@
 #include "quotaos.h"
 
+/* 对齐部分按 8 字节写：内核在周期边界清演示统计，逐字节写太慢。 */
+__attribute__((optimize("no-tree-loop-distribute-patterns")))
 void *memset(void *dst, int c, size_t n)
 {
     uint8_t *p = dst;
+    while (n && ((uintptr_t)p & 7)) {
+        *p++ = (uint8_t)c;
+        n--;
+    }
+    uint64_t w = (uint8_t)c * 0x0101010101010101ull;
+    for (; n >= 8; n -= 8, p += 8)
+        *(uint64_t *)p = w;
     while (n--)
         *p++ = (uint8_t)c;
     return dst;

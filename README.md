@@ -1,4 +1,4 @@
-# Quota OS
+# Quota OS（版本 007）
 
 基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 
@@ -8,6 +8,12 @@ AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中�
 
 License: [Apache-2.0](LICENSE)
 
+## 版本号规则
+
+- 一个版本 = 一次提交，源码和 `prebuilt/` 一起提交。版本号在 `include/quotaos.h` 的 `QUOTAOS_VERSION`，每个版本提交 +1（三位数字）。提交说明以 `v007:` 这样的前缀开头。
+- 启动横幅第二行是 `Version: 007 (<7 位提交号>)`。提交号由 `Makefile` 在编译时取 `git rev-parse --short=7 HEAD`。
+- **横幅里的提交号 = 这个版本据以编译的提交，也就是版本提交的父提交。** 核对：`git rev-parse --short=7 <版本提交>^` 应等于横幅里的提交号。例：v007 的横幅是 `Version: 007 (82db71a)`。
+
 ## 进度
 
 | 提交 | 内容 | 状态 | 证据 |
@@ -16,7 +22,7 @@ License: [Apache-2.0](LICENSE)
 | B `5b82525` | Tier 1 截止期从理想周期起点记账，跳过和未完成都算错过 | icount 30 轮 0 次错过；**普通模式验收未通过，原因排查中** | `docs/tier1-B/`，见下文「Tier 1 截止期回归」 |
 | C `252a90d` | 从设备树识别 GIC（中断控制器）v2 / v3 | 已验收 | `docs/gic-C/` |
 | `d03cd22` | 启动横幅和 README 换成上面的定位句 | 已推送 | — |
-| D | 严格时间分区（Tier 1 时间槽表）、系统预留、十个按意图命名的演示 | 开发中，未提交 | — |
+| D（v007） | 严格时间分区（Tier 1 时间槽表）、系统预留、准入含保护时间、十个按意图命名的演示、T1MISS 行带 `J_us=` 和 class a/b | icount 下菜单 5–10 的 Tier 1 错过 0 次、起点抖动 0 tick、槽内 Tier 2/3 0 tick；普通模式照实列出，只作参考 | `docs/accept-D/`、`docs/regress-D/`，见下文「v007 验收」 |
 | E | 设备和共享硬件的统一规则（下文设计） | 设计已定、未实现 | — |
 
 分支 `rework-partitioning`，对比：https://github.com/leiquan/quota-os/compare/main...rework-partitioning
@@ -25,18 +31,18 @@ License: [Apache-2.0](LICENSE)
 
 | | 谁声明 | 规则 | 现在的代码 |
 | --- | --- | --- | --- |
-| 系统预留 | 内核 | 排在 Tier 1 前面的固定 CPU 和内存，不外借 | 内存 16 MB 已预留；CPU 预留在 D 里实现 |
-| Tier 1 | 厂商，写死在映像里 | 每个任务一个固定值，写进按周期触发的时间槽表；用不完的槽空着，不借给任何人，也不许超过 | 现在是每周期的预算服务器、最早截止期优先；时间槽表在 D 里实现 |
+| 系统预留 | 内核 | 排在 Tier 1 前面的固定 CPU 和内存，不外借 | v007：内存 16 MB，CPU 350 us/周期（icount 实测最坏 15290 tick ≈ 245 us 加余量） |
+| Tier 1 | 厂商，写死在映像里 | 每个任务一个固定值，写进按周期触发的时间槽表；用不完的槽空着，不借给任何人，也不许超过 | v007：时间槽表写死在 `kernel/resource.c`，槽尾由定时器掐断，空槽不外借 |
 | Tier 2 | 应用清单 | 最低值（保底）每周期给足；建议值（弹性）只来自空闲，有压力时收回；先问用户 y/n 才启动，停止就释放 | 已实现（代码里叫保底/弹性） |
 | Tier 3 | 不声明 | 系统决定，只分剩下的，碰不到上面三样 | 已实现（轮转） |
 
-准入按每种资源各算一遍：**系统预留 + 一级 + 二级保底之和 + 保护时间 ≤ 100%**。放不下就拒绝，并说明先关掉哪个应用（`REFUSED: please close … first`）；请求本身超过整机容量，说 `device does not meet minimum requirements`（旧设备场景）。这两种拒绝现在的代码里都有，但现在只算 CPU 和内存两种资源，且没有算 CPU 系统预留和保护时间；这两项在 D 里实现，其他资源在 E 里。
+准入按每种资源各算一遍：**系统预留 + 一级 + 二级保底之和 + 保护时间 ≤ 100%**。放不下就拒绝，并说明先关掉哪个应用（`REFUSED: please close … first`）；请求本身超过整机容量，说 `device does not meet minimum requirements`（旧设备场景）。v007 只算 CPU 和内存两种资源，CPU 已含系统预留和每个槽前 10 us 的保护时间（4 个槽共 40 us）；其他资源在 E 里。
 
 ## 演示菜单
 
-现在推送的映像（`prebuilt/quotaos.bin`，d03cd22）菜单是：1 资源表、2 启动 Tier 2（先问 y/n）、3 关闭 Tier 2、4 优先级演示、5 分级开关、6 失范隔离、7 声明超过本机、8 内存压力、10 几十个 Tier 2 切片。
+d03cd22 及以前的菜单是：1 资源表、2 启动 Tier 2（先问 y/n）、3 关闭 Tier 2、4 优先级演示、5 分级开关、6 失范隔离、7 声明超过本机、8 内存压力、10 几十个 Tier 2 切片。
 
-D 会把它换成十个按意图命名的演示（开发中，尚未提交）：
+v007 起换成十个按意图命名的演示：
 
 | 新 | 演示 | 对应的旧菜单 |
 | --- | --- | --- |
@@ -80,6 +86,30 @@ E 的验收项（测试给出，QEMU icount 模式每项 30 轮；全部尚未�
 10. 每个 Tier 1 物理页的缓存颜色都正确。
 
 在真实 MPAM 板子上对比「Tier 1 单独跑」和「Tier 3 疯狂访存」的隔离效果：**缺真实板子**，QEMU 上做不了，不算通过或失败。
+
+## v007 验收（内核 sha256 `4672719363ac3fdd…`，编译于 82db71a）
+
+命令（`acceptance.py` 用 `-append qa` 启动，内核依次跑菜单 1、3–10、1，每个计时演示 1000 个周期，打印 `QA DONE` 后结束）：
+
+```bash
+make
+python3 tools/acceptance.py build/quotaos.bin /tmp/qa.txt icount qa 3     # 加 -icount shift=4,sleep=off
+python3 tools/acceptance.py build/quotaos.bin /tmp/qa-n.txt normal qa 3   # 不加 icount
+python3 tools/menu_regress.py run build/quotaos.bin /tmp/menus.txt 2
+python3 tools/menu_regress.py compare docs/regress-D/menus-v007-gicv2.txt /tmp/menus.txt
+```
+
+icount（`docs/accept-D/qa-icount-run{1,2,3}.txt` 三次逐字节相同；`qa-icount-gicv2.txt` 只差 GIC 那一行）：
+
+- 菜单 5、6、9、10：display-vsync 和 timer-server 各 1000 个作业，错过 0，起点偏移恒为 46 tick（抖动 0），class a/b 都是 0。
+- 菜单 6：bad-driver 每周期最多 24989 tick（槽长 25000），在槽尾被掐断。
+- 菜单 6、7、9：Tier 2/3 在 Tier 1 槽内 0 tick；空槽全部空转。
+- 菜单 8：无压力 3000/4000 us，有压力 2000/2000 us，低于最低值的周期 0 个。
+- 内核每周期最多 14678 tick（菜单 9），系统预留 21875 tick（350 us），超出 0 次。定时器中断进入比 CVAL 晚 3 tick。
+
+已知：同一映像在 icount 下重复跑，偶尔「timer IRQ entry - CVAL」和「cut by the slot-end timer」两行的最大值是 5 而不是 3 tick，其他行不变；所以「重复运行逐字节相同」不是每次都成立，原因未查明（怀疑 QEMU 在 icount 下中断送达点受宿主机影响）。
+
+普通模式（不加 icount，共用宿主机，负载均值约 4–5，`docs/accept-D/qa-normal-run{1,2,3}.txt`，负载记录在同名 `-host.txt`）：三次的 Tier 1 错过（各菜单合计）分别是 class a 1193 / class b 0、class a 938 / class b 0、class a 4327 / class b 488（第三次跳过周期 2297 个）。这些数字受宿主机时钟跳动影响，只作参考。
 
 ## 编译
 
@@ -162,7 +192,7 @@ qemu-system-aarch64 \
 启动横幅里的 RAM 应是 65536 KB（64MB），设备树地址和 128MB 那次不同。然后：
 
 - `2` → `1` → `y`：Pixel Racer 只要 8MB 和 3000us，仍能启动。
-- `2` → `4`：Neural Forge 声明 81920 KB，大于整机 65536 KB，也大于扣掉内核和 Tier 1 之后的 35840 KB（bcbe7b5 的 `docs/regress-A/menus-A.txt` 64M 段）。输出 `device does not meet minimum requirements`，不询问、不启动。
+- `4`：Neural Forge 声明 81920 KB，大于扣掉系统预留和 Tier 1 之后的 35840 KB（v007 的 `docs/regress-D/menus-v007-gicv2.txt` 64M 段）。输出 `device does not meet minimum requirements`，不询问、不启动。
 
 UTM 里把虚拟机内存改成 64MB 应得到同样的结果（UTM 上未实测）。
 
@@ -231,11 +261,12 @@ kernel/      串口、设备树、GIC、定时器、资源账本、调度、菜�
 include/     公共类型
 prebuilt/    编好的 quotaos.bin / quotaos.elf
 docs/demo-output.txt     串口实录
-docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/   各提交的验收日志
+docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/   各提交的验收日志
 tools/qemu_serial.py     驱动 QEMU 串口的公共模块
 tools/capture_demos.py   自动按菜单跑完并检查提示符
 tools/menu_regress.py    菜单功能回归：跑固定流程，屏蔽计时数字后逐行比较
-tools/tier1_rounds.py    Tier 1 截止期回归：多轮启动，汇总错过次数和延迟分布
+tools/tier1_rounds.py    Tier 1 截止期回归（B 的菜单流程，只适用于 5b82525 的映像）
+tools/acceptance.py      v007 起的验收：用 -append qa / qa-long 启动，跑到 QA DONE
 tools/gic_boot_check.py  在几种 GIC 配置下检查能否启动到 select>
 ```
 
@@ -243,5 +274,5 @@ tools/gic_boot_check.py  在几种 GIC 配置下检查能否启动到 select>
 make
 python3 tools/capture_demos.py                                   # 重写 docs/demo-output.txt
 python3 tools/menu_regress.py run build/quotaos.bin /tmp/menus.txt
-python3 tools/menu_regress.py compare docs/regress-B/menus-B-run1.txt /tmp/menus.txt
+python3 tools/menu_regress.py compare docs/regress-D/menus-v007-gicv2.txt /tmp/menus.txt
 ```

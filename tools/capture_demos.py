@@ -5,32 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qemu_serial import Session  # noqa: E402
-
-P = "select> "
-BIG = [
-    ("1\n", P, 20),
-    ("4\n", P, 30),                                    # priority, tiering ON
-    ("5\n", P, 10), ("4\n", P, 30), ("5\n", P, 10),    # tiering OFF, priority, ON
-    ("6\n", P, 30),                                    # containment
-    ("2\n", "app> ", 10), ("1\n", "allow> ", 10), ("n\n", P, 10),   # deny Pixel
-    ("2\n", "app> ", 10), ("1\n", "allow> ", 10), ("y\n", P, 10),   # Pixel
-    ("2\n", "app> ", 10), ("2\n", "allow> ", 10), ("y\n", P, 10),   # Cinema
-    ("2\n", "app> ", 10), ("3\n", "allow> ", 10), ("y\n", P, 10),   # Studio refused
-    ("3\n", "close> ", 10), ("1\n", P, 10),                          # close Pixel
-    ("2\n", "app> ", 10), ("3\n", "allow> ", 10), ("y\n", P, 10),   # Studio ok
-    ("1\n", P, 10),
-    ("8\n", P, 15),                                    # pressure
-    ("7\n", P, 10),                                    # Cluster Sim
-    ("3\n", "close> ", 10), ("a\n", P, 10),            # close all
-    ("10\n", P, 60),                                   # 32 slices
-    ("1\n", P, 10),
-]
-SMALL = [
-    ("1\n", P, 20),
-    ("2\n", "app> ", 10), ("1\n", "allow> ", 10), ("y\n", P, 10),   # Pixel fits
-    ("2\n", "app> ", 10), ("4\n", P, 10),              # Neural Forge refused, no allow
-    ("1\n", P, 10),
-]
+from menu_regress import BIG, SMALL  # noqa: E402  same steps as the regression
 
 HEADER = """# Quota OS 演示实录
 

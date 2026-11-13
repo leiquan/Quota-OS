@@ -14,6 +14,7 @@ PHDRS
 SECTIONS
 {
     . = 0x40080000;
+    __image_start = .;
 
     .text.boot : {
         KEEP(*(.text.boot))
@@ -38,6 +39,7 @@ SECTIONS
         . = ALIGN(16);
         __bss_end = .;
     } :data
+    __image_end = .;
 
     /DISCARD/ : {
         *(.eh_frame)

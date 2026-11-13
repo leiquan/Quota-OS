@@ -5,11 +5,11 @@
  * QEMU virt：gic-version=2 是 0x08000000 / 0x08010000；gic-version=3 是 0x08000000 / 0x080a0000。
  * 认不出来就打印原因并停住，不去碰不存在的寄存器（那会变成数据中止 PANIC）。
  *
- * 只用一个 PPI：EL1 非安全物理定时器，INTID 30。
+ * 只用一个 PPI：EL1 虚拟定时器，INTID 27。
  */
 #include "quotaos.h"
 
-#define TIMER_IRQ 30
+#define TIMER_IRQ 27
 
 #define GICD_CTLR       0x0000
 #define GICD_ISENABLER  0x0100
