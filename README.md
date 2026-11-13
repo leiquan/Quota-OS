@@ -1,5 +1,9 @@
 # Quota OS
 
+基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
+
+A microkernel built on three-tier resource declarations: tier-1 tasks never stall, tier-2 tasks run without stalling, and tier-3 tasks get no guarantee.
+
 Quota OS is an experimental real-time microkernel for ARM64, currently running on QEMU. Nothing runs without a quota: CPU time and memory are reserved up front and locked in at admission (GPU reservation is planned).
 
 Workloads fall into three tiers:
@@ -17,7 +21,7 @@ License: [Apache-2.0](LICENSE)
 
 ## 中文说明
 
-一个用来讲清楚「三级资源声明」的 AArch64 教学微内核。它不是日常能用的操作系统。它能在 QEMU 的 `virt` 机器上启动，用真实的 ARM 通用定时器和 GIC 中断（GICv2 或 GICv3，从设备树识别），把下面这件事演示出来：
+基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。它运行在 AArch64 上，能在 QEMU 的 `virt` 机器上启动，用真实的 ARM 通用定时器和 GIC 中断（GICv2 或 GICv3，从设备树识别），把下面这件事演示出来：
 
 **资源在启动前按声明分完。声明了的人有保底，没声明的人用剩下的。谁想多占，就被自己的预算笼子掐住，不能把别人拖卡。**
 
