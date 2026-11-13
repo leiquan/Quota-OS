@@ -9,13 +9,13 @@ Workloads fall into three tiers:
 
 The long-term goal is a single automotive OS that can replace today's QNX + Android dual-system setup.
 
-**Status:** Early prototype running on QEMU (ARM64). Not production-ready or safety-certified. Real-time guarantees are under active testing; tier-1 deadline results will be published with reproducible scripts and logs. The prototype was developed under the working name Quota OS, which still appears in the code and docs below.
+**Status:** Early prototype running on QEMU (ARM64). Not production-ready or safety-certified. Real-time guarantees are under active testing; tier-1 deadline results will be published with reproducible scripts and logs.
 
 License: [Apache-2.0](LICENSE)
 
 ---
 
-## 中文说明（原型代号 Quota OS）
+## 中文说明
 
 一个用来讲清楚「三级资源声明」的 AArch64 教学微内核。它不是日常能用的操作系统。它能在 QEMU 的 `virt` 机器上启动，用真实的 ARM 通用定时器和 GICv2 中断，把下面这件事演示出来：
 
