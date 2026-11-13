@@ -93,16 +93,21 @@ qemu-system-aarch64 \
 
 UTM 底层就是 QEMU。请用**模拟（Emulate）**，不要用虚拟化（Virtualize）。虚拟化要求 `-cpu host`，这个内核按 Cortex-A72 和 GICv2 编写。
 
-1. 打开 UTM，点「+」→ Emulate → Other。
-2. 架构选 ARM64 (aarch64)。内存先设 **128 MB**，CPU 1 核。旧设备场景再把内存改成 64 MB。
-3. 跳过光盘。把向导加上的磁盘删掉，这个系统不读盘。
-4. 保存后编辑这台虚拟机，打开 QEMU 设置。
-5. 确认机器类型是 `virt`。如果能选 GIC，选 GICv2；不能选的话，在附加参数里加上 `-machine virt,gic-version=2`（不要和 UTM 已经生成的 `-machine` 打架，重复了就只保留带 `gic-version=2` 的那一个）。
-6. 附加参数加上内核路径，用绝对路径：`-kernel /Users/你的用户名/quotaos.bin`。显示设备选串口（Serial），不要再加一张显示卡。
-7. 启动。串口窗口里出现和下面「菜单」相同的界面。
-8. 如果第一屏是 `timer IRQ did not fire`，说明中断控制器不是 GICv2，回到第 5 步强制 `gic-version=2`。
+UTM 是沙盒应用，在 QEMU 参数里手写 `-kernel /路径/quotaos.bin` 会报 `failed to load`，即使路径没错。内核文件必须通过 UTM 自己的文件选择框选中，「新建 Linux 虚拟机 + Boot from kernel image」这条路已在 Apple M 芯片的 Mac 上跑通。
 
-命令行那条是已经跑通的路径。UTM 只是把同样的 QEMU 参数放进图形界面。
+1. 先拿到 `prebuilt/quotaos.bin`（克隆仓库，或单独下载这个文件）。
+2. 打开 UTM，点「+」→ Emulate → Linux。
+3. 勾选 Boot from kernel image。在 Kernel 一栏点 Browse，选中 `quotaos.bin`。initrd、启动参数都留空。
+4. 架构选 ARM64 (aarch64)。内存设 **128 MB**，CPU 1 核。旧设备场景把内存改成 64 MB。
+5. 不加磁盘，向导加了就删掉，这个系统不读盘。保存。
+6. 编辑这台虚拟机：
+   - System 里机器类型确认是 `virt`。
+   - QEMU → Arguments 里加上 `-machine virt,gic-version=2 -cpu cortex-a72`。**不要**再写 `-kernel`，UTM 会自己加。和 UTM 生成的 `-machine` 重复的话，只保留带 `gic-version=2` 的那个。
+   - 左边栏 Devices 下把 Display 删掉，再 New… → Serial，模式用默认的 Built-in Terminal。
+7. 启动。串口窗口里出现和下面「菜单」相同的界面。
+8. 如果第一屏是 `timer IRQ did not fire`，说明中断控制器不是 GICv2，回到第 6 步强制 `gic-version=2`。
+
+UTM 里看到的时延只作演示参考，验收数据以命令行固定 QEMU 配置的回归结果为准。
 
 ## 菜单
 
