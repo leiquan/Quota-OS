@@ -2,7 +2,7 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "007"
+#define QUOTAOS_VERSION     "008"
 
 #include <stdint.h>
 #include <stddef.h>

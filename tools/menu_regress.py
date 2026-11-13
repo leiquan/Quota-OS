@@ -5,8 +5,11 @@
   compare: python3 tools/menu_regress.py compare <a.txt> <b.txt>
 
 `compare` masks only the numbers on timing lines (ticks, latencies, received
-CPU, kernel overhead, ...) and collapses T1MISS rows, then diffs everything
-else byte for byte: admission results, REFUSED texts, tables and menu flow.
+CPU, kernel overhead, ...) and collapses T1MISS rows, then splits on ALL
+whitespace (spaces, alignment, line breaks; each CJK character is its own
+token) and compares the token streams exactly: admission results, REFUSED texts, tables and menu
+flow.  Splitting a long line in two or re-padding a column is therefore not a
+difference; changing any word or functional number is.
 """
 import difflib
 import re
@@ -62,26 +65,48 @@ def run(kernel, out, gic="2"):
     return 0 if ok_all else 1
 
 
+# 续行：v008 起长行拆成两行，下面这些续行属于上一行的计时行，同样屏蔽数字。
+CONT = re.compile(r"^\s+(epoch\+k\*P|槽内 Tier|其他 Tier 1|低于最低值的周期|失控者)")
+T1CONT = re.compile(r"^  (lat_t=|deadline_us=)")
+
+
 def normalize(text):
     out = []
     for line in text.splitlines():
-        if line.startswith("T1MISS "):
+        if line.startswith("T1MISS ") or (T1CONT.search(line) and out and out[-1] == "<T1MISS rows>"):
             if out and out[-1] == "<T1MISS rows>":
                 continue
             out.append("<T1MISS rows>")
-        elif TIMING.search(line):
-            out.append(re.sub(r"\s+", " ", re.sub(r"\d+", "#", line)))
+        elif TIMING.search(line) or CONT.search(line):
+            out.append(re.sub(r"\d+", "#", line))
         else:
             out.append(line)
     return out
 
 
+def stream(text):
+    """按空白（含换行）切成词，非 ASCII 字符各算一个词：拆行、对齐空格都不算区别。"""
+    toks = []
+    for w in "\n".join(normalize(text)).split():
+        toks += re.findall(r"[\x21-\x7e]+|.", w)
+    return toks
+
+
 def compare(a, b):
-    na = normalize(open(a).read())
-    nb = normalize(open(b).read())
-    diff = list(difflib.unified_diff(na, nb, a, b, lineterm="", n=1))
-    print("\n".join(diff) if diff else "IDENTICAL after masking timing numbers")
-    return 1 if diff else 0
+    ta = stream(open(a).read())
+    tb = stream(open(b).read())
+    if ta == tb:
+        print("IDENTICAL after masking timing numbers, whitespace-normalized")
+        return 0
+    sm = difflib.SequenceMatcher(None, ta, tb, autojunk=False)
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op == "equal":
+            continue
+        ctx = " ".join(ta[max(0, i1 - 6):i1])
+        print("@@ ...%s" % ctx)
+        print("- " + " ".join(ta[i1:i2]))
+        print("+ " + " ".join(tb[j1:j2]))
+    return 1
 
 
 if __name__ == "__main__":

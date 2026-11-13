@@ -142,7 +142,7 @@ void resource_init(uint64_t ram_bytes)
     ram_kb = ram_bytes / 1024;
     pressure = 0;
     reason[0] = 0;
-    printf("[boot] system reserve %u us/period, %u KB; tier-1 %u us/period, %u KB; guard %u us/period\n",
+    printf("[boot] system reserve %u us/period, %u KB;\n       tier-1 %u us/period, %u KB; guard %u us/period\n",
            SYS_RESERVE_US, KERNEL_RESERVE_KB, resource_t1_cpu_us(), resource_t1_mem_kb(),
            resource_guard_us());
 }

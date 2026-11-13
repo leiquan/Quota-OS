@@ -160,7 +160,7 @@ static void verdict_t1(void)
     uint32_t m;
     uint64_t j;
     t1_summary(&m, &j);
-    printf("结果: Tier 1 错过 %u 次，起点抖动 %lu tick，槽内 Tier 2/3 共 %lu tick。\n",
+    printf("结果: Tier 1 错过 %u 次，起点抖动 %lu tick，\n  槽内 Tier 2/3 共 %lu tick。\n",
            m, j, sched_foreign_window());
 }
 
@@ -210,7 +210,7 @@ static void cmd_overview(void)
     printf("  minimum sum: CPU %u / %u us, memory %lu / %lu KB\n", resource_cpu_min_sum_us(),
            resource_app_cpu_capacity_us(), resource_mem_min_sum_kb(),
            resource_app_mem_capacity_kb());
-    printf("  admission: reserve %u + tier-1 %u + tier-2 min %u + guard %u = %u <= %u us\n",
+    printf("  admission: reserve %u + tier-1 %u + tier-2 min %u\n    + guard %u = %u <= %u us\n",
            SYS_RESERVE_US, resource_t1_cpu_us(), resource_cpu_min_sum_us(), resource_guard_us(),
            SYS_RESERVE_US + resource_t1_cpu_us() + resource_cpu_min_sum_us() + resource_guard_us(),
            PERIOD_US);
@@ -248,7 +248,7 @@ static void install(const struct app_manifest *m)
     t->sugg_t = us_to_ticks(m->cpu_sugg_us);
     a->task = t;
     task_start(t);
-    printf("started %s: CPU %u us/period guaranteed, memory %u KB", a->name, a->cpu_min_us,
+    printf("started %s: CPU %u us/period guaranteed,\n  memory %u KB", a->name, a->cpu_min_us,
            a->mem_min_kb);
     printf(" (+%u KB suggested now)\n", a->mem_granted_kb - a->mem_min_kb);
 }
@@ -401,7 +401,7 @@ static void cmd_overrun(void)
            sched_irq_lat_max());
     sched_print_window();
     sched_print_slots();
-    printf("结果: bad-driver 每周期最多 %lu tick（槽长 %lu）；其他 Tier 1 错过 %lu 次。\n",
+    printf("结果: bad-driver 每周期最多 %lu tick（槽长 %lu）；\n  其他 Tier 1 错过 %lu 次。\n",
            bad->w.used_max, len, (uint64_t)(sched_find("display-vsync")->w.misses +
                                              sched_find("timer-server")->w.misses));
 }
@@ -455,7 +455,7 @@ static void cmd_t2(void)
     print_t2(b->task);
     resource_set_pressure(0);
     uint32_t short_n = a->task->w.short_periods + b->task->w.short_periods;
-    printf("结果: 无压力时最少拿到 %lu/%lu us，有压力时 %lu/%lu us；低于最低值的周期 %u 个。\n",
+    printf("结果: 无压力时最少拿到 %lu/%lu us，有压力时 %lu/%lu us；\n  低于最低值的周期 %u 个。\n",
            us(a1), us(b1), us(a->task->w.used_min), us(b->task->w.used_min), short_n);
     app_stop(a);
     app_stop(b);
@@ -547,7 +547,7 @@ static void cmd_runaway(void)
     uint32_t m;
     uint64_t j;
     t1_summary(&m, &j);
-    printf("结果: 守规矩的 Tier 1 错过 %u 次，audio-mix 错过 %u 次；失控者都停在自己的额度。\n",
+    printf("结果: 守规矩的 Tier 1 错过 %u 次，audio-mix 错过 %u 次；\n  失控者都停在自己的额度。\n",
            m, mix->task->w.misses);
     resource_release(enc);
     resource_release(mix);

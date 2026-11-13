@@ -9,7 +9,7 @@ void kmain(uint64_t dtb)
     uart_init();
     printf("\nQuota OS microkernel\n");
     printf("Version: %s (%s)\n", QUOTAOS_VERSION, QUOTAOS_COMMIT);
-    printf("基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。\n");
+    printf("基于三级资源声明的微内核，\n保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。\n");
 
     _Static_assert(sizeof(struct irq_frame) == 272, "irq frame must match vectors.S");
 

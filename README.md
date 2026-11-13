@@ -1,4 +1,4 @@
-# Quota OS（版本 007）
+# Quota OS（版本 008）
 
 基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 
@@ -13,6 +13,7 @@ License: [Apache-2.0](LICENSE)
 - 一个版本 = 一次提交，源码和 `prebuilt/` 一起提交。版本号在 `include/quotaos.h` 的 `QUOTAOS_VERSION`，每个版本提交 +1（三位数字）。提交说明以 `v007:` 这样的前缀开头。
 - 启动横幅第二行是 `Version: 007 (<7 位提交号>)`。提交号由 `Makefile` 在编译时取 `git rev-parse --short=7 HEAD`。
 - **横幅里的提交号 = 这个版本据以编译的提交，也就是版本提交的父提交。** 核对：`git rev-parse --short=7 <版本提交>^` 应等于横幅里的提交号。例：v007 的横幅是 `Version: 007 (82db71a)`。
+- 复现某个版本的 `prebuilt/quotaos.bin`：在版本提交上用 `make SRC_COMMIT=<父提交>` 编译。例：在 f9119e9（v007）上 `make SRC_COMMIT=82db71a` 得到 sha256 `4672719363ac3fdde2d425dbd69a12e9e3241486e6d0bb50250e05d5c9557067`，与 v007 的 `prebuilt/quotaos.bin` 相同。直接 `make` 会把版本提交自己的提交号编进横幅，sha256 也就不同（f9119e9 上是 `7eaad174…`）。
 
 ## 进度
 
@@ -110,6 +111,13 @@ icount（`docs/accept-D/qa-icount-run{1,2,3}.txt` 三次逐字节相同；`qa-ic
 已知：同一映像在 icount 下重复跑，偶尔「timer IRQ entry - CVAL」和「cut by the slot-end timer」两行的最大值是 5 而不是 3 tick，其他行不变；所以「重复运行逐字节相同」不是每次都成立，原因未查明（怀疑 QEMU 在 icount 下中断送达点受宿主机影响）。
 
 普通模式（不加 icount，共用宿主机，负载均值约 4–5，`docs/accept-D/qa-normal-run{1,2,3}.txt`，负载记录在同名 `-host.txt`）：三次的 Tier 1 错过（各菜单合计）分别是 class a 1193 / class b 0、class a 938 / class b 0、class a 4327 / class b 488（第三次跳过周期 2297 个）。这些数字受宿主机时钟跳动影响，只作参考。
+
+## v008：只改输出格式（内核 sha256 `15dcae5c5a66…`，编译于 f9119e9）
+
+- 所有串口输出行不超过 80 列（中日韩字符算 2 列）：启动横幅的定位句在第一个「，」后换行；`[boot] system reserve`、`admission`、`last release`、`started …`、几行「结果」和 `T1MISS` 都拆成两行，续行缩进。数值和字段没有变。
+- `tools/menu_regress.py compare` 改成空白归一：按所有空白（含换行）切词、每个中日韩字符单独算一个词，再逐词比较；计时行（含续行）的数字照旧屏蔽。拆行、对齐不算区别，改字或改功能数字算。v007 的期望输出没有重新生成。
+- 证据（`docs/accept-v008/summary.txt`）：v007 和 v008 的 icount qa 日志去掉全部空白后、不屏蔽数字，除版本行外完全相同；菜单回归和 qa 日志的空白归一比较只差版本行（`docs/regress-v008/compare-v007-v008.txt`、`docs/accept-v008/compare-qa-icount-v007-v008.txt`）；最宽一行 79 列（`python3 tools/width_check.py <日志>` 列出超过 80 列的行）。
+- icount 重复 10 次（`docs/accept-v008/repeat/`）：文件 sha256 有 3 种；去掉两行中断进入时延后 10 份完全相同。这两行的最大值有时是 5 tick 而不是 3 tick（见上文 v007 的「已知」），原因未查明。
 
 ## 编译
 
@@ -261,12 +269,13 @@ kernel/      串口、设备树、GIC、定时器、资源账本、调度、菜�
 include/     公共类型
 prebuilt/    编好的 quotaos.bin / quotaos.elf
 docs/demo-output.txt     串口实录
-docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/   各提交的验收日志
+docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/ docs/accept-v008/ docs/regress-v008/   各提交的验收日志
 tools/qemu_serial.py     驱动 QEMU 串口的公共模块
 tools/capture_demos.py   自动按菜单跑完并检查提示符
 tools/menu_regress.py    菜单功能回归：跑固定流程，屏蔽计时数字后逐行比较
 tools/tier1_rounds.py    Tier 1 截止期回归（B 的菜单流程，只适用于 5b82525 的映像）
 tools/acceptance.py      v007 起的验收：用 -append qa / qa-long 启动，跑到 QA DONE
+tools/width_check.py     列出超过 80 列的行（中日韩字符算 2 列）
 tools/gic_boot_check.py  在几种 GIC 配置下检查能否启动到 select>
 ```
 

@@ -755,13 +755,13 @@ static const char *reason_name[] = {"late", "unfinished", "not_started", "skippe
 static void print_miss(const struct miss_rec *m)
 {
     if (m->reason == 3)
-        printf("T1MISS task=%s period=%lu reason=skipped lat_us=- deadline_us=%lu "
-               "J_us=%lu covered=%s uncovered_us=%lu class=%c\n",
+        printf("T1MISS task=%s period=%lu reason=skipped lat_us=-\n"
+               "  deadline_us=%lu J_us=%lu covered=%s uncovered_us=%lu class=%c\n",
                tasks[m->task].name, m->period, ticks_to_us(m->deadline_t),
                ticks_to_us(m->j_t), m->covered ? "yes" : "no", ticks_to_us(m->unc_t), m->cls);
     else
-        printf("T1MISS task=%s period=%lu reason=%s start_t=%ld lat_t=%lu lat_us=%lu "
-               "deadline_us=%lu J_us=%lu class=%c\n",
+        printf("T1MISS task=%s period=%lu reason=%s start_t=%ld\n"
+               "  lat_t=%lu lat_us=%lu deadline_us=%lu J_us=%lu class=%c\n",
                tasks[m->task].name, m->period, reason_name[m->reason],
                m->started ? (long)m->start_t : -1L, m->lat_t,
                ticks_to_us(m->lat_t), ticks_to_us(m->deadline_t),
@@ -787,7 +787,7 @@ void sched_print_window(void)
         if (t->state == TASK_EMPTY || t->tier != TIER1 || t->kind != KIND_JOB || !t->w.jobs)
             continue;
         uint64_t want = epoch + t->job_period * P + slot_off[t->slot];
-        printf("  %s last release: period %lu, tick %lu, epoch+k*P+offset %lu\n", t->name,
+        printf("  %s last release: period %lu, tick %lu,\n    epoch+k*P+offset %lu\n", t->name,
                t->job_period, t->release_ts, want);
     }
     for (uint32_t i = 0; i < mn && i < MISS_LOG; i++)
