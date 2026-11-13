@@ -27,7 +27,6 @@ static struct task *shell_task;
 static int tiering_on = 1;
 /* 预算策略：超出部分从下周期扣回（欠账），预算定时器按启动时实测的触发延迟提前。 */
 static uint64_t timer_advance_ticks;
-static int count_guarantees = 1;
 static int rr_cursor[4];
 
 static uint64_t epoch;
@@ -39,6 +38,24 @@ static uint32_t sched_overrun_n;
 static uint64_t period_skips;
 static uint32_t clock_stalls;
 static uint32_t clock_stall_max_us;
+
+/*
+ * Tier 1 截止期记账。延迟一律从理想周期起点 epoch + k*PERIOD 算，
+ * 调度器实际放行（dispatch）的时刻另记，不拿来抵消迟到。
+ * 跳过的周期对每个周期性 Tier 1 任务都记一次错过，不做豁免。
+ */
+#define LAT_BUCKETS 10001          /* 0..9999 us 每微秒一格，最后一格是 >= 10000 */
+#define LAT_SLOTS   2
+static uint32_t lat_hist[LAT_SLOTS][LAT_BUCKETS];
+static int lat_slots_used;
+
+#define JUMP_LOG 16
+static struct {
+    uint64_t period;   /* 跳之前的周期号 */
+    uint32_t skipped;  /* 跳过的整周期数 */
+    uint32_t gap_us;   /* 两次调度之间的虚拟时钟间隔 */
+} jump_log[JUMP_LOG];
+static uint32_t jump_n;
 
 static int bench_on;
 static int bench_rec;
@@ -79,24 +96,58 @@ uint32_t sched_clock_stall_max_us(void) { return clock_stall_max_us; }
 
 void sched_set_tiering(int on)
 {
-    int was = tiering_on;
     tiering_on = on ? 1 : 0;
-    /*
-     * 分级刚打开时，可能还有在公平轮转里排着、释放时间停在过去的周期任务。
-     * 不把释放时间拨到「现在」，下一次运行会把关闭期间的排队算成 Tier 1 错过。
-     */
-    if (tiering_on && !was) {
-        uint64_t now = now_us();
-        for (int i = 0; i < MAX_TASKS; i++) {
-            struct task *t = &tasks[i];
-            if (t->state == TASK_EMPTY || t->state == TASK_DEAD)
-                continue;
-            if (t->job_open && !t->started && t->release_us < now)
-                t->release_us = now;
-        }
+}
+
+/* 一次作业的结果。分级关闭期间释放的作业记进 misses_off（对照组），其余都算保证。 */
+static void account_job(struct task *t, uint32_t lat, int miss)
+{
+    if (t->released_off) {
+        if (miss)
+            t->misses_off++;
+        return;
+    }
+    if (miss)
+        t->misses++;
+    else
+        t->hits++;
+    if (lat > t->max_lat_us)
+        t->max_lat_us = lat;
+    if (t->lat_slot > 0)
+        lat_hist[t->lat_slot - 1][lat < LAT_BUCKETS - 1 ? lat : LAT_BUCKETS - 1]++;
+}
+
+/* 演示窗口里丢掉的作业（未完成、或所在周期被跳过）同样算作业、算错过。 */
+static void window_lost(struct task *t, uint32_t n)
+{
+    if (bench_rec && !t->released_off) {
+        t->w_jobs += n;
+        t->w_miss += n;
     }
 }
-void sched_set_count_guarantees(int on) { count_guarantees = on ? 1 : 0; }
+
+static void account_skips(uint64_t skipped, uint64_t gap_us)
+{
+    period_skips += skipped;
+    if (jump_n < JUMP_LOG) {
+        jump_log[jump_n].period = period_index;
+        jump_log[jump_n].skipped = (uint32_t)skipped;
+        jump_log[jump_n].gap_us = gap_us > 0xffffffffu ? 0xffffffffu : (uint32_t)gap_us;
+    }
+    jump_n++;
+    for (int i = 0; i < MAX_TASKS; i++) {
+        struct task *t = &tasks[i];
+        if (t->tier != TIER1 || !t->periodic || !t->seen_release || t->state == TASK_DEAD)
+            continue;
+        if (tiering_on) {
+            t->misses += (uint32_t)skipped;
+            window_lost(t, (uint32_t)skipped);
+        } else {
+            t->misses_off += (uint32_t)skipped;
+        }
+        t->skipped_jobs += (uint32_t)skipped;
+    }
+}
 
 struct task *sched_task_at(int index)
 {
@@ -149,9 +200,15 @@ struct task *task_create(const char *name, int tier, void (*entry)(void))
         t->id = i;
         t->stack = stacks[i];
         t->tier = tier;
-        t->state = TASK_READY;
         str_copy(t->name, name, NAME_LEN);
         make_frame(t, entry);
+        /*
+         * 先不可运行。调用者填好预算等参数后，常驻任务（keep_running）在下一个
+         * 周期边界由 replenish_one 放行，周期任务在下一个周期边界释放。
+         * 以前这里直接 READY：定时器若在 budget_us 写进去之前打进来，
+         * 预算为 0 的 Tier 1 会被当成不限量，失范演示的结果因此时好时坏。
+         */
+        t->state = TASK_BLOCKED;
         return t;
     }
     printf("PANIC: out of tasks\n");
@@ -246,17 +303,22 @@ static void replenish_one(struct task *t, uint64_t period_start)
         return;
     }
     if (t->periodic) {
+        /* 上一周期的作业到周期结束还没完成：这是一次错过。 */
+        if (t->job_open && t->seen_release) {
+            uint64_t lat = t->started ? t->start_us - t->release_us : PERIOD_US;
+            account_job(t, lat > LAT_BUCKETS ? LAT_BUCKETS : (uint32_t)lat, 1);
+            window_lost(t, 1);
+            t->unfinished_jobs++;
+        }
         t->wait_release = 0;
         t->job_open = 1;
         t->started = 0;
-        /*
-         * 释放时间用调度器真正放行的时刻，不用已经过去的理想周期起点。
-         * 定时器中断若因宿主机调度或串口后端堵住而晚到，这次中断会同时
-         * 发现新周期并立刻把 Tier 1 派上去。倒填到过去会把这段「虚拟时钟
-         * 跳了」记成任务迟到，分级打开时也会因此错过 800us 截止期。
-         */
-        uint64_t now = now_us();
-        t->release_us = period_start > now ? period_start : now;
+        t->released_off = !tiering_on;
+        /* 截止期从理想周期起点算；调度器实际放行的时刻单独记。 */
+        t->release_us = period_start;
+        t->dispatch_us = now_us();
+        if (t->dispatch_us - t->release_us > t->max_dispatch_lag_us)
+            t->max_dispatch_lag_us = (uint32_t)(t->dispatch_us - t->release_us);
         t->seen_release = 1;
         t->state = TASK_READY;
         return;
@@ -286,6 +348,8 @@ static void on_boundary(uint64_t period_start)
             t->w_sum_recv += t->used_us;
             if (t->w_periods < 100000)
                 t->w_periods++;
+            if (t->used_us > t->w_max_recv)
+                t->w_max_recv = t->used_us;
             if (t->bench_owned && t->keep_running && t->budget_us &&
                 t->used_us * 100u < t->budget_us * 70u)
                 t->w_miss++;
@@ -497,13 +561,6 @@ static uint64_t schedule(uint64_t old_sp)
             clock_stalls++;
             if (stall > clock_stall_max_us)
                 clock_stall_max_us = stall;
-            if (tiering_on) {
-                for (int i = 0; i < MAX_TASKS; i++) {
-                    struct task *t = &tasks[i];
-                    if (t->job_open && !t->started && t->release_us < enter)
-                        t->release_us = enter;
-                }
-            }
         }
     }
 
@@ -532,8 +589,8 @@ static uint64_t schedule(uint64_t old_sp)
     if (now >= epoch) {
         uint64_t idx = (now - epoch) / PERIOD_US;
         if (idx != period_index) {
-            if (count_guarantees && idx > period_index + 1)
-                period_skips += idx - period_index - 1;
+            if (idx > period_index + 1)
+                account_skips(idx - period_index - 1, enter - sched_left_us);
             on_boundary(epoch + idx * PERIOD_US);
             period_index = idx;
         }
@@ -572,7 +629,7 @@ static uint64_t schedule(uint64_t old_sp)
         uint32_t cost = (uint32_t)cost64;
         if (cost > max_sched_us)
             max_sched_us = cost;
-        if (count_guarantees && cost > 200)
+        if (tiering_on && cost > 200)
             sched_overrun_n++;
     }
     sched_left_us = now_us();
@@ -645,24 +702,16 @@ void quotaos_periodic_entry(void)
         uint32_t lat = 0;
         uint32_t resp = 0;
         int miss = 0;
-        if (t->seen_release && now >= t->release_us && t->start_us >= t->release_us) {
+        if (t->seen_release) {
+            /* release_us 是理想周期起点，start_us 是第一次真正上 CPU 的时刻。 */
             lat = (uint32_t)(t->start_us - t->release_us);
             resp = (uint32_t)(now - t->release_us);
             if (t->latency_check)
                 miss = lat > t->rel_deadline_us;
             else
                 miss = resp > t->rel_deadline_us;
+            account_job(t, lat, miss);
         }
-        if (t->seen_release && count_guarantees && tiering_on) {
-            if (miss)
-                t->misses++;
-            else
-                t->hits++;
-            if (lat > t->max_lat_us)
-                t->max_lat_us = lat;
-        }
-        if (t->seen_release && !tiering_on && miss)
-            t->misses_off++;
         if (bench_rec && t->seen_release) {
             t->w_jobs++;
             if (lat > t->w_max_lat)
@@ -696,6 +745,7 @@ void services_start(void)
     t->latency_check = 1;
     t->wait_release = 1;
     t->state = TASK_BLOCKED;
+    t->lat_slot = ++lat_slots_used;
 
     t = task_create("timer-server", TIER1, quotaos_periodic_entry);
     t->budget_us = 300;
@@ -705,6 +755,54 @@ void services_start(void)
     t->latency_check = 1;
     t->wait_release = 1;
     t->state = TASK_BLOCKED;
+    t->lat_slot = ++lat_slots_used;
+}
+
+static uint32_t hist_quantile(const uint32_t *h, uint64_t n, uint32_t permille)
+{
+    /* 最小的 x，使得 <= x 的样本数 >= ceil(n * q)。 */
+    uint64_t need = (n * permille + 999) / 1000;
+    if (need == 0)
+        need = 1;
+    uint64_t acc = 0;
+    for (uint32_t i = 0; i < LAT_BUCKETS; i++) {
+        acc += h[i];
+        if (acc >= need)
+            return i;
+    }
+    return LAT_BUCKETS - 1;
+}
+
+void sched_print_tier1_stats(void)
+{
+    printf("Tier 1 截止期（延迟从理想周期起点 epoch+k*%u us 算；跳过的周期、未完成的作业都算错过）:\n",
+           PERIOD_US);
+    for (int i = 0; i < MAX_TASKS; i++) {
+        struct task *t = &tasks[i];
+        if (t->state == TASK_EMPTY || t->lat_slot <= 0)
+            continue;
+        const uint32_t *h = lat_hist[t->lat_slot - 1];
+        uint64_t n = 0;
+        for (uint32_t k = 0; k < LAT_BUCKETS; k++)
+            n += h[k];
+        printf("T1STAT %s jobs=%u hits=%u misses=%u skipped=%u unfinished=%u "
+               "lat_p50=%u lat_p99=%u lat_max=%u dispatch_lag_max=%u deadline=%u misses_off=%u\n",
+               t->name, t->hits + t->misses, t->hits, t->misses, t->skipped_jobs,
+               t->unfinished_jobs, n ? hist_quantile(h, n, 500) : 0,
+               n ? hist_quantile(h, n, 990) : 0, t->max_lat_us, t->max_dispatch_lag_us,
+               t->rel_deadline_us, t->misses_off);
+        printf("T1HIST %s", t->name);
+        for (uint32_t k = 0; k < LAT_BUCKETS; k++)
+            if (h[k])
+                printf(" %u:%u", k, h[k]);
+        printf("\n");
+    }
+    printf("T1STAT periods=%lu period_skips=%lu clock_jumps=%u clock_jump_max=%u us skip_events=%u\n",
+           period_index, period_skips, clock_stalls, clock_stall_max_us, jump_n);
+    uint32_t shown = jump_n < JUMP_LOG ? jump_n : JUMP_LOG;
+    for (uint32_t k = 0; k < shown; k++)
+        printf("T1JUMP at_period=%lu skipped=%u gap=%u us\n",
+               jump_log[k].period, jump_log[k].skipped, jump_log[k].gap_us);
 }
 
 void sched_init(void)
@@ -716,15 +814,18 @@ void sched_init(void)
     epoch = now_us();
     period_index = 0;
     tiering_on = 1;
-    count_guarantees = 1;
 }
 
 void sched_start(void (*shell_entry)(void))
 {
     idle_task = task_create("idle", TIER_IDLE, idle_entry);
+    idle_task->state = TASK_READY;
     shell_task = task_create("shell", TIER3, shell_entry);
     shell_task->state = TASK_RUNNING;
     current_task = shell_task;
+    /* 周期编号从第一个任务上 CPU 时开始；启动校准占用的时间不算跳过的周期。 */
+    epoch = now_us();
+    period_index = 0;
     run_start_us = now_us();
     arm_for(shell_task);
     start_first_task(shell_task->sp);

@@ -39,7 +39,7 @@ SMALL = [
 
 TIMING = re.compile(
     r"^\[boot\] (x0=|DTB at|CNTFRQ|timer latency|timer IRQ)|内核调度最长|hits=|jiffies|"
-    r"summary:|window misses|jobs=|throttled|recv_avg|^app-\d\d |^TOTAL ")
+    r"summary:|window misses|jobs=|throttled|recv_avg|max_recv=|^app-\d\d |^TOTAL |^结果:|^截止期:|^T1STAT")
 SAMPLE = re.compile(r"^\s+\d+\s+\d+\s+\d+\s+\d+\s+(OK|MISS)$")
 
 
@@ -59,12 +59,13 @@ def run(kernel, out):
 def normalize(text):
     out = []
     for line in text.splitlines():
-        if SAMPLE.match(line):
-            if out and out[-1] == "<samples>":
+        if SAMPLE.match(line) or line.startswith("T1JUMP "):
+            tag = "<samples>" if SAMPLE.match(line) else "<clock jumps>"
+            if out and out[-1] == tag:
                 continue
-            out.append("<samples>")
-        elif line.startswith("结果:"):
-            out.append("结果: <timing-dependent verdict>")
+            out.append(tag)
+        elif line.startswith("T1HIST "):
+            out.append(" ".join(line.split()[:2]) + " <histogram>")
         elif TIMING.search(line):
             out.append(re.sub(r"\s+", " ", re.sub(r"\d+", "#", line)))
         else:

@@ -126,6 +126,8 @@ UTM 里看到的时延只作演示参考，验收数据以命令行固定 QEMU �
 
 会打印设备树读到的 RAM、内核保留、Tier 1 静态表、已经准入的 Tier 2、Tier 3 还剩多少 CPU 和内存，以及两个常驻 Tier 1 从上电以来的命中/错过次数。
 
+末尾的 `T1STAT` / `T1HIST` / `T1JUMP` 几行是 Tier 1 截止期记账（见下面「Tier 1 截止期回归」）。
+
 ### 2. 超额：先拒绝，关掉一个再成功
 
 Tier 1 已经占掉每个周期 1500us，留给应用的保底是 8500us。Pixel Racer、Cinema Play、Studio Cut 各要 3000us，第三个放不下。
@@ -160,7 +162,14 @@ Tier 1 已经占掉每个周期 1500us，留给应用的保底是 8500us。Pixel
 - `bad-encoder`：Tier 2 死循环，声明 1000us。
 - `bg-hog`：Tier 3，不声明，拼命空转。
 
-实录里前三个声明内的任务错过都是 0。死循环任务用完自己的预算就被掐断，不会把 10000us 的周期吃光。Tier 3 只拿到剩下的时间。默认的新策略还会把本周期多用的部分从下个周期扣回，所以长时间平均会贴着申请量，而不是每周期都超十几微秒。
+死循环任务用完自己的预算就被掐断，不会把 10000us 的周期吃光。Tier 3 只拿到剩下的时间。本周期多用的部分会从下个周期扣回，所以长时间平均会贴着申请量。
+
+结论分两行打印：
+
+- `结果:` 只判笼子：两个死循环任务单周期拿到的最多时间（`max_recv`）不超过声明预算 + 40us 记账容差。这是调度器的结构性保证，和宿主机快慢无关，所以这一行的文字每次都一样。
+- `截止期:` 照实报 Tier 1 和 `audio-mix` 的错过次数（含未完成、被跳过的周期），以及同一窗口里虚拟时钟跳动和跳过周期的次数。不用 icount 时这些数取决于宿主机调度。
+
+以前这里只有一行结论，把两件事混在一起：宿主机让 QEMU 停顿几毫秒，`display-vsync` 就会错过，结论就从「笼子掐住」变成「仍有截止期错过」，同一配置时好时坏。另一个原因是 `task_create` 先把任务置为 READY 再填预算，定时器若在这中间打进来，预算为 0 的 Tier 1 `bad-driver` 会被当成不限量。现在新建的任务先不可运行，到下一个周期边界才放行。
 
 ### 5. 声明超过这台机器
 
@@ -211,6 +220,38 @@ qemu-system-aarch64 \
 
 UTM 里把虚拟机内存改成 64MB，效果相同。
 
+## Tier 1 截止期回归
+
+记账口径（`kernel/sched.c`）：
+
+- 每个周期任务的释放时刻就是理想周期起点 `epoch + k*10000us`，`epoch` 是第一个任务上 CPU 的时刻。延迟 = 第一次上 CPU 的时刻 − 理想起点。调度器实际放行的时刻另记为 `dispatch_lag`，不拿来抵消迟到。
+- 虚拟时钟一次跳过几个整周期，每个周期性 Tier 1 任务每个被跳过的周期都记一次错过（`skipped`），并在 `T1JUMP` 里记下跳之前的周期号、跳过的周期数和时钟间隔。没有豁免。
+- 周期结束时作业还没完成，记一次错过（`unfinished`）。
+- 分级 OFF 期间释放的作业记进 `misses_off`（对照组），不进保证统计。
+
+回归脚本每轮启动一次，在分级 ON 下依次跑菜单 1、4、6、10、4、6、1，读最后一次菜单 1 的计数：
+
+```bash
+make
+python3 tools/tier1_rounds.py build/quotaos.bin /tmp/t1-icount 30 4   # -icount shift=4,sleep=off
+python3 tools/tier1_rounds.py build/quotaos.bin /tmp/t1-normal 30      # 不用 icount
+```
+
+固定配置：`qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M -nographic -nic none -kernel build/quotaos.bin`，icount 模式再加 `-icount shift=4,sleep=off`（一条指令 16ns，等于一拍 CNTPCT）。`sleep=off` 是必须的：默认的 `sleep=on` 下，客户机在 `wfi` 里等串口输入时虚拟时钟跟着宿主机实时走，宿主机一忙，定时器中断就晚到几毫秒。
+
+这次的结果（原始日志在 `docs/tier1-B/`，每轮一个 `round-NN.txt`，汇总在 `summary.txt`）：
+
+| 模式 | 任务 | 作业数 | 错过 | 其中跳过周期 / 未完成 | 延迟 p50 | p99 | 最大 | 截止期 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| icount shift=4，30 轮 | display-vsync | 212292 | **0** | 0 / 0 | 19us | 26us | 236us | 800us |
+| icount shift=4，30 轮 | timer-server | 212296 | **0** | 0 / 0 | 112us | 119us | 330us | 1500us |
+| 不用 icount，30 轮 | display-vsync | 4862 | **65** | 5 / 0 | 54us | 1202us | 7486us | 800us |
+| 不用 icount，30 轮 | timer-server | 4862 | **52** | 5 / 2 | 149us | 1401us | 7585us | 1500us |
+
+两种模式的周期数和跳过：icount 212300 个周期、跳过 0 个、时钟跳动 0 次；不用 icount 4862 个周期、跳过 5 个、时钟跳动 16236 次。
+
+不用 icount 时客户机时钟就是宿主机时钟，QEMU 线程被宿主机调走多久，定时器中断就晚多久（`dispatch_lag_max` 7483us），这时的错过来自宿主机，不是调度顺序。采这组数据时宿主机是一台多人共用的 8 核机器，1 分钟负载均值约 3，15 分钟负载均值约 18（`summary.txt` 末尾记了 `uptime`）。同一份内核在 icount 下 30 轮零错过。
+
 ## 和真正的操作系统差在哪里
 
 - 单核。没有多核负载均衡，也没有核间中断。
@@ -233,6 +274,7 @@ docs/demo-output.txt     串口实录
 tools/qemu_serial.py     驱动 QEMU 串口的公共模块
 tools/capture_demos.py   自动按菜单跑完并检查提示符
 tools/menu_regress.py    菜单功能回归：跑固定流程，屏蔽计时数字后逐行比较
+tools/tier1_rounds.py    Tier 1 截止期回归：多轮启动，汇总错过次数和延迟分布
 ```
 
 重新采集串口（写 `docs/demo-output.txt`）：

@@ -67,8 +67,14 @@ struct task {
     int bench_owned;    /* 演示结束时回收，不动常驻 tier-1 */
     int seen_release;
 
-    uint64_t release_us;
-    uint64_t start_us;
+    uint64_t release_us;    /* 理想周期起点 epoch + k*PERIOD_US */
+    uint64_t dispatch_us;   /* 调度器实际放行这次作业的时刻 */
+    uint64_t start_us;      /* 作业第一次上 CPU 的时刻 */
+    int released_off;       /* 作业在分级关闭时释放，结果记进 misses_off */
+    int lat_slot;           /* >0：记录延迟分布的 Tier 1 任务 */
+    uint32_t skipped_jobs;  /* 因虚拟时钟跳过周期而丢掉的作业 */
+    uint32_t unfinished_jobs;
+    uint32_t max_dispatch_lag_us;
 
     uint32_t hits;
     uint32_t misses;
@@ -82,6 +88,7 @@ struct task {
     uint32_t w_max_resp;
     uint64_t w_sum_recv;
     uint32_t w_periods;
+    uint32_t w_max_recv;
 };
 
 struct tier1_decl {
@@ -173,7 +180,7 @@ void task_reset_window(struct task *t);
 void sched_set_tiering(int on);
 int sched_tiering(void);
 void timer_calibrate(void);
-void sched_set_count_guarantees(int on);
+void sched_print_tier1_stats(void);
 struct task *sched_find(const char *name);
 struct task *sched_task_at(int index);
 uint64_t sched_period_skips(void);

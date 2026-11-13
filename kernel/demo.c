@@ -71,7 +71,7 @@ static void cmd_table(void)
     resource_show();
     struct task *v = sched_find("display-vsync");
     struct task *tm = sched_find("timer-server");
-    printf("保证期统计（只在分级 ON 且不在测量探针里计数）:\n");
+    printf("保证期统计（分级 ON 期间释放的作业；OFF 期间释放的记进 OFF 对照）:\n");
     if (v)
         printf("  display-vsync  hits=%u misses=%u max_latency=%u us  (OFF 对照 misses=%u)\n",
                v->hits, v->misses, v->max_lat_us, v->misses_off);
@@ -79,6 +79,7 @@ static void cmd_table(void)
         printf("  timer-server   hits=%u misses=%u max_latency=%u us  (OFF 对照 misses=%u)\n",
                tm->hits, tm->misses, tm->max_lat_us, tm->misses_off);
     printf("定时器中断 jiffies=%lu\n", timer_jiffies());
+    sched_print_tier1_stats();
 }
 
 static void launch_manifest(const struct app_manifest *m, int interactive)
@@ -231,15 +232,8 @@ static void cmd_priority(void)
     struct task *vs = sched_find("display-vsync");
     task_reset_window(vs);
     bench_watch(vs);
-    int counting = 1;
-    if (!sched_tiering()) {
-        sched_set_count_guarantees(0);
-        counting = 0;
-    }
     bench_begin(12);
     block_for_bench();
-    if (!counting)
-        sched_set_count_guarantees(1);
 
     print_vsync_samples(DEADLINE_VSYNC_US);
     if (vs) {
@@ -327,6 +321,8 @@ static void cmd_contain(void)
 
     uint32_t th0 = bad->throttle_events;
     uint32_t th1 = bad_drv->throttle_events;
+    uint32_t stalls0 = sched_clock_stalls();
+    uint64_t skips0 = sched_period_skips();
     bench_begin(12);
     block_for_bench();
 
@@ -346,11 +342,24 @@ static void cmd_contain(void)
     printf("tier-3 bg-hog:        recv_avg %u us（只拿到没人要的剩余时间）\n",
            avg_u(hog->w_sum_recv, hog->w_periods));
 
-    int isolated = vs->w_miss == 0 && tm->w_miss == 0 && audio->w_miss == 0;
-    if (isolated)
-        printf("结果: 失范任务被预算笼子掐住。tier-1 和守规矩的 tier-2 错过次数 = 0。\n");
+    /*
+     * 两件事分开判：
+     *  - 笼子：每个失范任务单周期最多拿到的时间，不超过声明预算加一次量子的
+     *    记账容差（charge() 对单次切片的上限是武装量子 + 40us）。这是调度器的
+     *    结构性保证，和宿主机快慢无关。
+     *  - 截止期：照实报错过次数（含未完成、被跳过的周期），以及同一窗口里
+     *    虚拟时钟跳动和跳过周期的次数。非 icount 模式下这些数取决于宿主机调度。
+     */
+    int caged = bad_drv->w_max_recv <= 400 + 40 && bad->w_max_recv <= 1000 + 40;
+    printf("bad-driver max_recv=%u us/period, bad-encoder max_recv=%u us/period\n",
+           bad_drv->w_max_recv, bad->w_max_recv);
+    if (caged)
+        printf("结果: 失范任务被预算笼子掐住（单周期不超过声明预算 + 40us 记账容差）。\n");
     else
-        printf("结果: 仍有截止期错过，隔离没有达到教学预期。\n");
+        printf("结果: 笼子没有掐住，失范任务单周期超出了声明预算。\n");
+    printf("截止期: tier-1 错过 %u 次，守规矩的 tier-2 错过 %u 次；同一窗口内时钟跳动 %u 次、跳过周期 %lu 个。\n",
+           vs->w_miss + tm->w_miss, audio->w_miss,
+           sched_clock_stalls() - stalls0, sched_period_skips() - skips0);
 
     resource_close_name("audio-mix");
     resource_close_name("bad-encoder");
@@ -405,6 +414,8 @@ static void cmd_many(void)
     struct task *vs = sched_find("display-vsync");
     task_reset_window(vs);
     bench_watch(vs);
+    uint32_t stalls0 = sched_clock_stalls();
+    uint64_t skips0 = sched_period_skips();
     bench_begin(8);
     block_for_bench();
 
@@ -426,10 +437,8 @@ static void cmd_many(void)
            started, slice, avg_u(recv_sum, periods), misses);
     printf("sum of declared slices = %u us/period, tier-1 reserve stays outside this pool.\n",
            (uint32_t)started * slice);
-    if (misses == 0 && vs->w_miss == 0)
-        printf("结果: 每条虚拟 CPU 都拿到了自己的切片，tier-1 仍然零错过。\n");
-    else
-        printf("结果: 有切片没给够或 tier-1 被耽误了。\n");
+    printf("结果: 切片没给够 %u 次，tier-1 display-vsync 错过 %u 次；同一窗口内时钟跳动 %u 次、跳过周期 %lu 个。\n",
+           misses, vs->w_miss, sched_clock_stalls() - stalls0, sched_period_skips() - skips0);
 
     for (int i = 0; i < started; i++)
         resource_close_name(names[i]);
