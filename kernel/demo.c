@@ -171,6 +171,7 @@ static void cmd_overview(void)
     printf("\n=== 1 资源总览 / resource overview ===\n");
     printf("RAM %lu KB. CPU period %u us. 1 tick = %lu ns.\n", resource_ram_kb(), PERIOD_US,
            1000000000ull / timer_freq());
+    decl_notice();
     printf("\n[系统预留] kernel, fixed, never lent\n");
     printf("  CPU %u us/period = %lu ticks\n", SYS_RESERVE_US, us_to_ticks(SYS_RESERVE_US));
     printf("  measured since boot: max %lu ticks/period (period %lu of %lu)\n",
@@ -569,6 +570,8 @@ static void cmd_help(void)
     printf("  11 设备申请 Tier 1：不能打断的设备被拒（说明缺哪一条）\n");
     printf("  12 超额申请被拒（说明是哪种资源）\n");
     printf("  13 预算令牌：驱动替谁干活就扣谁的预算\n");
+    printf("  14 设备超时：强制中止，设备降到 Tier 3（少报耗时的设备）\n");
+    printf("  15 中断风暴：多出来的中断被限流并计数\n");
     printf("  h  帮助    q  提示如何退出 QEMU\n");
 }
 
@@ -600,11 +603,21 @@ void shell_main(void)
 {
     printf("[boot] shell task running\n");
     decl_init();
+    decl_verify_devices();
     const char *args = dtb_bootargs();
     if (strcmp(args, "e1") == 0) {
         decl_demo_device_tier1();
         decl_demo_overcommit();
         decl_qa_e1(0);
+        printf("QA DONE\n");
+        for (;;)
+            asm volatile("wfi");
+    }
+    if (strcmp(args, "e3") == 0) {
+        qa = 1;
+        e3_demo_timeout(QA_PERIODS, 1);
+        cmd_overview();
+        e3_demo_storm(QA_PERIODS, 1);
         printf("QA DONE\n");
         for (;;)
             asm volatile("wfi");
@@ -640,6 +653,8 @@ void shell_main(void)
         case 11: decl_demo_device_tier1(); break;
         case 12: decl_demo_overcommit(); break;
         case 13: e2_demo(np, 0); break;
+        case 14: e3_demo_timeout(np, 0); break;
+        case 15: e3_demo_storm(np, 0); break;
         default:
             if (line[0] == 'h' || line[0] == 'H' || line[0] == '?')
                 cmd_help();

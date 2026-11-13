@@ -5,11 +5,15 @@
  * QEMU virt：gic-version=2 是 0x08000000 / 0x08010000；gic-version=3 是 0x08000000 / 0x080a0000。
  * 认不出来就打印原因并停住，不去碰不存在的寄存器（那会变成数据中止 PANIC）。
  *
- * 只用一个 PPI：EL1 虚拟定时器，INTID 27。
+ * 用两个 PPI：EL1 虚拟定时器 INTID 27（调度）；EL1 物理定时器 INTID 30，
+ * v011 起当作模拟设备的中断线（kernel/dev.c），可以单独屏蔽。
  */
 #include "quotaos.h"
 
 #define TIMER_IRQ 27
+#define DEV_IRQ 30
+#define GICD_ICENABLER  0x0180
+#define GICR_ICENABLER0 0x0180
 
 #define GICD_CTLR       0x0000
 #define GICD_ISENABLER  0x0100
@@ -33,7 +37,7 @@
 #define GICR_IPRIORITYR   0x0400
 
 static int gic_version;
-static uint64_t gicd, gicc;
+static uint64_t gicd, gicc, gicr_sgi;
 
 static void v2_init(void)
 {
@@ -46,7 +50,7 @@ static void v2_init(void)
      */
     for (int i = 0; i < 16; i++)
         mmio_wr(gicd + GICD_IPRIORITY + (uint64_t)i * 4, 0xa0a0a0a0u);
-    mmio_wr(gicd + GICD_ISENABLER, 1u << TIMER_IRQ);
+    mmio_wr(gicd + GICD_ISENABLER, 1u << TIMER_IRQ);   /* 设备线 30 由 kernel/dev.c 按需打开 */
     mmio_wr(gicc + GICC_PMR, 0xff);
     mmio_wr(gicc + GICC_BPR, 0);
     mmio_wr(gicd + GICD_CTLR, 1);
@@ -97,7 +101,8 @@ static int v3_init(uint64_t gicr_base, uint64_t gicr_size)
         ;
 
     uint64_t sgi = rd + GICR_SGI;
-    mmio_wr(sgi + GICR_IGROUPR0, mmio_rd(sgi + GICR_IGROUPR0) | (1u << TIMER_IRQ));
+    gicr_sgi = sgi;
+    mmio_wr(sgi + GICR_IGROUPR0, mmio_rd(sgi + GICR_IGROUPR0) | (1u << TIMER_IRQ) | (1u << DEV_IRQ));
     for (int i = 0; i < 8; i++)
         mmio_wr(sgi + GICR_IPRIORITYR + (uint64_t)i * 4, 0xa0a0a0a0u);
     mmio_wr(sgi + GICR_ISENABLER0, 1u << TIMER_IRQ);
@@ -167,4 +172,13 @@ void gic_eoi(uint32_t iar)
         return;
     }
     mmio_wr(gicc + GICC_EOIR, iar);
+}
+
+/* 打开或屏蔽一条 PPI（只用于设备线 30）。 */
+void gic_ppi_enable(uint32_t id, int on)
+{
+    if (gic_version == 3)
+        mmio_wr(gicr_sgi + (on ? GICR_ISENABLER0 : GICR_ICENABLER0), 1u << id);
+    else
+        mmio_wr(gicd + (on ? GICD_ISENABLER : GICD_ICENABLER), 1u << id);
 }

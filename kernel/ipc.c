@@ -78,6 +78,9 @@ void e2_demo(uint32_t periods, int qa_line)
            s.meas_max, s.diff_max);
     printf("  IPC kernel path charged to callers in total (not to the system\n");
     printf("  reserve): %lu ticks\n", s.kern_sum);
+    printf("  IPC kernel path past the end of the caller's budget, charged to\n");
+    printf("  the system reserve instead: %lu times, total %lu, max %lu ticks\n",
+           s.excess_n, s.excess_sum, s.excess_max);
     printf("  driver's own budget used during the window: %lu ticks\n", drv_change);
     printf("  driver's own wall-clock timing incl. preemption (reference only):\n");
     printf("  total %lu ticks\n", s.self_sum);
@@ -86,4 +89,190 @@ void e2_demo(uint32_t periods, int qa_line)
     if (qa_line)
         printf("E2 item8 %s\n",
                s.calls > 0 && s.diff_max <= 1 && drv_change == 0 ? "PASS" : "FAIL");
+}
+
+/* ---------- E3：设备闸门、超时降级、中断风暴 ---------- */
+
+static uint64_t sys_dev_submit(uint64_t dev, uint64_t us)
+{
+    register uint64_t x0 asm("x0") = dev;
+    register uint64_t x1 asm("x1") = us;
+    asm volatile("svc #3" : "+r"(x0) : "r"(x1) : "memory");
+    return x0;
+}
+
+/* 驱动：把调用者的请求交给设备（经过闸门），把结果（实测 tick 或错误码）回给调用者。 */
+static void dev_driver_entry(uint64_t req)
+{
+    for (;;) {
+        uint64_t r = sys_dev_submit(0, req);
+        req = sys_reply_wait(r);
+    }
+}
+
+static volatile uint64_t e3_ok[2], e3_err[2];
+
+static void e3_loop(int k)
+{
+    uint32_t x = 777u + (uint32_t)k;
+    for (;;) {
+        x = x * 1103515245u + 12345u;
+        uint64_t r = sys_call((uint64_t)drv_id, 50 + (x >> 16) % 351);
+        if (r >> 62)
+            e3_err[k]++;
+        else
+            e3_ok[k]++;
+    }
+}
+
+static void e3_cam(void) { e3_loop(0); }
+static void e3_bg(void) { e3_loop(1); }
+
+static struct task *make_driver(void)
+{
+    struct task *drv = task_create("sim-dma-drv", TIER_SERVER, KIND_SERVER);
+    task_set_entry(drv, (void (*)(void))dev_driver_entry);
+    drv->min_t = us_to_ticks(300);      /* 驱动自己的预算：没有作业时的中断处理记在这里 */
+    drv->bench_owned = 1;
+    drv_id = drv->id;
+    return drv;
+}
+
+void e3_demo_timeout(uint32_t periods, int qa_line)
+{
+    printf("\n=== 14 设备超时：强制中止，设备降到 Tier 3 ===\n");
+    struct sim_dev *d = decl_dev(0);
+    decl_reset_device(0);
+    klog_flush();
+    printf("sim-dma reset to its factory state and re-verified: %s.\n",
+           d->state == DEV_OK ? "verified" : "NOT verified");
+    printf("display-vsync holds sim-dma Tier 1 (policy degrade).\n");
+    decl_add_t1_app("hud-overlay", 0, 500, 1);
+    d->under_report = 1;
+    printf("sim-dma now under-reports: declares %u us per job, really\n", d->max_job_us);
+    printf("takes 1.5x the request. cam-app (tier 2, device budget 3000 us)\n");
+    printf("and bg-caller (tier 3) send 50..400 us jobs through the gate.\n");
+    struct task *drv = make_driver();
+    struct task *app = task_create("cam-app", TIER2, KIND_SPIN);
+    task_set_entry(app, e3_cam);
+    app->min_t = us_to_ticks(3000);
+    app->dev_budget_t = us_to_ticks(3000);
+    app->bench_owned = 1;
+    struct task *bg = task_create("bg-caller", TIER3, KIND_SPIN);
+    task_set_entry(bg, e3_bg);
+    bg->bench_owned = 1;
+    e3_ok[0] = e3_ok[1] = e3_err[0] = e3_err[1] = 0;
+    dev_bind(0, drv);
+    struct dev_stats s;
+    dev_stats_get(&s, 1);
+    task_start(app);
+    task_start(bg);
+    sched_bench(periods);
+    dev_stats_get(&s, 0);
+    static const char *k7[] = {"[health] sim-dma timeout", "measured ", "declared ", "period "};
+    int line7 = klog_find_all(k7, 4);
+    int revoked = klog_count_lines("Tier 1 revoked (实测超出声明)");
+    klog_flush();
+    d->under_report = 0;
+    printf("device jobs: submitted %lu, completed %lu, timed out %lu\n", s.submits,
+           s.completed, s.timeouts);
+    printf("  (timed-out jobs are aborted and discarded); first timeout in\n");
+    printf("  period %lu\n", s.first_timeout_period);
+    printf("gate refused: device budget %lu, would reach the next tier-1\n", s.refused[1]);
+    printf("  guard %lu, device in Tier 3 and caller not Tier 3 %lu\n", s.refused[2],
+           s.refused[3]);
+    printf("abort -> stopped: %lu aborts, max %lu us (declared bound %u us,\n", s.stop_n,
+           up_us(s.stop_max_t), d->stop_us);
+    printf("  CPU guard %u us); over the bound %lu, over the guard %lu\n", GUARD_US,
+           s.stop_over_bound, s.stop_over_guard);
+    printf("device jobs or aborts ending after the next tier-1 guard: %lu\n", s.abort_late);
+    printf("device busy when a tier-1 guard began: %lu\n", s.t1_busy);
+    printf("device time charged to callers: %lu ticks\n", s.dev_time_t);
+    printf("cam-app calls ok %lu / refused %lu; bg-caller ok %lu / refused %lu\n",
+           e3_ok[0], e3_err[0], e3_ok[1], e3_err[1]);
+    sched_print_window();
+    sched_print_kernel();
+    printf("Tier 1 declarations left on sim-dma: %d\n", decl_t1_left_on(0));
+    int named = decl_try_t1("cam-app", 0, 1000, "实测超出声明");
+    if (!qa_line)
+        return;
+    uint64_t ma, mb;
+    sched_window_misses(&ma, &mb);
+    int verify_ok = 1;
+    for (int i = 0; i < 3; i++) {
+        struct sim_dev *v = decl_dev(i);
+        if (v->preemptible && (v->stop_max_t > us_to_ticks(v->stop_us) ||
+                               v->stop_max_t > us_to_ticks(GUARD_US)))
+            verify_ok = 0;
+    }
+    printf("E3 item1 under-reporting preemptible device: tier-1 misses %lu,\n", ma + mb);
+    printf("  device busy at a guard %lu, ends after a guard %lu, timeouts %lu\n",
+           s.t1_busy, s.abort_late, s.timeouts);
+    printf("E3 item1 %s\n",
+           ma + mb == 0 && s.t1_busy == 0 && s.abort_late == 0 && s.timeouts > 0 ? "PASS"
+                                                                              : "FAIL");
+    printf("E3 item3 timed-out device in Tier 3: %s; later Tier 1 refused\n",
+           d->state == DEV_DEMOTED ? "yes" : "no");
+    printf("  naming 实测超出声明: %s\n", named ? "yes" : "no");
+    printf("E3 item3 %s\n", d->state == DEV_DEMOTED && named ? "PASS" : "FAIL");
+    printf("E3 item6 aborts %lu (+ verification aborts of preemptible devices):\n",
+           s.stop_n);
+    printf("  over the declared bound %lu, over the guard %lu, verification %s\n",
+           s.stop_over_bound, s.stop_over_guard, verify_ok ? "ok" : "over");
+    printf("E3 item6 %s\n",
+           s.stop_n > 0 && !s.stop_over_bound && !s.stop_over_guard && verify_ok ? "PASS"
+                                                                              : "FAIL");
+    printf("E3 item7 log line with device, measured, declared, period: %s\n",
+           line7 ? "yes" : "no");
+    printf("E3 item7 %s\n", line7 ? "PASS" : "FAIL");
+    int left = decl_t1_left_on(0);
+    printf("E3 policy: tier-1 apps on sim-dma handled together %d (expected 2),\n", revoked);
+    printf("  still Tier 1 on it %d\n", left);
+    printf("E3 policy %s\n", revoked == 2 && left == 0 ? "PASS" : "FAIL");
+}
+
+void e3_demo_storm(uint32_t periods, int qa_line)
+{
+    printf("\n=== 15 中断风暴：多出来的中断被限流并计数 ===\n");
+    struct sim_dev *d = decl_dev(0);
+    printf("sim-dma raises its IRQ line every 16 us (62500 per second).\n");
+    printf("Declared limit %u IRQs per period; the line is masked inside\n", d->irq_limit);
+    printf("tier-1 guards and slots, and past the limit or the driver's own\n");
+    printf("300 us budget until the next period.\n");
+    struct task *drv = make_driver();
+    struct task *app = task_create("cam-app", TIER2, KIND_SPIN);
+    app->min_t = us_to_ticks(3000);
+    app->bench_owned = 1;
+    struct task *bg = task_create("bg-load", TIER3, KIND_SPIN);
+    bg->bench_owned = 1;
+    dev_bind(0, drv);
+    struct dev_stats s;
+    dev_stats_get(&s, 1);
+    task_start(app);
+    task_start(bg);
+    dev_storm(16);
+    sched_bench(periods);
+    dev_stats_get(&s, 0);
+    klog_flush();
+    uint64_t sup = s.raised > s.irq_handled ? s.raised - s.irq_handled : 0;
+    printf("IRQs raised by the device (its own counter) %lu, handled %lu,\n", s.raised,
+           s.irq_handled);
+    printf("  not delivered (limited) %lu; most handled in one period %lu\n", sup,
+           s.irq_period_max);
+    printf("  (limit %u); line masked for the rest of a period %lu times\n", d->irq_limit,
+           s.lim_masks);
+    printf("device IRQs taken inside a tier-1 guard or slot: %lu\n", s.irq_in_t1);
+    printf("cam-app (tier 2, min 3000 us): lowest per period %lu us\n",
+           ticks_to_us(app->w.used_min == ~0ull ? 0 : app->w.used_min));
+    sched_print_window();
+    sched_print_kernel();
+    if (!qa_line)
+        return;
+    uint64_t ma, mb;
+    sched_window_misses(&ma, &mb);
+    int ok = ma + mb == 0 && s.irq_period_max <= d->irq_limit && sup > 0 && s.irq_in_t1 == 0 &&
+             s.raised >= 50000ull * periods / 100;
+    printf("E3 item5 storm: tier-1 misses %lu, limited %lu, max per period %lu\n", ma + mb,
+           sup, s.irq_period_max);
+    printf("E3 item5 %s\n", ok ? "PASS" : "FAIL");
 }

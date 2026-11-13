@@ -37,6 +37,7 @@ BIG = [
     ("9\n", P, 60), ("10\n", P, 60),
     ("11\n", P, 30), ("12\n", P, 10),                  # v009 (E1)
     ("13\n", P, 30),                                   # v010 (E2)
+    ("14\n", P, 30), ("15\n", P, 30), ("1\n", P, 10),     # v011 (E3)
     ("1\n", P, 10), ("x\n", P, 10), ("h\n", P, 10),
 ]
 SMALL = [
@@ -51,7 +52,8 @@ TIMING = re.compile(
     r"blk-driver) |last release|measured since boot|^misses: class|^kernel per period|"
     r"^timer IRQ entry|^kernel entry|^slot guard|^wait loop|^clock jumps|^Tier 2/3 ticks|"
     r"of which not covered|^\s+\d+ \S+\s+\d+\s+\d+\s+\d+|^  (app-A|app-B|game|greedy-app) |"
-    r"^bad-|cut by the slot-end|audio-mix: jobs|^tier-3 per loop|^结果:|over \d+ periods")
+    r"^bad-|cut by the slot-end|audio-mix: jobs|^tier-3 per loop|^结果:|over \d+ periods|"
+    r"^deadline already past|^  pick time -> eret|^  overrun max")
 
 
 def run(kernel, out, gic="2"):

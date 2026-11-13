@@ -2,7 +2,7 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "010"
+#define QUOTAOS_VERSION     "011"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -113,6 +113,30 @@ struct task {
     int64_t ipc_base;           /* 调用者：发出调用时的 used_t（跨周期时减去清零的部分） */
     uint64_t call_ran_t;        /* 服务端：本次调用里内核量到的运行时间 */
     uint64_t call_kern_t;       /* 服务端：本次调用里记在调用者头上的 IPC 内核路径时间 */
+    uint64_t run_cap;           /* Tier 2：这次被挑中时的预算上限（最低值或最低值+建议值） */
+
+    /* E3：设备时间预算（每周期清零）。驱动等设备做完时 dev_wait = 1。 */
+    uint64_t dev_budget_t;      /* Tier 2 调用者：每周期可用的设备时间；0 = 不限（只给 Tier 3） */
+    uint64_t dev_used_t;
+    int dev_wait;
+};
+
+/* 模拟设备（软件模型，不是真实硬件）。出厂描述写死；状态由系统维护。 */
+#define DEV_NEW             0   /* 新设备：没验证过，只能在 Tier 3 */
+#define DEV_OK              1   /* 系统实测没超过声明 */
+#define DEV_DEMOTED         2   /* 健康监测发现实测超出声明：降到 Tier 3 */
+struct sim_dev {
+    const char *name;
+    uint32_t max_job_us, switch_us, stop_us;    /* 声明：单次作业最长、切换开销、中止到停住上限 */
+    int preemptible, divisible;
+    uint32_t real_job_us;       /* 模型验证时用的作业长度 */
+    uint32_t irq_limit;         /* 声明：每周期最多多少次中断 */
+    int measured;
+    uint64_t job_max_t, stop_max_t;
+    int state;
+    int under_report;           /* 少报模式：真实耗时 = 请求 * 3 / 2，声明不变 */
+    uint64_t fault_meas_t, fault_decl_t, fault_period;
+    const char *fault_what;
 };
 
 struct tier1_decl {
@@ -226,12 +250,62 @@ void task_set_entry(struct task *t, void (*entry)(void));
 struct ipc_stats {
     uint64_t calls, drop_sum, meas_sum, meas_max, diff_max, srv_used_change, self_sum;
     uint64_t run_sum, kern_sum;
+    uint64_t excess_n, excess_sum, excess_max;   /* IPC 内核路径超出调用者预算、改记系统预留的部分 */
 };
 void sched_ipc_stats(struct ipc_stats *s, int reset);
 void e2_demo(uint32_t periods, int qa_line);
 void sched_total_misses(uint64_t *a, uint64_t *b);
+void sched_window_misses(uint64_t *a, uint64_t *b);
 
 void decl_init(void);
+struct sim_dev *decl_dev(int i);
+void decl_verify_devices(void);
+int decl_health_fault(int dev, const char *what, uint64_t meas_t, uint64_t decl_t);
+void decl_notice(void);
+int decl_t1_left_on(int dev);
+void decl_reset_device(int dev);
+int decl_try_t1(const char *who, int dev, uint64_t b, const char *expect);
+void decl_add_t1_app(const char *who, int dev, uint64_t b, int policy);
+uint64_t dev_real_us(const struct sim_dev *d, uint64_t req);
+uint64_t up_us(uint64_t t);
+int clock_is_icount(void);
+void clock_detect(void);
+const char *clock_tag(void);
+void klog(const char *s);
+void klog_u(uint64_t v);
+void klog_end(void);
+void klog_flush(void);
+uint32_t klog_count(void);
+int klog_find_all(const char *const *keys, int n);
+int klog_count_lines(const char *key);
+
+/* E3：设备闸门、超时降级、中断风暴限流（kernel/dev.c） */
+#define DEV_IRQ_ID          30
+struct dev_stats {
+    uint64_t submits, refused[6], completed, timeouts;
+    uint64_t stop_n, stop_max_t, stop_over_bound, stop_over_guard, abort_late;
+    uint64_t t1_busy, irq_handled, irq_in_t1, irq_period_max, lim_masks, raised;
+    uint64_t dev_time_t, irq_charged_t, first_timeout_period;
+};
+void dev_init(void);
+void dev_bind(int devno, struct task *drv);
+void dev_unbind(void);
+void dev_unbind_locked(void);
+void dev_t1_busy(void);
+void dev_storm(uint32_t interval_us);
+void dev_stats_get(struct dev_stats *s, int reset);
+int dev_submit(struct task *drv, uint64_t devno, uint64_t req_us, uint64_t now);
+struct task *dev_irq(uint64_t entry, struct task **srv);
+struct task *dev_poll(uint64_t now, struct task **srv);
+uint64_t dev_deadline(void);
+void dev_slot(int in_slot);
+int dev_busy(void);
+void dev_period(void);
+uint64_t sched_period_now(void);
+int sched_in_t1_window(uint64_t now);
+void gic_ppi_enable(uint32_t id, int on);
+void e3_demo_timeout(uint32_t periods, int qa_line);
+void e3_demo_storm(uint32_t periods, int qa_line);
 void decl_demo_device_tier1(void);
 void decl_demo_overcommit(void);
 void decl_qa_e1(int runs_hint);

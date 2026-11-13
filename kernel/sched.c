@@ -18,6 +18,7 @@
 #define TIMER_PPI   27
 #define MISS_LOG    64
 #define JUMP_LOG    64
+#define EXIT_MARGIN_T 500   /* 挑选到 eret 最多要这么多 tick（icount 实测见 README），期限更近就先等 */
 
 extern volatile uint64_t k_entry_ts, k_eret_ts, k_release_at, k_spin_late;
 extern volatile uint64_t k_arm_abs, k_arm_rel, k_cval;
@@ -83,6 +84,10 @@ struct kstat {
     uint64_t jumps, jump_ticks;
     uint64_t miss_a, miss_b;
     uint64_t skipped;
+    uint64_t past_n, past_max;          /* 出口写进去的比较值已经过了：期限在内核里错过 */
+    uint64_t exit_max;                  /* 挑选用的 now 到 eret */
+    uint64_t t2_over_max;               /* Tier 2 预算超出上限的最大 tick */
+    uint64_t t2_over_n;
 };
 static struct kstat ks[2];
 static int rec;                 /* 1 = 正在记演示窗口 */
@@ -384,6 +389,18 @@ static void slot_overlap(struct task *t, uint64_t a, uint64_t b)
 
 static struct ipc_stats ipc;
 
+static void over_check(struct task *x)
+{
+    if (x->tier != TIER2 || x->used_t <= x->run_cap)
+        return;
+    uint64_t o = x->used_t - x->run_cap;
+    for (int i = 0; i <= rec; i++) {
+        ks[i].t2_over_n++;
+        if (o > ks[i].t2_over_max)
+            ks[i].t2_over_max = o;
+    }
+}
+
 static void charge(struct task *t, uint64_t a, uint64_t b)
 {
     if (!t || b <= a)
@@ -391,13 +408,12 @@ static void charge(struct task *t, uint64_t a, uint64_t b)
     slot_overlap(t, a, b);
     if (t == idle_task)
         return;
-    if (t->sc) {
-        /* 服务端在替调用者干活：记在调用者的预算上，服务端自己的不动 */
-        t->sc->used_t += b - a;
+    struct task *x = t->sc ? t->sc : t;
+    /* 服务端在替调用者干活：记在调用者的预算上，服务端自己的不动 */
+    x->used_t += b - a;
+    if (t->sc)
         t->call_ran_t += b - a;
-    } else {
-        t->used_t += b - a;
-    }
+    over_check(x);
 }
 
 void sched_ipc_stats(struct ipc_stats *s, int reset)
@@ -487,6 +503,7 @@ static void end_period(uint64_t now, int skipped)
         if (t->state == TASK_IPC)
             t->ipc_base -= (int64_t)t->used_t;
         t->used_t = 0;
+        t->dev_used_t = 0;
     }
     for (int i = 0; i <= rec; i++) {
         ks[i].periods++;
@@ -503,6 +520,7 @@ static void end_period(uint64_t now, int skipped)
 
 static void finish_bench(void)
 {
+    dev_unbind_locked();
     for (int i = 0; i < MAX_TASKS; i++)
         if (tasks[i].bench_owned && tasks[i].state != TASK_EMPTY)
             kill_locked(&tasks[i]);
@@ -513,6 +531,7 @@ static void finish_bench(void)
 
 static void begin_period(void)
 {
+    dev_period();
     if (bench_state == 1) {
         rec = 1;
         kstat_reset(&ks[1]);
@@ -560,6 +579,11 @@ static struct task *runner(struct task *t)
     return t->state == TASK_IPC ? t->server : t;
 }
 
+static int k_ipc_op;
+static uint64_t disp_now, cur_entry;
+/* 上一段内核停留是 IPC 系统调用：记在这个预算上（MCS：调用路径用调用者的预算），不算系统预留 */
+static struct task *prev_stint_sc, *prev_stint_srv;
+
 static struct task *pick_t2(int sugg)
 {
     if (sugg && resource_pressure())
@@ -572,9 +596,14 @@ static struct task *pick_t2(int sugg)
         if (!runnable(t))
             continue;
         uint64_t cap = t->min_t + (sugg ? t->sugg_t : 0);
-        if (t->used_t < cap) {
+        /* 这一段 IPC 内核停留稍后记在 t 头上：按最多到 eret 的长度先扣掉 */
+        uint64_t used = t->used_t;
+        if (prev_stint_sc == t)
+            used += disp_now + EXIT_MARGIN_T - cur_entry;
+        if (used < cap) {
             rr2 = i;
-            k_arm_rel = cap - t->used_t;
+            t->run_cap = cap;
+            k_arm_rel = cap - used;
             return runner(t);
         }
     }
@@ -597,6 +626,24 @@ static struct task *pick_t3(void)
     return 0;
 }
 
+/* now 之后本周期内最近的期限：周期边界、各槽保护区起点和槽尾。 */
+static uint64_t next_event(uint64_t now)
+{
+    uint64_t ev = pstart + P;
+    for (int i = 0; i < nslots; i++) {
+        uint64_t g = pstart + slot_off[i] - G;
+        uint64_t e = pstart + slot_off[i] + slot_len[i];
+        if (now < g && g < ev)
+            ev = g;
+        if (now < e && e < ev)
+            ev = e;
+    }
+    uint64_t dd = dev_deadline();
+    if (now < dd && dd < ev)
+        ev = dd;
+    return ev;
+}
+
 static struct task *dispatch(uint64_t now)
 {
     k_arm_rel = 0;
@@ -607,8 +654,11 @@ static struct task *dispatch(uint64_t now)
         uint64_t e = s + slot_len[i];
         if (now + G < s || now >= e)
             continue;
-        /* 守卫或槽内：只有槽主人能上，否则空转到槽尾。 */
+        /* 守卫或槽内：只有槽主人能上，否则空转到槽尾。设备中断线在这里屏蔽。 */
         k_arm_abs = e;
+        dev_slot(1);
+        if (now < s && dev_busy())
+            dev_t1_busy();
         struct task *o = slot_owner[i];
         if (!o || o->state != TASK_READY)
             return idle_task;
@@ -634,7 +684,11 @@ static struct task *dispatch(uint64_t now)
         if (now < g && g < hard)
             hard = g;
     }
+    uint64_t dd = dev_deadline();
+    if (now < dd && dd < hard)
+        hard = dd;
     k_arm_abs = hard;
+    dev_slot(0);
     struct task *t = pick_t2(0);
     if (!t)
         t = pick_t2(1);
@@ -647,9 +701,6 @@ static struct task *dispatch(uint64_t now)
     return t;
 }
 
-static int k_ipc_op;
-/* 上一段内核停留是 IPC 系统调用：记在这个预算上（MCS：调用路径用调用者的预算），不算系统预留 */
-static struct task *prev_stint_sc, *prev_stint_srv;
 
 /* 服务端开始替调用者 c 干活：从这一刻起它用 c 的预算。 */
 static void ipc_begin(struct task *s, struct task *c)
@@ -682,6 +733,16 @@ static void ipc_op(struct task *t, int op)
             ipc_begin(s, t);
             prev_stint_srv = s;
         }
+    } else if (op == 3 && t->kind == KIND_SERVER) {
+        /* svc #3：驱动向设备提交作业，经过闸门。放行就等完成中断（或超时）。 */
+        prev_stint_sc = t->sc ? t->sc : t;
+        if (t->sc)
+            prev_stint_srv = t;
+        int code = dev_submit(t, f->r[0], f->r[1], ticks_now());
+        if (code == 0)
+            t->state = TASK_BLOCKED;
+        else
+            f->r[0] = (1ull << 62) | (uint64_t)code;
     } else if (op == 2 && t->kind == KIND_SERVER) {
         struct task *c = t->caller;
         if (c) {
@@ -725,10 +786,24 @@ static uint64_t schedule(uint64_t sp, int timer)
 
     if (prev_stint_sc && !prev_guard && eret > prev_entry) {
         uint64_t d = eret - prev_entry;
-        prev_stint_sc->used_t += d;
-        ipc.kern_sum += d;
-        if (prev_stint_srv && prev_stint_srv->sc == prev_stint_sc)
-            prev_stint_srv->call_kern_t += d;
+        struct task *x = prev_stint_sc;
+        /* Tier 2 只记到预算上限为止；超出的部分（调用者预算在内核路径里用完）算系统预留并计数 */
+        uint64_t c = d;
+        if (x->tier == TIER2)
+            c = x->run_cap > x->used_t ? x->run_cap - x->used_t : 0;
+        if (c > d)
+            c = d;
+        x->used_t += c;
+        ipc.kern_sum += c;
+        if (prev_stint_srv && prev_stint_srv->sc == x)
+            prev_stint_srv->call_kern_t += c;
+        if (c < d) {
+            ipc.excess_n++;
+            ipc.excess_sum += d - c;
+            if (d - c > ipc.excess_max)
+                ipc.excess_max = d - c;
+            k_this_period += d - c;
+        }
     } else {
         kernel_stint(prev_entry, eret, prev_guard);
     }
@@ -742,9 +817,20 @@ static uint64_t schedule(uint64_t sp, int timer)
         if (d > JUMP_T)
             jump_add(prev_release, prev_release + d); /* 等待期间被宿主机停住 */
     }
+    if (k_cval < eret) {
+        for (int r = 0; r <= rec; r++) {
+            ks[r].past_n++;
+            if (eret - k_cval > ks[r].past_max)
+                ks[r].past_max = eret - k_cval;
+        }
+    }
+    if (!prev_guard && eret >= disp_now)
+        for (int r = 0; r <= rec; r++)
+            if (eret - disp_now > ks[r].exit_max)
+                ks[r].exit_max = eret - disp_now;
     if (entry >= k_cval) {
         uint64_t l = entry - k_cval;
-        for (int r = 0; timer && r <= rec; r++) {
+        for (int r = 0; timer == 1 && r <= rec; r++) {
             ks[r].irq_n++;
             if (l < ks[r].irq_lat_min)
                 ks[r].irq_lat_min = l;
@@ -765,26 +851,50 @@ static uint64_t schedule(uint64_t sp, int timer)
     k_ipc_op = 0;
     if (op)
         ipc_op(prev, op);
+    if (timer == 2) {
+        struct task *srv = 0, *x = dev_irq(entry, &srv);
+        if (x && !prev_stint_sc) {
+            prev_stint_sc = x;
+            prev_stint_srv = srv;
+        }
+    }
     if (!timer && !op && prev->kind == KIND_JOB && prev->state == TASK_READY) {
         job_done(prev, entry);
         prev->state = TASK_BLOCKED;
     }
 
-    uint64_t now = ticks_now();
+    cur_entry = entry;
     /* 第一个结束的周期是刚才待过的；同一次里再结束的周期一刻都没轮到，算跳过。 */
     int skipped = 0;
-    while (now >= pstart + P) {
-        if (!skipped)
-            check_slot_ends(entry, now);
-        end_period(now, skipped);
-        skipped = 1;
-        pk++;
-        pstart += P;
-        begin_period();
+    for (;;) {
+        uint64_t now = ticks_now();
+        while (now >= pstart + P) {
+            if (!skipped)
+                check_slot_ends(entry, now);
+            end_period(now, skipped);
+            skipped = 1;
+            pk++;
+            pstart += P;
+            begin_period();
+        }
+        check_slot_ends(entry, now);
+        {
+            struct task *srv = 0, *x = dev_poll(now, &srv);
+            if (x && !prev_stint_sc) {
+                prev_stint_sc = x;
+                prev_stint_srv = srv;
+            }
+        }
+        /* 下一个期限（槽前保护区、槽尾、周期边界）离现在不到出口所需的时间：
+         * 在内核里等到它再挑，免得写进比较值时期限已经过了。 */
+        disp_now = ticks_now();
+        uint64_t ev = next_event(disp_now);
+        if (ev > disp_now && ev - disp_now >= EXIT_MARGIN_T)
+            break;
+        while (ticks_now() < ev)
+            asm volatile("" ::: "memory");
     }
-
-    check_slot_ends(entry, now);
-    struct task *next = dispatch(now);
+    struct task *next = dispatch(disp_now);
     if (next->kind == KIND_JOB && next->job_open && !next->job_started) {
         next->job_started = 1;
         next->start_ts = 0;
@@ -821,6 +931,8 @@ uint64_t handle_irq(uint64_t frame_sp)
     uint32_t id = iar & 0x3ffu;
     if (id < 1020)
         gic_eoi(iar);
+    if (id == DEV_IRQ_ID)
+        return schedule(frame_sp, 2);
     if (id != TIMER_PPI) {
         k_arm_rel = 0;
         k_arm_abs = k_cval;
@@ -956,6 +1068,11 @@ void sched_print_kernel(void)
     printf("wait loop exit late by 0/1/2/>2 ticks: %lu/%lu/%lu/%lu\n",
            s->spin_hist[0], s->spin_hist[1], s->spin_hist[2], s->spin_hist[3]);
     printf("clock jumps: %lu, total %lu us\n", s->jumps, ticks_to_us(s->jump_ticks));
+    printf("deadline already past at eret: %lu times, max %lu ticks;\n",
+           s->past_n, s->past_max);
+    printf("  pick time -> eret max %lu ticks (margin %lu); tier-2 budget\n",
+           s->exit_max, (uint64_t)EXIT_MARGIN_T);
+    printf("  overrun max %lu ticks (%lu times)\n", s->t2_over_max, s->t2_over_n);
 }
 
 /* ---------- 启动 ---------- */
@@ -1045,4 +1162,26 @@ void sched_total_misses(uint64_t *a, uint64_t *b)
 {
     *a = ks[0].miss_a;
     *b = ks[0].miss_b;
+}
+
+uint64_t sched_period_now(void)
+{
+    return pk;
+}
+
+/* now 在某个 Tier 1 保护区或槽内。 */
+int sched_in_t1_window(uint64_t now)
+{
+    for (int i = 0; i < nslots; i++) {
+        uint64_t s = pstart + slot_off[i];
+        if (now + G >= s && now < s + slot_len[i])
+            return 1;
+    }
+    return 0;
+}
+
+void sched_window_misses(uint64_t *a, uint64_t *b)
+{
+    *a = ks[1].miss_a;
+    *b = ks[1].miss_b;
 }

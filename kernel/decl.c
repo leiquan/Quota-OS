@@ -21,32 +21,36 @@ enum { R_CPU, R_MEM, R_DMA, R_BLK, R_CAM, NRES };
 #define NDEV 3
 #define T1_STOP_LIMIT_US 20   /* Tier 1 设备的停止上限不得超过它（算进保护时间） */
 
-struct sim_dev {
-    const char *name;
-    /* 出厂描述（写死） */
-    uint32_t max_job_us, switch_us, stop_us;
-    int preemptible, divisible;
-    /* 模型的真实作业时长（E3 的少报模式会让它大于声明） */
-    uint32_t real_job_us;
-    /* 系统实测 */
-    int measured;
-    uint64_t job_max_t, stop_max_t;
+/* 出厂描述写死；state 从 DEV_NEW（Tier 3）开始，系统验证后才可能进 Tier 1。
+ * sim-blk 不能打断，中止后要等作业做完，所以声明的停住上限就是最长作业 2000 us（v011 起）。 */
+static struct sim_dev devs[NDEV] = {
+    {.name = "sim-dma", .max_job_us = 400, .switch_us = 5, .stop_us = 20, .preemptible = 1,
+     .divisible = 1, .real_job_us = 395, .irq_limit = 40},
+    {.name = "sim-blk", .max_job_us = 2000, .switch_us = 10, .stop_us = 2000, .preemptible = 0,
+     .divisible = 0, .real_job_us = 1990, .irq_limit = 8},
+    {.name = "sim-cam", .max_job_us = 300, .switch_us = 5, .stop_us = 30, .preemptible = 1,
+     .divisible = 1, .real_job_us = 290, .irq_limit = 40},
 };
 
-static struct sim_dev devs[NDEV] = {
-    {"sim-dma", 400, 5, 20, 1, 1, 395, 0, 0, 0},
-    {"sim-blk", 2000, 10, 20, 0, 0, 1990, 0, 0, 0},
-    {"sim-cam", 300, 5, 30, 1, 1, 290, 0, 0, 0},
-};
+struct sim_dev *decl_dev(int i)
+{
+    return i >= 0 && i < NDEV ? &devs[i] : 0;
+}
 
 static const char *res_name[NRES] = {"CPU", "memory", "sim-dma", "sim-blk", "sim-cam"};
 static const char *res_unit[NRES] = {"us", "KB", "us", "us", "us"};
 
+#define POL_NONE 0
+#define POL_DEGRADE 1
+#define POL_ALARM 2
 struct decl {
     char who[NAME_LEN];
     int tier;
     uint64_t b[NRES];
     int live;
+    int policy;     /* 设备被降级时对这条 Tier 1 声明怎么办：降级或报警 */
+    int alarm;      /* 报警还没被处理 */
+    int demo;       /* E3 演示加的，重置时删掉 */
 };
 
 #define MAX_DECL 16
@@ -60,6 +64,9 @@ void decl_init(void)
     reg[0].tier = TIER1;
     reg[0].b[R_DMA] = 2000;
     reg[0].live = 1;
+    reg[0].policy = POL_DEGRADE;
+    for (int i = 0; i < NDEV; i++)
+        devs[i].state = DEV_NEW;
 }
 
 /* ---------- 模拟设备与实测 ---------- */
@@ -68,7 +75,7 @@ void decl_init(void)
  * abort_t 不为 0 时，作业开始 abort_t tick 后发中止命令；返回下令到停住的 tick。 */
 static uint64_t dev_exec(struct sim_dev *d, uint64_t abort_t, uint64_t *ran)
 {
-    uint64_t job = us_to_ticks(d->real_job_us);
+    uint64_t job = us_to_ticks(dev_real_us(d, d->real_job_us));
     uint64_t need = job + us_to_ticks(d->switch_us + DEV_RESET_US + DEV_CHUNK_US);
     uint64_t t0;
     for (;;) {
@@ -105,7 +112,7 @@ static uint64_t dev_exec(struct sim_dev *d, uint64_t abort_t, uint64_t *ran)
 
 static void dev_measure(struct sim_dev *d)
 {
-    uint64_t job = us_to_ticks(d->real_job_us);
+    uint64_t job = us_to_ticks(dev_real_us(d, d->real_job_us));
     d->job_max_t = 0;
     d->stop_max_t = 0;
     for (int k = 0; k < DEV_TRIALS; k++) {
@@ -127,7 +134,7 @@ static void measure_all(void)
             dev_measure(&devs[i]);
 }
 
-static uint64_t up_us(uint64_t t)
+uint64_t up_us(uint64_t t)
 {
     uint64_t u = ticks_to_us(t);
     return us_to_ticks(u) < t ? u + 1 : u;
@@ -216,6 +223,19 @@ static uint64_t guard_of(int r, int extra_t1)
     return n * d->stop_us;   /* 只用出厂声明的停止上限：每次启动结果都一样 */
 }
 
+static void fault_reason(struct sim_dev *d)
+{
+    wadd("  missing: 实测超出声明 (");
+    wadd(d->fault_what);
+    wadd(" measured ");
+    wadd_u(up_us(d->fault_meas_t));
+    wadd(" us > declared ");
+    wadd_u(ticks_to_us(d->fault_decl_t));
+    wadd(" us,\n    period ");
+    wadd_u(d->fault_period);
+    wadd("; device demoted to Tier 3)\n");
+}
+
 /* Tier 1 设备条件，只看出厂声明（实测只用来核对，见菜单 11 的表）。
  * 不满足时把缺的条件全部写进 why，返回非 0。 */
 static int t1_device_rule(const char *who, int r)
@@ -226,9 +246,13 @@ static int t1_device_rule(const char *who, int r)
         if (reg[i].live && reg[i].b[r] && strcmp(reg[i].who, who))
             other = 1;
     int bound_ok = d->stop_us <= T1_STOP_LIMIT_US;
-    int refuse = !d->preemptible || !bound_ok || (other && !d->divisible);
+    int refuse = !d->preemptible || !bound_ok || (other && !d->divisible) || d->state != DEV_OK;
     if (!refuse)
         return 0;
+    if (d->state == DEV_NEW)
+        wadd("  missing: 设备未验证 (new devices start in Tier 3)\n");
+    if (d->state == DEV_DEMOTED)
+        fault_reason(d);
     if (!d->preemptible) {
         wadd("  missing: 不能强制叫停 (");
         wadd(d->name);
@@ -259,6 +283,11 @@ static int admit(const char *who, int tier, const uint64_t *b)
     for (int r = R_DMA; r < NRES && tier == TIER1; r++)
         if (b[r] && t1_device_rule(who, r))
             bad |= 1 << 8;
+    for (int r = R_DMA; r < NRES && tier == TIER2; r++)
+        if (b[r] && devs[r - R_DMA].state == DEV_DEMOTED) {
+            bad |= 1 << 8;
+            fault_reason(&devs[r - R_DMA]);
+        }
     for (int r = 0; r < NRES; r++) {
         if (!b[r])
             continue;
@@ -316,7 +345,7 @@ static int try_req(const char *who, int tier, uint64_t cpu, uint64_t mem, uint64
                 if (bad & (1 << r))
                     printf(" %s", res_name[r]);
             if (bad & (1 << 8))
-                printf(" (device not allowed in Tier 1)");
+                printf(tier == TIER1 ? " (device not allowed in Tier 1)" : " (device in Tier 3)");
             printf("\n%s", why);
         } else {
             printf("OK: admitted (not started; released again)\n");
@@ -446,4 +475,174 @@ void decl_qa_e1(int unused)
     uint64_t ma, mb;
     sched_total_misses(&ma, &mb);
     printf("Tier 1 misses since boot (device measurements included): %lu\n", ma + mb);
+}
+
+/* ---------- E3：验证、健康监测、降级策略 ---------- */
+
+static const char *pol_name(int p)
+{
+    return p == POL_DEGRADE ? "degrade" : p == POL_ALARM ? "alarm" : "none";
+}
+
+/* 实测超出声明：设备降到 Tier 3，之后的 Tier 1 申请以「实测超出声明」被拒；
+ * 已经在这个设备上的 Tier 1（和 Tier 2）声明同时按各自的策略处理，每条写一行日志。
+ * 可能在内核里调用（超时路径），所以只写日志缓冲，不直接打印。返回受影响的应用数。 */
+int decl_health_fault(int dev, const char *what, uint64_t meas_t, uint64_t decl_t)
+{
+    struct sim_dev *d = &devs[dev];
+    d->state = DEV_DEMOTED;
+    d->fault_what = what;
+    d->fault_meas_t = meas_t;
+    d->fault_decl_t = decl_t;
+    d->fault_period = sched_period_now();
+    klog("[health] ");
+    klog(d->name);
+    klog(" 实测超出声明 (");
+    klog(what);
+    klog("): measured ");
+    klog_u(up_us(meas_t));
+    klog(" us > declared ");
+    klog_u(ticks_to_us(decl_t));
+    klog(" us,");
+    klog_end();
+    klog("  period ");
+    klog_u(d->fault_period);
+    klog("; ");
+    klog(d->name);
+    klog(" demoted to Tier 3");
+    klog(clock_tag());
+    klog_end();
+    int n = 0;
+    for (int i = 0; i < MAX_DECL; i++) {
+        struct decl *e = &reg[i];
+        if (!e->live || !e->b[R_DMA + dev] || e->tier == TIER3)
+            continue;
+        int was = e->tier;
+        e->tier = TIER3;
+        if (was == TIER1 && e->policy == POL_ALARM)
+            e->alarm = 1;
+        klog("[health] ");
+        klog(e->who);
+        klog(": ");
+        klog(d->name);
+        klog(was == TIER1 ? " Tier 1" : " Tier 2");
+        klog(" revoked (实测超出声明);");
+        klog_end();
+        klog("  policy ");
+        klog(was == TIER1 ? pol_name(e->policy) : "tier-2");
+        klog(e->alarm ? " -> Tier 3, ALARM" : " -> Tier 3");
+        klog_end();
+        n++;
+    }
+    return n;
+}
+
+/* 新设备一律从 Tier 3 开始；系统自己量过、没超过声明才可能进 Tier 1。 */
+void decl_verify_devices(void)
+{
+    printf("[dev] %d new simulated devices start in Tier 3; verifying\n", NDEV);
+    printf("      (%d jobs, %d aborts each, IRQs masked, before the next guard)\n",
+           DEV_TRIALS, DEV_TRIALS);
+    for (int i = 0; i < NDEV; i++) {
+        struct sim_dev *d = &devs[i];
+        d->measured = 0;
+        dev_measure(d);
+        printf("[dev] %s: job %lu/%u us, stop %lu/%u us (measured/declared)\n", d->name,
+               up_us(d->job_max_t), d->max_job_us, up_us(d->stop_max_t), d->stop_us);
+        if (!clock_is_icount())
+            printf("     %s\n", clock_tag());
+        if (d->job_max_t > us_to_ticks(d->max_job_us))
+            decl_health_fault(i, "verify job", d->job_max_t, us_to_ticks(d->max_job_us));
+        else if (d->stop_max_t > us_to_ticks(d->stop_us))
+            decl_health_fault(i, "verify stop", d->stop_max_t, us_to_ticks(d->stop_us));
+        else
+            d->state = DEV_OK;
+    }
+    klog_flush();
+}
+
+int decl_t1_left_on(int dev)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_DECL; i++)
+        if (reg[i].live && reg[i].tier == TIER1 && reg[i].b[R_DMA + dev])
+            n++;
+    return n;
+}
+
+/* 演示 14 开始前：设备回到出厂描述（关掉少报），去掉演示加的声明，
+ * display-vsync 的 Tier 1 声明恢复，重新验证。 */
+void decl_reset_device(int dev)
+{
+    struct sim_dev *d = &devs[dev];
+    d->under_report = 0;
+    d->fault_what = 0;
+    for (int i = 0; i < MAX_DECL; i++) {
+        if (reg[i].demo)
+            reg[i].live = 0;
+        if (reg[i].live && reg[i].b[R_DMA + dev]) {
+            reg[i].tier = TIER1;
+            reg[i].alarm = 0;
+        }
+    }
+    dev_measure(d);
+    d->state = d->job_max_t <= us_to_ticks(d->max_job_us) &&
+               d->stop_max_t <= us_to_ticks(d->stop_us) ? DEV_OK : DEV_DEMOTED;
+    if (d->state == DEV_DEMOTED)
+        decl_health_fault(dev, "verify", d->job_max_t, us_to_ticks(d->max_job_us));
+}
+
+void decl_add_t1_app(const char *who, int dev, uint64_t b, int policy)
+{
+    uint64_t v[NRES] = {0};
+    v[R_DMA + dev] = b;
+    print_req(who, TIER1, v);
+    if (admit(who, TIER1, v)) {
+        printf("REFUSED:\n%s", why);
+        return;
+    }
+    for (int i = 0; i < MAX_DECL; i++)
+        if (!reg[i].live) {
+            memset(&reg[i], 0, sizeof reg[i]);
+            str_copy(reg[i].who, who, NAME_LEN);
+            reg[i].tier = TIER1;
+            reg[i].b[R_DMA + dev] = b;
+            reg[i].live = 1;
+            reg[i].policy = policy ? POL_ALARM : POL_DEGRADE;
+            reg[i].demo = 1;
+            printf("OK: admitted, policy if the device is demoted: %s\n",
+                   pol_name(reg[i].policy));
+            return;
+        }
+}
+
+/* Tier 1 申请：打印结果；被拒且原因里有 expect 时返回 1。 */
+int decl_try_t1(const char *who, int dev, uint64_t b, const char *expect)
+{
+    uint64_t v[NRES] = {0};
+    v[R_DMA + dev] = b;
+    int bad = try_req(who, TIER1, v[R_CPU], v[R_MEM], v[R_DMA], v[R_BLK], v[R_CAM], 1);
+    return bad && why_has(expect);
+}
+
+/* 首页（菜单 1）：设备状态；降级的设备给出提示和受影响的应用。 */
+void decl_notice(void)
+{
+    static const char *sn[] = {"new, Tier 3 until verified", "verified", "DEMOTED to Tier 3"};
+    printf("\n[Devices] simulated (software models)\n");
+    for (int i = 0; i < NDEV; i++)
+        printf("  %s: %s\n", devs[i].name, sn[devs[i].state]);
+    for (int i = 0; i < NDEV; i++) {
+        struct sim_dev *d = &devs[i];
+        if (d->state != DEV_DEMOTED)
+            continue;
+        printf("  NOTICE: %s 实测超出声明 (%s): measured %lu us >\n", d->name, d->fault_what,
+               up_us(d->fault_meas_t));
+        printf("    declared %lu us, period %lu; Tier 1 on it refused.%s\n",
+               ticks_to_us(d->fault_decl_t), d->fault_period, clock_tag());
+        for (int k = 0; k < MAX_DECL; k++)
+            if (reg[k].live && reg[k].b[R_DMA + i] && reg[k].tier == TIER3)
+                printf("    %s: now Tier 3 on %s%s\n", reg[k].who, d->name,
+                       reg[k].alarm ? " (ALARM)" : "");
+    }
 }

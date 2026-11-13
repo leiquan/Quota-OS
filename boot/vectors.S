@@ -140,21 +140,37 @@ k_exit:
     br      x4
 4:  nop
     nop
-5:  mrs     x2, cntvct_el0
-    adrp    x0, k_eret_ts
-    str     x2, [x0, :lo12:k_eret_ts]
-    adrp    x0, k_arm_rel
-    ldr     x1, [x0, :lo12:k_arm_rel]
-    adrp    x0, k_arm_abs
-    ldr     x3, [x0, :lo12:k_arm_abs]
+    /* 先恢复 x4-x30 和 ELR/SPSR，最后才读时间、写比较值，再恢复 x0-x3 就 eret：
+     * 预算剩得很少时，比较值离 eret 只差几条指令，中断不会在关中断的出口里等。 */
+5:  ldp     x9, x10, [sp, #248]
+    msr     ELR_EL1, x9
+    msr     SPSR_EL1, x10
+    ldp     x4,  x5,  [sp, #32]
+    ldp     x6,  x7,  [sp, #48]
+    ldp     x8,  x9,  [sp, #64]
+    ldp     x10, x11, [sp, #80]
+    ldp     x12, x13, [sp, #96]
+    ldp     x14, x15, [sp, #112]
+    ldp     x16, x17, [sp, #128]
+    ldp     x18, x19, [sp, #144]
+    ldp     x20, x21, [sp, #160]
+    ldp     x22, x23, [sp, #176]
+    ldp     x24, x25, [sp, #192]
+    ldp     x26, x27, [sp, #208]
+    ldp     x28, x29, [sp, #224]
+    ldr     x30,      [sp, #240]
+    adrp    x0, k_vars              /* k_eret_ts、k_arm_rel、k_arm_abs、k_cval 挨着放 */
+    add     x0, x0, :lo12:k_vars
+    ldp     x1, x3, [x0, #8]        /* x1 = k_arm_rel，x3 = k_arm_abs */
+    mrs     x2, cntvct_el0          /* 从这里到 eret 共 10 条指令 */
     cbz     x1, 6f
     add     x1, x2, x1
     cmp     x1, x3
     csel    x3, x1, x3, lo
 6:  msr     cntv_cval_el0, x3
-    adrp    x0, k_cval
-    str     x3, [x0, :lo12:k_cval]
-    restore_regs
+    stp     x2, x3, [x0, #24]       /* k_eret_ts、k_cval（k_cval 紧跟 k_eret_ts） */
+    ldp     x2, x3, [sp, #16]
+    ldp     x0, x1, [sp], #272
     eret
 
 unhandled_sync:
@@ -194,9 +210,11 @@ job_resume:
 .align 3
 .global k_entry_ts, k_eret_ts, k_release_at, k_spin_late, k_arm_abs, k_arm_rel, k_cval
 k_entry_ts:   .quad 0
-k_eret_ts:    .quad 0
 k_release_at: .quad 0
 k_spin_late:  .quad 0
-k_arm_abs:    .quad 0
-k_arm_rel:    .quad 0
-k_cval:       .quad 0
+k_vars:                     /* 出口按偏移访问，顺序不能改 */
+k_pad:        .quad 0       /* +0 */
+k_arm_rel:    .quad 0       /* +8 */
+k_arm_abs:    .quad 0       /* +16 */
+k_eret_ts:    .quad 0       /* +24 */
+k_cval:       .quad 0       /* +32 */
