@@ -187,16 +187,23 @@ python3 tools/tier1_rounds.py build/quotaos.bin /tmp/t1-normal 30      # 不用 
 
 5b82525 的结果（原始日志在 `docs/tier1-B/`，每轮一个 `round-NN.txt`，汇总在 `summary.txt`）：
 
-| 模式 | 任务 | 作业数 | 错过 | 其中跳过周期 / 未完成 | 延迟 p50 | p99 | 最大 | 截止期 |
+| 模式（来源） | 任务 | 作业数 | 错过 | 其中跳过周期 / 未完成 | 延迟 p50 | p99 | 最大 | 截止期 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| icount shift=4，30 轮 | display-vsync | 212292 | **0** | 0 / 0 | 19us | 26us | 236us | 800us |
-| icount shift=4，30 轮 | timer-server | 212296 | **0** | 0 / 0 | 112us | 119us | 330us | 1500us |
-| 不用 icount，30 轮 | display-vsync | 4862 | **65** | 5 / 0 | 54us | 1202us | 7486us | 800us |
-| 不用 icount，30 轮 | timer-server | 4862 | **52** | 5 / 2 | 149us | 1401us | 7585us | 1500us |
+| icount shift=4，30 轮（开发自测） | display-vsync | 212292 | **0** | 0 / 0 | 19us | 26us | 236us | 800us |
+| icount shift=4，30 轮（开发自测） | timer-server | 212296 | **0** | 0 / 0 | 112us | 119us | 330us | 1500us |
+| 不用 icount，30 轮（开发自测） | display-vsync | 4862 | **65** | 5 / 0 | 54us | 1202us | 7486us | 800us |
+| 不用 icount，30 轮（开发自测） | timer-server | 4862 | **52** | 5 / 2 | 149us | 1401us | 7585us | 1500us |
+| 不用 icount，30 轮（测试验收） | display-vsync | 4782 | **1631** | 167 / 197 | 53us | 9072us | 10308us | 800us |
+| 不用 icount，30 轮（测试验收） | timer-server | 4785 | **1361** | 167 / 57 | 141us | 9422us | 11463us | 1500us |
 
-两种模式的周期数和跳过：icount 212300 个周期、跳过 0 个、时钟跳动 0 次；不用 icount 4862 个周期、跳过 5 个、时钟跳动 16236 次。
+每行的出处（都是 5b82525 的源码，30 轮）：
 
-不用 icount 时客户机时钟就是宿主机时钟，QEMU 线程被宿主机调走多久，定时器中断就晚多久（`dispatch_lag_max` 7483us）。采这组数据时宿主机是一台多人共用的机器，1 分钟负载均值约 3，15 分钟约 18（`docs/tier1-B/normal/summary.txt` 末尾的 `uptime`）。**普通模式验收未通过，原因排查中**：正在给每次错过记 `T1MISS` 行和同一时段的时钟跳动总长 `J`，按测试给的规则区分「时钟跳动造成」和「内核问题」，还没有结论。
+- 开发自测：内核 sha256 `08bdaf40…`，日志 `docs/tier1-B/icount-shift4/` 和 `docs/tier1-B/normal/`（`round-NN.txt` + `summary.txt`）。
+- 测试验收：测试在同一台共用机器上用 5b82525 源码重新编译后跑的，日志在 `/workspace/quota-os-qa/regress-5b82525/captures/tier1/normal/`（`round-NN.txt` + `summary.txt`，这个目录不在仓库里）。这一组 4792 个周期、跳过 172 个、时钟跳动 14030 次。
+
+开发自测的周期数和跳过：icount 212300 个周期、跳过 0 个、时钟跳动 0 次；不用 icount 4862 个周期、跳过 5 个、时钟跳动 16236 次。
+
+不用 icount 时客户机时钟就是宿主机时钟，QEMU 线程被宿主机调走多久，定时器中断就晚多久（`dispatch_lag_max` 7483us）。宿主机是一台多人共用的机器，两次普通模式跑的时候负载不同：开发自测那次 1 分钟负载均值约 3，15 分钟约 18（`docs/tier1-B/normal/summary.txt` 末尾的 `uptime`）；测试验收那次的负载没有记在它的 `summary.txt` 里。两组错过次数差了二十多倍，不能互相替代，都照实列出。**普通模式验收未通过，原因排查中**：正在给每次错过记 `T1MISS` 行和同一时段的时钟跳动总长 `J`，按测试给的规则区分「时钟跳动造成」和「内核问题」，还没有结论。
 
 ## 中断控制器（GICv2 / GICv3，commit C 252a90d）
 
