@@ -103,7 +103,7 @@ UTM 是沙盒应用，在 QEMU 参数里手写 `-kernel /路径/quotaos.bin` 会
 6. 编辑这台虚拟机：
    - System 里机器类型确认是 `virt`。
    - QEMU → Arguments 里加上 `-machine virt,gic-version=2 -cpu cortex-a72`。**不要**再写 `-kernel`，UTM 会自己加。和 UTM 生成的 `-machine` 重复的话，只保留带 `gic-version=2` 的那个。
-   - 左边栏 Devices 下把 Display 删掉，再 New… → Serial，模式用默认的 Built-in Terminal。
+   - 左边栏 Devices 下把 Display 删掉。不用另外新建 Serial，没有显示设备时 UTM 会自动打开串口终端窗口。
 7. 启动。串口窗口里出现和下面「菜单」相同的界面。
 8. 如果第一屏是 `timer IRQ did not fire`，说明中断控制器不是 GICv2，回到第 6 步强制 `gic-version=2`。
 
