@@ -44,26 +44,79 @@ static void app_entry(void)
     }
 }
 
+/* v014 的余量演示：短调用（5..60 us），内核路径多，预算常在内核路径里到头。 */
+static void app_entry_short(void)
+{
+    uint32_t x = 777;
+    for (;;) {
+        x = x * 1103515245u + 12345u;
+        sys_call((uint64_t)drv_id, 5 + (x >> 16) % 56);
+    }
+}
+
+static void e2_run(uint32_t periods, int qa_line, int hold);
+
 void e2_demo(uint32_t periods, int qa_line)
 {
-    printf("\n=== 13 预算令牌：驱动替谁干活就扣谁的预算 ===\n");
+    e2_run(periods, qa_line, 0);
+}
+
+static uint64_t off_both, off_pp_max;
+
+void e2_hold_demo(uint32_t periods, int qa_line)
+{
+    /* 先关掉规则跑一遍作对照（同样的负载），再按规则跑 */
+    sched_set_ipc_hold_rule(0);
+    e2_run(periods, 0, 2);
+    sched_set_ipc_hold_rule(1);
+    e2_run(periods, qa_line, 1);
+}
+
+static void e2_run(uint32_t periods, int qa_line, int hold)
+{
+    if (hold == 2)
+        printf("\n=== 18 对照：不扣住新调用（v013 的做法）===\n");
+    else if (hold)
+        printf("\n=== 18 IPC 余量：用过余量的调用者本周期新调用扣到下个周期 ===\n");
+    else
+        printf("\n=== 13 预算令牌：驱动替谁干活就扣谁的预算 ===\n");
     struct task *drv = task_create("sim-dma-drv", TIER_SERVER, KIND_SERVER);
     task_set_entry(drv, (void (*)(void))driver_entry);
     drv->min_t = us_to_ticks(500);      /* 驱动自己的预算（这里不用） */
     drv->bench_owned = 1;
     drv_id = drv->id;
     struct task *app = task_create("cam-app", TIER2, KIND_SPIN);
-    task_set_entry(app, app_entry);
+    task_set_entry(app, hold ? app_entry_short : app_entry);
     app->min_t = us_to_ticks(3000);
+    if (hold)
+        app->sugg_t = us_to_ticks(1000);    /* 有建议值：保底轮和建议轮都可能在内核路径里到头 */
     app->bench_owned = 1;
     struct task *bg = task_create("bg-caller", TIER3, KIND_SPIN);
-    task_set_entry(bg, app_entry);
+    task_set_entry(bg, hold ? app_entry_short : app_entry);
     bg->bench_owned = 1;
     task_start(app);
     task_start(bg);
-    decl_try_ipc_t2("cam-app", 3000);
-    printf("cam-app (tier 2, min 3000 us) and bg-caller (tier 3) call\n");
-    printf("sim-dma-drv (passive server) for 50..400 us of device work each.\n");
+    decl_try_ipc_t2("cam-app", 3000, 0);
+    struct task *hud = 0;
+    if (hold) {
+        /* 第二个 Tier 2 调用者：cam-app 保底轮用完时先轮到它，cam-app 的建议轮在后面，
+         * 这样同一个周期里两轮都可能在内核路径里到头。 */
+        decl_try_ipc_t2("hud-app", 1500, 3000 + IPC_HEADROOM_US);
+        hud = task_create("hud-app", TIER2, KIND_SPIN);
+        task_set_entry(hud, app_entry_short);
+        hud->min_t = us_to_ticks(1500);
+        hud->sugg_t = us_to_ticks(500);
+        hud->bench_owned = 1;
+        task_start(hud);
+    }
+    if (hold) {
+        printf("cam-app (tier 2, min 3000 us, suggested 1000 us), hud-app\n");
+        printf("(tier 2, min 1500 us, suggested 500 us) and bg-caller (tier 3)\n");
+        printf("call sim-dma-drv for 5..60 us of device work each.\n");
+    } else {
+        printf("cam-app (tier 2, min 3000 us) and bg-caller (tier 3) call\n");
+        printf("sim-dma-drv (passive server) for 50..400 us of device work each.\n");
+    }
     struct ipc_stats s;
     sched_ipc_stats(&s, 1);
     uint64_t drv_used0 = drv->used_t;
@@ -121,11 +174,35 @@ void e2_demo(uint32_t periods, int qa_line)
     printf("    %lu times, total %lu, max %lu ticks; most in one period %lu;\n",
            s.hr_n, s.hr_sum, s.hr_max, s.hr_pp_max);
     printf("    charged to the system reserve: 0\n");
+    printf("  caller-periods with a draw %lu, with draws in both the guaranteed\n",
+           s.hr_periods);
+    printf("  and the suggested pass %lu; new calls held to the next period %lu,\n",
+           s.hr_both_periods, s.held_n);
+    printf("  released at the next period start %lu\n", s.held_resumed);
     printf("  driver's own budget used during the window: %lu ticks\n", drv_change);
     printf("  driver's own wall-clock timing incl. preemption (reference only):\n");
     printf("  total %lu ticks\n", s.self_sum);
     sched_print_window();
     sched_print_kernel();
+    uint64_t ma, mb;
+    sched_window_misses(&ma, &mb);
+    if (hold == 2) {
+        off_both = s.hr_both_periods;
+        off_pp_max = s.hr_pp_max;
+    }
+    if (qa_line && hold == 1) {
+        printf("E2 headroom: most drawn in one period %lu <= %lu admitted,\n", s.hr_pp_max,
+               us_to_ticks(IPC_HEADROOM_US));
+        printf("  caller-periods drawing in both passes %lu, held calls %lu,\n", s.hr_both_periods,
+               s.held_n);
+        printf("  tier-1 misses %lu; without the rule (same load): caller-periods\n", ma + mb);
+        printf("  drawing in both passes %lu, most in one period %lu\n", off_both, off_pp_max);
+        printf("E2 headroom %s\n",
+               s.hr_pp_max <= us_to_ticks(IPC_HEADROOM_US) && s.hr_both_periods == 0 &&
+               off_both > 0 &&
+               s.held_n > 0 && ma + mb == 0 && werr == 0 && rerr == 0 &&
+               s.diff_max <= 1 && drv_change == 0 ? "PASS" : "FAIL");
+    }
     if (qa_line)
         printf("E2 item8 %s\n",
                s.calls > 0 && s.diff_max <= 1 && drv_change == 0 &&

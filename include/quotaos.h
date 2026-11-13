@@ -2,7 +2,7 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "013"
+#define QUOTAOS_VERSION     "014"
 /* Tier 2 应用用 IPC 时准入多留的余量：调用者预算在 IPC 内核路径里用完时超出的部分从这里出 */
 #define IPC_HEADROOM_US     120   /* 大于实测最长的一次内核停留（qa-long 6622 tick = 106 us） */
 
@@ -118,6 +118,9 @@ struct task {
     int ipc_queued;             /* 调用者：在某个服务端的队列里 */
     uint64_t p_own, p_run, p_kin, p_kent, p_krep;   /* 本周期：自己跑 / 驱动替它跑 / 三段内核路径 */
     uint64_t p_hr;              /* 本周期用掉的 IPC 余量（Tier 2） */
+    int p_hr_pass;              /* 本周期在哪一轮用了余量：1 保底轮，2 建议轮 */
+    int ipc_hold;               /* 本周期用过余量：新调用扣到下个周期 */
+    int ipc_held;               /* 调用者：这次调用被扣住，等下个周期 */
     struct task *caller;        /* 服务端：正在替谁干活 */
     int64_t ipc_base;           /* 调用者：发出调用时的 used_t（跨周期时减去清零的部分） */
     uint64_t call_ran_t;        /* 服务端：本次调用里内核量到的运行时间 */
@@ -282,9 +285,13 @@ struct ipc_stats {
     uint64_t infl_reset_run, infl_end_run, infl_end_calls;  /* 边界上没回复的调用已跑的部分 */
     /* v013：Tier 2 调用者的 IPC 内核路径超出其预算上限的部分，记在调用者准入时多留的余量上 */
     uint64_t hr_n, hr_sum, hr_max, hr_pp_max;
+    /* v014：用过余量的调用者本周期新发的调用先扣住，下个周期再放 */
+    uint64_t held_n, held_resumed, hr_both_periods, hr_periods;
 };
 void sched_ipc_stats(struct ipc_stats *s, int reset);
 void e2_demo(uint32_t periods, int qa_line);
+void e2_hold_demo(uint32_t periods, int qa_line);
+void sched_set_ipc_hold_rule(int on);
 void sched_total_misses(uint64_t *a, uint64_t *b);
 void sched_window_misses(uint64_t *a, uint64_t *b);
 
@@ -343,7 +350,7 @@ void color_report(int qa_line);
 void e4_demo_bandwidth(uint32_t periods, int qa_line);
 void e4_demo_color(int qa_line);
 int decl_try_bw(const char *who, int tier, uint64_t accesses);
-int decl_try_ipc_t2(const char *who, uint64_t min_us);
+int decl_try_ipc_t2(const char *who, uint64_t min_us, uint64_t prior_us);
 uint64_t decl_bw_capacity(void);
 void e3_demo_timeout(uint32_t periods, int qa_line);
 void e3_demo_storm(uint32_t periods, int qa_line);

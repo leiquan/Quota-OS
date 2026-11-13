@@ -678,18 +678,22 @@ int decl_try_bw(const char *who, int tier, uint64_t accesses)
 }
 
 /* v013：用 IPC 的 Tier 2 应用，CPU 准入按「最低值 + IPC 余量」算。 */
-int decl_try_ipc_t2(const char *who, uint64_t min_us)
+int decl_try_ipc_t2(const char *who, uint64_t min_us, uint64_t prior_us)
 {
     uint64_t v[NRES] = {0};
-    v[R_CPU] = min_us + IPC_HEADROOM_US;
+    v[R_CPU] = min_us + IPC_HEADROOM_US + prior_us;
     printf("%s asks Tier 2 CPU %lu us + IPC headroom %u us\n", who, min_us,
            IPC_HEADROOM_US);
     int bad = admit(who, TIER2, v);
     uint64_t res = reserve_of(R_CPU), t1 = t1_of(R_CPU), t2 = t2_of(R_CPU);
     uint64_t g = guard_of(R_CPU, 0);
     printf("  CPU: reserve %lu + tier-1 %lu + guard %lu + tier-2 min %lu\n", res, t1, g, t2);
-    printf("    + this %lu = %lu %s %u\n", v[R_CPU], res + t1 + g + t2 + v[R_CPU],
-           bad ? ">" : "<=", PERIOD_US);
+    if (prior_us)
+        printf("    + admitted before %lu", prior_us);
+    else
+        printf("   ");
+    printf(" + this %lu = %lu %s %u\n", min_us + IPC_HEADROOM_US,
+           res + t1 + g + t2 + v[R_CPU], bad ? ">" : "<=", PERIOD_US);
     printf(bad ? "REFUSED: CPU\n" : "OK: admitted\n");
     return bad;
 }

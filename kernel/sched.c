@@ -574,7 +574,14 @@ static void end_period(uint64_t now, int skipped)
         }
         if (rec && t->p_hr > ipc.hr_pp_max)
             ipc.hr_pp_max = t->p_hr;
+        if (rec && t->p_hr) {
+            ipc.hr_periods++;
+            if (t->p_hr_pass == 3)
+                ipc.hr_both_periods++;
+        }
         t->p_own = t->p_run = t->p_kin = t->p_kent = t->p_krep = t->p_hr = 0;
+        t->p_hr_pass = 0;
+        t->ipc_hold = 0;
         if (t->state == TASK_IPC)
             t->ipc_base -= (int64_t)t->used_t;
         t->used_t = 0;
@@ -626,9 +633,12 @@ static void finish_bench(void)
     shell_task->state = TASK_READY;
 }
 
+static void ipc_release_held(void);
+
 static void begin_period(void)
 {
     dev_period();
+    ipc_release_held();
     if (bench_state == 1) {
         rec = 1;
         kstat_reset(&ks[1]);
@@ -828,6 +838,59 @@ static void ipc_begin(struct task *s, struct task *c)
 
 /* svc #1：调用（x0 = 服务端任务号，x1 = 请求）；svc #2：服务端回复（x0 = 回复）并等下一次。
  * 服务端忙时调用者排队（状态 TASK_IPC，但不可运行），回复后按任务号轮转接下一个。 */
+static int ipc_hold_rule = 1;
+static int held_count;           /* 扣住的调用数：0 时周期开头不用扫 */
+
+/* 只给演示 18 的对照用：关掉 v014 的扣住规则 */
+void sched_set_ipc_hold_rule(int on)
+{
+    ipc_hold_rule = on;
+}
+
+/* 调用者 t 向服务端 s 发起调用：服务端空闲就接手（返回 1），否则排队。 */
+static int ipc_call(struct task *t, struct task *s)
+{
+    t->state = TASK_IPC;
+    t->server = s;
+    if (!s->caller && s->state == TASK_BLOCKED) {
+        ipc_begin(s, t);
+        return 1;
+    }
+    if (s->ipc_qt - s->ipc_qh < sizeof s->ipc_q) {
+        s->ipc_q[s->ipc_qt++ % sizeof s->ipc_q] = (uint8_t)t->id;
+        t->ipc_queued = 1;
+    } else {
+        s->ipc_q_over = 1;
+    }
+    return 0;
+}
+
+/* v014：周期开头放出上个周期扣住的调用 */
+static void ipc_release_held(void)
+{
+    if (!held_count)
+        return;
+    held_count = 0;
+    for (int i = 0; i < MAX_TASKS; i++) {
+        struct task *t = &tasks[i];
+        if (!t->ipc_held)
+            continue;
+        t->ipc_held = 0;
+        if (t->state != TASK_BLOCKED)
+            continue;
+        struct irq_frame *f = (struct irq_frame *)t->sp;
+        uint64_t id = f->r[0];
+        struct task *s = id < MAX_TASKS ? &tasks[id] : 0;
+        if (!s || s->kind != KIND_SERVER || s->state == TASK_EMPTY || s->state == TASK_DEAD) {
+            f->r[0] = ~0ull;
+            t->state = TASK_READY;
+            continue;
+        }
+        ipc.held_resumed++;
+        ipc_call(t, s);
+    }
+}
+
 static void ipc_op(struct task *t, int op)
 {
     struct irq_frame *f = (struct irq_frame *)t->sp;
@@ -838,18 +901,17 @@ static void ipc_op(struct task *t, int op)
             f->r[0] = ~0ull;    /* 没有这个服务端：调用失败 */
             return;
         }
-        t->state = TASK_IPC;
-        t->server = s;
         prev_stint_sc = t->sc ? t->sc : t;
-        if (!s->caller && s->state == TASK_BLOCKED) {
-            ipc_begin(s, t);
-            prev_stint_srv = s;
-        } else if (s->ipc_qt - s->ipc_qh < sizeof s->ipc_q) {
-            s->ipc_q[s->ipc_qt++ % sizeof s->ipc_q] = (uint8_t)t->id;
-            t->ipc_queued = 1;
-        } else {
-            s->ipc_q_over = 1;
+        /* v014：这个预算本周期已经用过 IPC 余量，新调用扣到下个周期（已经在路上的调用照常做完） */
+        if (ipc_hold_rule && prev_stint_sc->ipc_hold && t->kind != KIND_SERVER) {
+            t->ipc_held = 1;
+            held_count++;
+            t->state = TASK_BLOCKED;
+            ipc.held_n++;
+            return;
         }
+        if (ipc_call(t, s))
+            prev_stint_srv = s;
     } else if (op == 3 && t->kind == KIND_SERVER) {
         /* svc #3：驱动向设备提交作业，经过闸门。放行就等完成中断（或超时）。 */
         prev_stint_sc = t->sc ? t->sc : t;
@@ -930,6 +992,8 @@ static uint64_t schedule(uint64_t sp, int timer)
                 if (o > ipc.hr_max)
                     ipc.hr_max = o;
                 x->p_hr += o;
+                x->p_hr_pass |= x->run_cap > x->min_t ? 2 : 1;
+                x->ipc_hold = 1;    /* v014：本周期不再接新调用 */
             }
         }
         x->used_t += c;

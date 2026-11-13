@@ -574,6 +574,7 @@ static void cmd_help(void)
     printf("  15 中断风暴：多出来的中断被限流并计数\n");
     printf("  16 带宽限流：超额就停到下个周期，不欠账\n");
     printf("  17 缓存着色：每个 Tier 1 任务独占自己的缓存颜色\n");
+    printf("  18 IPC 余量：用过余量的调用者本周期新调用扣到下个周期\n");
     printf("  h  帮助    q  提示如何退出 QEMU\n");
 }
 
@@ -624,6 +625,13 @@ void shell_main(void)
         for (;;)
             asm volatile("wfi");
     }
+    if (strcmp(args, "e2h") == 0) {
+        qa = 1;
+        e2_hold_demo(QA_PERIODS, 1);
+        printf("QA DONE\n");
+        for (;;)
+            asm volatile("wfi");
+    }
     if (strcmp(args, "e4") == 0) {
         qa = 1;
         e4_demo_bandwidth(QA_PERIODS, 1);
@@ -667,6 +675,7 @@ void shell_main(void)
         case 15: e3_demo_storm(np, 0); break;
         case 16: e4_demo_bandwidth(np, 0); break;
         case 17: e4_demo_color(0); break;
+        case 18: e2_hold_demo(np, 0); break;
         default:
             if (line[0] == 'h' || line[0] == 'H' || line[0] == '?')
                 cmd_help();
