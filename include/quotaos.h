@@ -133,7 +133,10 @@ uint32_t gic_ack(void);
 void gic_eoi(uint32_t iar);
 
 void timer_init(void);
-void timer_arm_us(uint64_t us);
+uint64_t timer_arm_us(uint64_t us);
+uint64_t timer_read_pct(void);
+uint64_t timer_read_cval(void);
+int64_t timer_ticks_to_ns(int64_t ticks);
 void timer_note_irq(void);
 uint64_t now_us(void);
 uint64_t timer_freq(void);
@@ -196,6 +199,9 @@ void switch_measure_begin(void);
 void switch_measure_note(uint32_t us);
 void switch_measure_end(void);
 int switch_measure_result(uint32_t *min_us, uint32_t *avg_us, uint32_t *max_us, uint32_t *n);
+
+void diag_watch(struct task *t);
+void diag_report(void);
 
 void bench_begin(int periods);
 int bench_recording(void);

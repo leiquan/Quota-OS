@@ -67,6 +67,7 @@ static void cmd_help(void)
     printf("  8  制造内存压力，收回弹性配额\n");
     printf("  9  测量这台 QEMU 上有意义的最小 CPU 切片\n");
     printf("  10 启动几十个带独立切片的 tier-2 应用\n");
+    printf("  11 诊断 tier-1 预算超支（只计时，不改策略）\n");
     printf("  h  帮助    q  提示如何退出 QEMU\n");
 }
 
@@ -356,6 +357,64 @@ static void cmd_contain(void)
     else
         printf("结果: 仍有截止期错过，隔离没有达到教学预期。\n");
 
+    resource_close_name("audio-mix");
+    resource_close_name("bad-encoder");
+    sched_set_tiering(saved);
+}
+
+static void cmd_diag(void)
+{
+    printf("\n=== tier-1 budget overrun probe ===\n");
+    printf("same task set as containment, same scheduler, 1100 periods.\n");
+    printf("records bad-driver slices whose timer was armed to the remaining budget.\n");
+    int saved = sched_tiering();
+    sched_set_tiering(1);
+    if (resource_cpu_remaining_us() < 2000) {
+        printf("REFUSED: please close %s first\n",
+               resource_running(0) ? resource_running(0)->name : "another app");
+        sched_set_tiering(saved);
+        return;
+    }
+    struct app_manifest audio_m = {
+        "audio-mix", "守规矩的混音，400us 工作 / 1000us 预算", 512, 512, 1000, 0
+    };
+    struct app_manifest bad_m = {
+        "bad-encoder", "死循环，声明 1000us 却想占满整核", 512, 512, 1000, 0
+    };
+    if (resource_commit(&audio_m) != ADMIT_OK || resource_commit(&bad_m) != ADMIT_OK) {
+        printf("%s", resource_reason());
+        resource_close_name("audio-mix");
+        resource_close_name("bad-encoder");
+        sched_set_tiering(saved);
+        return;
+    }
+    struct task *bad_drv = task_create("bad-driver", TIER1, quotaos_spinner_entry);
+    bad_drv->budget_us = 400;
+    bad_drv->rel_deadline_us = PERIOD_US;
+    bad_drv->keep_running = 1;
+    bad_drv->bench_owned = 1;
+    struct task *audio = task_create("audio-mix", TIER2, quotaos_periodic_entry);
+    audio->budget_us = 1000;
+    audio->work_us = 400;
+    audio->rel_deadline_us = DEADLINE_AUDIO_US;
+    audio->periodic = 1;
+    audio->bench_owned = 1;
+    audio->wait_release = 1;
+    audio->state = TASK_BLOCKED;
+    struct task *bad = task_create("bad-encoder", TIER2, quotaos_spinner_entry);
+    bad->budget_us = 1000;
+    bad->keep_running = 1;
+    bad->bench_owned = 1;
+    struct task *hog = task_create("bg-hog", TIER3, quotaos_spinner_entry);
+    hog->keep_running = 1;
+    hog->bench_owned = 1;
+    task_reset_window(bad_drv);
+    diag_watch(bad_drv);
+    bench_begin(1100);
+    block_for_bench();
+    printf("tier-1 bad-driver recv_avg %u us over %u periods (cap 400)\n",
+           avg_u(bad_drv->w_sum_recv, bad_drv->w_periods), bad_drv->w_periods);
+    diag_report();
     resource_close_name("audio-mix");
     resource_close_name("bad-encoder");
     sched_set_tiering(saved);
@@ -659,7 +718,9 @@ void shell_main(void)
         readline(line, sizeof line);
         if (line[0] == 0)
             continue;
-        if (strcmp(line, "10") == 0)
+        if (strcmp(line, "11") == 0)
+            cmd_diag();
+        else if (strcmp(line, "10") == 0)
             cmd_many();
         else if (line[0] == '1' && line[1] == 0)
             cmd_table();

@@ -29,7 +29,7 @@ void timer_init(void)
     timer_arm_us(2000);
 }
 
-void timer_arm_us(uint64_t us)
+uint64_t timer_arm_us(uint64_t us)
 {
     uint64_t ticks = (us * cntfrq) / 1000000ull;
     if (ticks < 1)
@@ -38,6 +38,32 @@ void timer_arm_us(uint64_t us)
         ticks = 0x7fffffff;
     asm volatile("msr cntp_tval_el0, %0" :: "r"(ticks));
     asm volatile("isb");
+    return ticks;
+}
+
+uint64_t timer_read_pct(void)
+{
+    uint64_t v;
+    asm volatile("mrs %0, cntpct_el0" : "=r"(v));
+    return v;
+}
+
+uint64_t timer_read_cval(void)
+{
+    uint64_t v;
+    asm volatile("mrs %0, cntp_cval_el0" : "=r"(v));
+    return v;
+}
+
+int64_t timer_ticks_to_ns(int64_t ticks)
+{
+    uint64_t f = cntfrq ? cntfrq : 62500000ull;
+    int neg = ticks < 0;
+    uint64_t t = neg ? (uint64_t)(-ticks) : (uint64_t)ticks;
+    uint64_t ns = (t / f) * 1000000000ull + ((t % f) * 1000000000ull) / f;
+    if (ns > 0x7fffffff)
+        ns = 0x7fffffff;
+    return neg ? -(int64_t)ns : (int64_t)ns;
 }
 
 uint64_t now_us(void)

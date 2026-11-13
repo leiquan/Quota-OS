@@ -159,6 +159,10 @@ REFUSED: device does not meet minimum requirements
 
 输入 `10`。在测到的最小可用切片之上（这次用 200us，留有余量）启动 32 个 Tier 2 应用。每个是一条预算服务器，200us / 10000us = 一颗核的 2%。它们都想占满自己的切片。表里是声明值、实际收到的平均值、周期数、没给够的次数。跑完会把这 32 个应用关掉，保底额度还回去。
 
+### 8. 预算超支诊断（不改调度）
+
+输入 `11`。任务组合和菜单 6 相同，调度策略也不变，只多读 CNTPCT。它跑 1100 个周期，把 `bad-driver` 每次预算切片记下来（至少 1000 条），最后打印均值/最大值和 CSV。原始记录在 `docs/budget-diag.csv`。控制台摘要里的 `mean=` 用整数除法，精确平均以 CSV 为准。
+
 ## 这次 QEMU 上测到的最小切片
 
 机器：QEMU 8.2，`-machine virt,gic-version=2 -cpu cortex-a72`，客户机 `CNTFRQ = 62500000` Hz（一拍 16ns）。
