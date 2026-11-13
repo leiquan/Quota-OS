@@ -1,5 +1,22 @@
 # Quota OS
 
+Quota OS is an experimental real-time microkernel for ARM64, currently running on QEMU. Nothing runs without a quota: CPU time and memory are reserved up front and locked in at admission (GPU reservation is planned).
+
+Workloads fall into three tiers:
+- **System tier**: vendor components such as drivers and the instrument cluster. Their resources are reserved at the factory, and they must never stall.
+- **App tier**: developer apps that declare their quotas and need user approval. If the system can't guarantee a request, the app doesn't start.
+- **Default tier**: undeclared tasks that share a best-effort pool. They may slow down, but they can't drag down the tiers above them.
+
+The long-term goal is a single automotive OS that can replace today's QNX + Android dual-system setup.
+
+**Status:** Early prototype running on QEMU (ARM64). Not production-ready or safety-certified. Real-time guarantees are under active testing; tier-1 deadline results will be published with reproducible scripts and logs. The prototype was developed under the working name Quota OS, which still appears in the code and docs below.
+
+License: [Apache-2.0](LICENSE)
+
+---
+
+## 中文说明（原型代号 Quota OS）
+
 一个用来讲清楚「三级资源声明」的 AArch64 教学微内核。它不是日常能用的操作系统。它能在 QEMU 的 `virt` 机器上启动，用真实的 ARM 通用定时器和 GICv2 中断，把下面这件事演示出来：
 
 **资源在启动前按声明分完。声明了的人有保底，没声明的人用剩下的。谁想多占，就被自己的预算笼子掐住，不能把别人拖卡。**
