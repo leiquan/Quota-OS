@@ -1,10 +1,12 @@
 /*
- * 只解析 QEMU virt 设备树里的 memory 节点，用来知道这台“设备”到底有多少 RAM。
+ * 解析 QEMU virt 设备树：memory 节点给出这台“设备”有多少 RAM，
+ * interrupt-controller 节点给出 GIC 的版本和地址。
  * 旧机器场景（-m 64M）和 128M 走的是同一段代码，差别只来自这里读到的数字。
  */
 #include "quotaos.h"
 
 static volatile int expect_fault;
+static const uint8_t *dtb_base;
 static volatile int fault_hit;
 
 int dtb_fault_expected(void)
@@ -145,6 +147,7 @@ uint64_t dtb_ram_bytes(uint64_t hinted)
     }
 
     printf("[boot] DTB at 0x%lx\n", dtb);
+    dtb_base = (const uint8_t *)dtb;
     uint64_t ram = parse_memory((const uint8_t *)dtb);
     if (ram == 0) {
         printf("[boot] DTB has no memory node, using probed size\n");
@@ -152,4 +155,102 @@ uint64_t dtb_ram_bytes(uint64_t hinted)
     }
     printf("[boot] DTB memory %lu bytes\n", ram);
     return ram;
+}
+
+static int str_in_list(const char *list, uint32_t len, const char *want)
+{
+    uint32_t i = 0;
+    while (i < len) {
+        const char *s = list + i;
+        if (strcmp(s, want) == 0)
+            return 1;
+        while (i < len && list[i])
+            i++;
+        i++;
+    }
+    return 0;
+}
+
+/*
+ * 找第一个 compatible 里含 want 的节点，按父节点的 #address-cells / #size-cells
+ * 把 reg 解成 (base, size) 对写进 out。返回写入的个数，找不到返回 0。
+ */
+int dtb_find_compatible(const char *want, uint64_t *out, int max)
+{
+    if (!dtb_base)
+        return 0;
+    const uint8_t *dtb = dtb_base;
+    const uint8_t *p = dtb + be32_at(dtb + 8);
+    const uint8_t *end = dtb + be32_at(dtb + 4);
+    const char *strings = (const char *)(dtb + be32_at(dtb + 12));
+    enum { MAXD = 16 };
+    int ac[MAXD], sc[MAXD], match[MAXD];
+    const uint8_t *reg[MAXD];
+    uint32_t reg_len[MAXD];
+    int depth = 0;
+
+    while (p + 4 <= end) {
+        uint32_t tok = be32_at(p);
+        p += 4;
+        if (tok == 1 || tok == 2) {
+            /* 当前节点的属性已经读完（子节点开始或节点结束），看它是不是要找的。 */
+            if (depth > 0 && depth < MAXD && match[depth] && reg[depth]) {
+                int cells = ac[depth - 1] + sc[depth - 1];
+                int n = 0;
+                for (uint32_t off = 0; cells && off + (uint32_t)cells * 4 <= reg_len[depth] && n + 2 <= max;
+                     off += (uint32_t)cells * 4) {
+                    uint64_t base = 0, size = 0;
+                    for (int k = 0; k < ac[depth - 1]; k++)
+                        base = (base << 32) | be32_at(reg[depth] + off + k * 4);
+                    for (int k = 0; k < sc[depth - 1]; k++)
+                        size = (size << 32) | be32_at(reg[depth] + off + (ac[depth - 1] + k) * 4);
+                    out[n++] = base;
+                    out[n++] = size;
+                }
+                return n;
+            }
+            if (depth > 0 && depth < MAXD)
+                match[depth] = 0;
+        }
+        if (tok == 1) {
+            while (p < end && *p)
+                p++;
+            p = (const uint8_t *)(((uintptr_t)p + 4u) & ~(uintptr_t)3u);
+            depth++;
+            if (depth >= MAXD)
+                return 0;
+            ac[depth] = 2;
+            sc[depth] = 1;
+            match[depth] = 0;
+            reg[depth] = 0;
+            reg_len[depth] = 0;
+        } else if (tok == 2) {
+            if (depth > 0)
+                depth--;
+        } else if (tok == 3) {
+            if (p + 8 > end)
+                break;
+            uint32_t len = be32_at(p);
+            const char *name = strings + be32_at(p + 4);
+            p += 8;
+            if (p + len > end)
+                break;
+            if (strcmp(name, "#address-cells") == 0 && len >= 4)
+                ac[depth] = (int)be32_at(p);
+            else if (strcmp(name, "#size-cells") == 0 && len >= 4)
+                sc[depth] = (int)be32_at(p);
+            else if (strcmp(name, "compatible") == 0)
+                match[depth] = str_in_list((const char *)p, len, want);
+            else if (strcmp(name, "reg") == 0) {
+                reg[depth] = p;
+                reg_len[depth] = len;
+            }
+            p += (len + 3u) & ~3u;
+        } else if (tok == 4) {
+            continue;
+        } else {
+            break;
+        }
+    }
+    return 0;
 }

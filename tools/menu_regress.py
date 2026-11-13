@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Functional regression for the boot menu (commit A: 2259e51 menus 1-8 and 10).
 
-  run:     python3 tools/menu_regress.py run <kernel.bin> <out.txt>
+  run:     python3 tools/menu_regress.py run <kernel.bin> <out.txt> [gic-version]
   compare: python3 tools/menu_regress.py compare <a.txt> <b.txt>
 
 `compare` masks timing numbers (latency, hits, jiffies, recv_avg, ...) and
@@ -43,11 +43,11 @@ TIMING = re.compile(
 SAMPLE = re.compile(r"^\s+\d+\s+\d+\s+\d+\s+\d+\s+(OK|MISS)$")
 
 
-def run(kernel, out):
+def run(kernel, out, gic="2"):
     parts = []
     ok_all = True
     for mem, steps in (("128M", BIG), ("64M", SMALL)):
-        s = Session(kernel, mem)
+        s = Session(kernel, mem, machine="virt,gic-version=" + gic)
         ok = s.run(steps)
         parts.append("##### %s ok=%s\n%s" % (mem, ok, s.close()))
         ok_all &= ok
@@ -82,8 +82,8 @@ def compare(a, b):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 4 and sys.argv[1] == "run":
-        sys.exit(run(sys.argv[2], sys.argv[3]))
+    if len(sys.argv) in (4, 5) and sys.argv[1] == "run":
+        sys.exit(run(*sys.argv[2:]))
     if len(sys.argv) == 4 and sys.argv[1] == "compare":
         sys.exit(compare(sys.argv[2], sys.argv[3]))
     sys.exit(__doc__)

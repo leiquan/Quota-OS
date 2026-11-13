@@ -17,7 +17,7 @@ License: [Apache-2.0](LICENSE)
 
 ## 中文说明
 
-一个用来讲清楚「三级资源声明」的 AArch64 教学微内核。它不是日常能用的操作系统。它能在 QEMU 的 `virt` 机器上启动，用真实的 ARM 通用定时器和 GICv2 中断，把下面这件事演示出来：
+一个用来讲清楚「三级资源声明」的 AArch64 教学微内核。它不是日常能用的操作系统。它能在 QEMU 的 `virt` 机器上启动，用真实的 ARM 通用定时器和 GIC 中断（GICv2 或 GICv3，从设备树识别），把下面这件事演示出来：
 
 **资源在启动前按声明分完。声明了的人有保底，没声明的人用剩下的。谁想多占，就被自己的预算笼子掐住，不能把别人拖卡。**
 
@@ -97,7 +97,7 @@ qemu-system-aarch64 \
 
 ## 用 UTM 跑
 
-UTM 底层就是 QEMU。请用**模拟（Emulate）**，不要用虚拟化（Virtualize）。虚拟化要求 `-cpu host`，这个内核按 Cortex-A72 和 GICv2 编写。
+UTM 底层就是 QEMU。请用**模拟（Emulate）**，不要用虚拟化（Virtualize）。虚拟化要求 `-cpu host`，这个内核按 Cortex-A72 编写。
 
 UTM 是沙盒应用，在 QEMU 参数里手写 `-kernel /路径/quotaos.bin` 会报 `failed to load`，即使路径没错。内核文件必须通过 UTM 自己的文件选择框选中，「新建 Linux 虚拟机 + Boot from kernel image」这条路已在 Apple M 芯片的 Mac 上跑通。
 
@@ -108,11 +108,13 @@ UTM 是沙盒应用，在 QEMU 参数里手写 `-kernel /路径/quotaos.bin` 会
 5. 不加磁盘，向导加了就删掉，这个系统不读盘。保存。
 6. 编辑这台虚拟机：
    - System 里机器类型确认是 `virt`。
-   - **QEMU Machine Properties** 一栏填 `gic-version=2`（新版在 QEMU 页、Arguments 上方；旧版在 System 页，要先打开 Show Advanced Settings）。这一步是关键：只在 Arguments 里写 `-machine virt,gic-version=2` 会被 UTM 自己生成的 `-machine` 盖掉，启动后会 PANIC。
+   - **QEMU Machine Properties** 不用填。内核从设备树读中断控制器，GICv3 和 `gic-version=2` 都能驱动（已在命令行 QEMU 10.0 的 `gic-version=2/3/max` 上验证；这次改动没有在 UTM 里实测，请在 UTM 上回归一次）。
    - QEMU → Arguments 里可加 `-cpu cortex-a72`。**不要**写 `-kernel`，UTM 会自己加。
    - 左边栏 Devices 下把 Display 删掉。不用另外新建 Serial，没有显示设备时 UTM 会自动打开串口终端窗口。
 7. 启动。串口窗口里出现和下面「菜单」相同的界面。
-8. 如果第一屏是 `timer IRQ did not fire`，或者在 `[boot] tier-1 reserved …` 之后出现 `PANIC sync ec=0x25 esr=0x96000050 elr=0x400821e0`，说明中断控制器不是 GICv2（UTM 给的是 GICv3），回到第 6 步，确认 QEMU Machine Properties 里填了 `gic-version=2`。在 QEMU 页底部看 UTM 生成的完整命令，确认生效的 `-machine` 带着 `gic-version=2`。
+8. 启动横幅里会有一行 `[boot] GICv3 from DTB: …`（或 `GICv2 …`），说明认出了中断控制器。如果是 `[boot] ERROR: no GICv2 … or GICv3 … interrupt-controller node`，说明设备树里没有这两种 GIC，内核会停在这里，不会 PANIC。
+
+旧版本（2259e51 及以前）只会 GICv2，在 UTM 的 GICv3 上写 GICv2 CPU 接口 0x08010000 会 `PANIC sync ec=0x25 esr=0x96000050 elr=0x400821e0`，当时必须在 QEMU Machine Properties 里填 `gic-version=2`。现在不需要了；填了也照样能跑。
 
 UTM 里看到的时延只作演示参考，验收数据以命令行固定 QEMU 配置的回归结果为准。
 
@@ -252,6 +254,24 @@ python3 tools/tier1_rounds.py build/quotaos.bin /tmp/t1-normal 30      # 不用 
 
 不用 icount 时客户机时钟就是宿主机时钟，QEMU 线程被宿主机调走多久，定时器中断就晚多久（`dispatch_lag_max` 7483us），这时的错过来自宿主机，不是调度顺序。采这组数据时宿主机是一台多人共用的 8 核机器，1 分钟负载均值约 3，15 分钟负载均值约 18（`summary.txt` 末尾记了 `uptime`）。同一份内核在 icount 下 30 轮零错过。
 
+## 中断控制器（GICv2 / GICv3）
+
+`kernel/gic.c` 从设备树的 interrupt-controller 节点决定驱动哪种硬件：
+
+- `arm,cortex-a15-gic` 或 `arm,gic-400`：GICv2，distributor + 内存映射的 CPU interface。
+- `arm,gic-v3`：GICv3，distributor（亲和路由、Group 1）+ 本核的 redistributor（按 MPIDR 找）+ `ICC_*` 系统寄存器 CPU interface。从 EL2 启动时 `boot/startup.S` 先打开 `ICC_SRE_EL2`。
+- 都没有：打印 `[boot] ERROR: …` 并停住，不去碰不存在的寄存器。
+
+检查命令（日志在 `docs/gic-C/`）：
+
+```bash
+python3 tools/gic_boot_check.py build/quotaos.bin /tmp/gic
+python3 tools/menu_regress.py run build/quotaos.bin /tmp/menus-v3.txt 3
+python3 tools/menu_regress.py compare docs/gic-C/menus-gicv2.txt /tmp/menus-v3.txt
+```
+
+`gic_boot_check.py` 在 `gic-version=2`、`3`、`max`、默认 `virt`、`virtualization=on`（EL2 启动）和 `-smp 2` 下都启动到 `select>`。菜单回归在 GICv2 和 GICv3 下除了横幅里那行 GIC 之外逐行一致。
+
 ## 和真正的操作系统差在哪里
 
 - 单核。没有多核负载均衡，也没有核间中断。
@@ -275,6 +295,7 @@ tools/qemu_serial.py     驱动 QEMU 串口的公共模块
 tools/capture_demos.py   自动按菜单跑完并检查提示符
 tools/menu_regress.py    菜单功能回归：跑固定流程，屏蔽计时数字后逐行比较
 tools/tier1_rounds.py    Tier 1 截止期回归：多轮启动，汇总错过次数和延迟分布
+tools/gic_boot_check.py  在几种 GIC 配置下检查能否启动到 select>
 ```
 
 重新采集串口（写 `docs/demo-output.txt`）：

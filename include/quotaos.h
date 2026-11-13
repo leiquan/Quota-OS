@@ -137,6 +137,7 @@ int strcmp(const char *a, const char *b);
 void str_copy(char *dst, const char *src, int cap);
 
 uint64_t dtb_ram_bytes(uint64_t hinted);
+int dtb_find_compatible(const char *compat, uint64_t *out, int max);
 
 void gic_init(void);
 uint32_t gic_ack(void);
