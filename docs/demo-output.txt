@@ -13,19 +13,19 @@
 ================================================================================
 
 Quota OS microkernel
-Version: 009 (d2c58c4)
+Version: 010 (4f077b3)
 基于三级资源声明的微内核，
 保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 [boot] x0=0x44000000 physical RAM span 128 MB (probed)
 [boot] DTB at 0x44000000
 [boot] DTB memory 134217728 bytes
 [boot] system reserve 350 us/period, 16384 KB;
-       tier-1 1500 us/period, 13312 KB; guard 40 us/period
-[boot] kernel image+bss 475 KB of the 16384 KB system reserve
+       tier-1 1500 us/period, 13312 KB; guard 80 us/period
+[boot] kernel image+bss 481 KB of the 16384 KB system reserve
 [boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
 [boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
 [boot] tier-1 display-vsync and timer-server bound to their slots
-[boot] slot table from tick 625000, period 625000 ticks, guard 625 ticks
+[boot] slot table from tick 625000, period 625000 ticks, guard 1250 ticks
 [boot] shell task running
 
 命令（输入数字后回车）:
@@ -41,6 +41,7 @@ Version: 009 (d2c58c4)
   10 任何一级的失控任务只拖慢自己
   11 设备申请 Tier 1：不能打断的设备被拒（说明缺哪一条）
   12 超额申请被拒（说明是哪种资源）
+  13 预算令牌：驱动替谁干活就扣谁的预算
   h  帮助    q  提示如何退出 QEMU
 select> 1
 
@@ -49,13 +50,13 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 68901 ticks/period (period 0 of 19)
+  measured since boot: max 72309 ticks/period (period 0 of 19)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500          91      409   2048
-  timer-server      1      3500    300          95      205   1024
+  display-vsync     0      1000    500         111      389   2048
+  timer-server      1      3500    300          51      249   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -63,12 +64,12 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [Tier 2] admitted apps (minimum is guaranteed, suggested is spare only)
   (none)
-  minimum sum: CPU 0 / 8110 us, memory 0 / 101376 KB
+  minimum sum: CPU 0 / 8070 us, memory 0 / 101376 KB
   admission: reserve 350 + tier-1 1500 + tier-2 min 0
-    + guard 40 = 1890 <= 10000 us
+    + guard 80 = 1930 <= 10000 us
 
 [Tier 3] everyone else, round robin 1000 us, leftover only
-  CPU not promised to anyone: 8110 us/period
+  CPU not promised to anyone: 8070 us/period
 pressure: off
 select> 2
 
@@ -138,7 +139,7 @@ Studio Cut: 剪辑
   CPU minimum 3000 us, suggested +1000 us per 10000 us
   memory minimum 8192 KB, suggested 24576 KB
 REFUSED: not enough resources for Studio Cut
-  CPU left 2110 us/period, minimum needs 3000
+  CPU left 2070 us/period, minimum needs 3000
   memory left 84992 KB, minimum needs 8192
 Please close Pixel Racer first (frees 3000 us/period, 8192 KB).
 not started.
@@ -180,13 +181,13 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 68901 ticks/period (period 0 of 367)
+  measured since boot: max 72309 ticks/period (period 0 of 367)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500         108      392   2048
-  timer-server      1      3500    300          95      205   1024
+  display-vsync     0      1000    500         200      300   2048
+  timer-server      1      3500    300          60      240   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -195,12 +196,12 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 [Tier 2] admitted apps (minimum is guaranteed, suggested is spare only)
   Studio Cut     CPU min 3000 + sugg 1000 us, mem min 8192 KB, granted 24576 KB
   Cinema Play    CPU min 3000 + sugg 500 us, mem min 8192 KB, granted 16384 KB
-  minimum sum: CPU 6000 / 8110 us, memory 16384 / 101376 KB
+  minimum sum: CPU 6000 / 8070 us, memory 16384 / 101376 KB
   admission: reserve 350 + tier-1 1500 + tier-2 min 6000
-    + guard 40 = 7890 <= 10000 us
+    + guard 80 = 7930 <= 10000 us
 
 [Tier 3] everyone else, round robin 1000 us, leftover only
-  CPU not promised to anyone: 2110 us/period
+  CPU not promised to anyone: 2070 us/period
 pressure: off
 select> 2
 
@@ -237,7 +238,7 @@ start Pixel Racer: OK, 3000 us/period minimum.
 start Cinema Play: OK, 3000 us/period minimum.
 start Studio Cut:
 REFUSED: not enough resources for Studio Cut
-  CPU left 2110 us/period, minimum needs 3000
+  CPU left 2070 us/period, minimum needs 3000
   memory left 84992 KB, minimum needs 8192
 Please close Pixel Racer first (frees 3000 us/period, 8192 KB).
 following the advice: closing Pixel Racer and retrying.
@@ -246,7 +247,7 @@ demo apps closed; their minimums are back in the pool.
 select> 4
 
 === 4 旧设备：超过整机容量 / old device: request too big ===
-apps get at most CPU 8110 us/period and memory 101376 KB on this device.
+apps get at most CPU 8070 us/period and memory 101376 KB on this device.
 
 Neural Forge (CPU min 1000 us, memory min 81920 KB):
   fits this device (not started; use menu 2 to install).
@@ -259,7 +260,7 @@ No app can be closed to make room: this device is too small.
 
 Render Farm (CPU min 9000 us, memory min 4096 KB):
 REFUSED: device does not meet minimum requirements
-  minimum CPU 9000 us > 8110 us/period for apps
+  minimum CPU 9000 us > 8070 us/period for apps
   (period - system reserve - tier-1 - guard)
 No app can be closed to make room: this device is too small.
 select> 5
@@ -269,54 +270,52 @@ select> 5
 at the same tick of its slot every period and finish inside it.
 Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
   task           slot   jobs  miss  start_min  start_max  jitter  lat_max
-  display-vsync     0    200     1        399      17870   17471    22910
-  timer-server      1    200     1        395      14424   14029    17023
+  display-vsync     0    200     0        172      13392   13220    18431
+  timer-server      1    200     2        156      17243   17087    13414
   display-vsync last release: period 734, tick 459437500,
     epoch+k*P+offset 459437500
   timer-server last release: period 734, tick 459593750,
     epoch+k*P+offset 459593750
-T1MISS task=display-vsync period=591 reason=not_started start_t=-1
-  lat_t=33661 lat_us=538 deadline_us=500 J_us=687 class=a
-T1MISS task=timer-server period=630 reason=not_started start_t=-1
-  lat_t=25042 lat_us=400 deadline_us=300 J_us=680 class=a
+T1MISS task=timer-server period=552 reason=not_started start_t=-1
+  lat_t=20578 lat_us=329 deadline_us=300 J_us=693 class=a
+T1MISS task=timer-server period=566 reason=unfinished start_t=17243
+  lat_t=19923 lat_us=318 deadline_us=300 J_us=692 class=a
 misses: class a (clock jump) 2, class b (kernel) 0, skipped periods 0
-kernel per period: max 14289 avg 3242 ticks, reserve 21875, over 0
-timer IRQ entry - CVAL: min 611 max 88658 ticks (n=2779)
-kernel entry -> eret (no slot wait): min 55 max 6733 ticks
-slot guard: path max 0 ticks, slack min 0 ticks of 625 (n=0)
-wait loop exit late by 0/1/2/>2 ticks: 0/0/0/0
-clock jumps: 1066, total 62055 us
-结果: Tier 1 错过 2 次，起点抖动 17471 tick，
-  槽内 Tier 2/3 共 961091 tick。
+kernel per period: max 16681 avg 4110 ticks, reserve 21875, over 0
+timer IRQ entry - CVAL: min 674 max 35766 ticks (n=2770)
+kernel entry -> eret (no slot wait): min 62 max 10568 ticks
+slot guard: path max 295 ticks, slack min 0 ticks of 1250 (n=107)
+wait loop exit late by 0/1/2/>2 ticks: 10/8/15/74
+clock jumps: 1708, total 72063 us
+结果: Tier 1 错过 2 次，起点抖动 17087 tick，
+  槽内 Tier 2/3 共 456815 tick。
 select> 6
 
 === 6 Tier 1 超时在槽尾被掐断 / tier-1 overrun cut at slot end ===
 bad-driver loops forever in the blk-driver slot (25000 ticks).
-bad-driver per period: min 18718 max 35755 ticks, slot 25000 ticks
-cut by the slot-end timer: IRQ entry at most 45479 ticks after slot end
+bad-driver per period: min 4712 max 41995 ticks, slot 25000 ticks
+cut by the slot-end timer: IRQ entry at most 31216 ticks after slot end
 Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
   task           slot   jobs  miss  start_min  start_max  jitter  lat_max
-  display-vsync     0    200     0        455      23674   23219    28715
-  timer-server      1    200     2        448      14559   14111    17098
+  display-vsync     0    200     0        164      26088   25924    31133
+  timer-server      1    200     1        166      13580   13414    16129
   display-vsync last release: period 955, tick 597562500,
     epoch+k*P+offset 597562500
   timer-server last release: period 955, tick 597718750,
     epoch+k*P+offset 597718750
-T1MISS task=timer-server period=779 reason=not_started start_t=-1
-  lat_t=36818 lat_us=589 deadline_us=300 J_us=1549 class=a
-T1MISS task=timer-server period=834 reason=not_started start_t=-1
-  lat_t=22769 lat_us=364 deadline_us=300 J_us=1844 class=a
-misses: class a (clock jump) 2, class b (kernel) 0, skipped periods 0
+T1MISS task=timer-server period=818 reason=not_started start_t=-1
+  lat_t=19790 lat_us=316 deadline_us=300 J_us=797 class=a
+misses: class a (clock jump) 1, class b (kernel) 0, skipped periods 0
 Tier 1 slots over 200 periods (ticks per period, average)
   slot owner          start    len  owner_used  idle  foreign(total)
-     0 display-vsync   62500  31250        5226 21999   751813
-     1 timer-server   218750  18750        2697 14994   162039
-     2 (empty)        375000  18750           0 18020   109552
-     3 bad-driver     500000  25000       24096     0   138746
-Tier 2/3 ticks inside any Tier 1 slot: 1162150 (in 799 runs)
-  of which not covered by clock jumps: 224282
-结果: bad-driver 每周期最多 35755 tick（槽长 25000）；
-  其他 Tier 1 错过 2 次。
+     0 display-vsync   62500  31250        5373 24267   269362
+     1 timer-server   218750  18750        2789 15250    90121
+     2 (empty)        375000  18750           0 18446    47691
+     3 bad-driver     500000  25000       24226     0   100196
+Tier 2/3 ticks inside any Tier 1 slot: 507370 (in 360 runs)
+  of which not covered by clock jumps: 0
+结果: bad-driver 每周期最多 41995 tick（槽长 25000）；
+  其他 Tier 1 错过 1 次。
 select> 7
 
 === 7 Tier 1 槽从不外借 / tier-1 slots never lent ===
@@ -325,29 +324,29 @@ gic-server and blk-driver slots have no task. A greedy tier-2 app
 and 8 tier-3 loops want every tick they can get.
 Tier 1 slots over 200 periods (ticks per period, average)
   slot owner          start    len  owner_used  idle  foreign(total)
-     0 display-vsync   62500  31250        5244 24177   302296
-     1 timer-server   218750  18750        2727 12145   716074
-     2 (empty)        375000  18750           0 14917   716174
-     3 (empty)        500000  25000           0 22858   379670
-Tier 2/3 ticks inside any Tier 1 slot: 2114214 (in 794 runs)
-  of which not covered by clock jumps: 109597
+     0 display-vsync   62500  31250        5333 24532   185481
+     1 timer-server   218750  18750        2918 13709   325926
+     2 (empty)        375000  18750           0 15845   499860
+     3 (empty)        500000  25000           0 22713   370784
+Tier 2/3 ticks inside any Tier 1 slot: 1382051 (in 654 runs)
+  of which not covered by clock jumps: 0
   app           min_us sugg_us  recv_min recv_avg recv_max  short
-  greedy-app      1000    6000      7001     7043     7536      0
-结果: 空出来的槽时间全部空转，Tier 2/3 在槽内 2114214 tick。
+  greedy-app      1000    6000      6599     7051     9844      0
+结果: 空出来的槽时间全部空转，Tier 2/3 在槽内 1382051 tick。
 select> 8
 
 === 8 Tier 2 最低值有保证，建议值在压力下收回 ===
 app-A min 2000 + sugg 1000 us, app-B min 2000 + sugg 2000 us,
 8 tier-3 loops. Phase 1: no pressure.
   app           min_us sugg_us  recv_min recv_avg recv_max  short
-  app-A           2000    1000      3001     3025     3272      0
-  app-B           2000    2000      3814     4036     4429      0
+  app-A           2000    1000      3012     3027     3429      0
+  app-B           2000    2000      4011     4025     4358      0
 Phase 2: memory/CPU pressure ON, suggested is reclaimed.
 pressure ON: reclaimed 0 KB of suggested memory; minimums untouched.
   app           min_us sugg_us  recv_min recv_avg recv_max  short
-  app-A           2000    1000      2003     2019     2313      0
-  app-B           2000    2000      2000     2018     2247      0
-结果: 无压力时最少拿到 3001/3814 us，有压力时 2003/2000 us；
+  app-A           2000    1000      2005     2022     2192      0
+  app-B           2000    2000      2000     2024     2227      0
+结果: 无压力时最少拿到 3012/4011 us，有压力时 2005/2000 us；
   低于最低值的周期 0 个。
 select> 9
 
@@ -355,71 +354,172 @@ select> 9
 32 tier-3 busy loops for 200 periods, with a tier-2 game and audio-mix.
 Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
   task           slot   jobs  miss  start_min  start_max  jitter  lat_max
-  display-vsync     0    200     0        350      13411   13061    18456
-  timer-server      1    200     0        355       2458    2103     5000
+  display-vsync     0    200     0        164      20936   20772    25974
+  timer-server      1    200     1        137      16733   16596    14553
   display-vsync last release: period 1819, tick 1137562500,
     epoch+k*P+offset 1137562500
   timer-server last release: period 1819, tick 1137718750,
     epoch+k*P+offset 1137718750
-misses: class a (clock jump) 0, class b (kernel) 0, skipped periods 0
+T1MISS task=timer-server period=1641 reason=unfinished start_t=16733
+  lat_t=19809 lat_us=316 deadline_us=300 J_us=488 class=a
+misses: class a (clock jump) 1, class b (kernel) 0, skipped periods 0
   app           min_us sugg_us  recv_min recv_avg recv_max  short
-  game            2000    1000      3010     3019     3225      0
-  audio-mix: jobs 200, misses 0, worst response 448 us (deadline 4000 us)
-tier-3 per loop: avg 113..199 us/period, all 32 together 4965 us
+  game            2000    1000      3010     3019     3185      0
+  audio-mix: jobs 200, misses 0, worst response 629 us (deadline 4000 us)
+tier-3 per loop: avg 109..197 us/period, all 32 together 4907 us
 Tier 1 slots over 200 periods (ticks per period, average)
   slot owner          start    len  owner_used  idle  foreign(total)
-     0 display-vsync   62500  31250        5210 25278   101305
-     1 timer-server   218750  18750        2717 15441    66457
-     2 (empty)        375000  18750           0 18077    97104
-     3 (empty)        500000  25000           0 23980   152974
-Tier 2/3 ticks inside any Tier 1 slot: 417840 (in 799 runs)
-  of which not covered by clock jumps: 207291
-kernel per period: max 7387 avg 3125 ticks, reserve 21875, over 0
-timer IRQ entry - CVAL: min 593 max 24434 ticks (n=2800)
-kernel entry -> eret (no slot wait): min 50 max 2678 ticks
-slot guard: path max 0 ticks, slack min 0 ticks of 625 (n=0)
-wait loop exit late by 0/1/2/>2 ticks: 0/0/0/0
-clock jumps: 922, total 38191 us
-结果: Tier 1 错过 0 次，起点抖动 13061 tick，
-  槽内 Tier 2/3 共 417840 tick。
+     0 display-vsync   62500  31250        5283 25618    33685
+     1 timer-server   218750  18750        2777 15628    36205
+     2 (empty)        375000  18750           0 18592    15322
+     3 (empty)        500000  25000           0 24642    39965
+Tier 2/3 ticks inside any Tier 1 slot: 125177 (in 215 runs)
+  of which not covered by clock jumps: 0
+kernel per period: max 10074 avg 3569 ticks, reserve 21875, over 0
+timer IRQ entry - CVAL: min 643 max 32288 ticks (n=2800)
+kernel entry -> eret (no slot wait): min 57 max 3793 ticks
+slot guard: path max 270 ticks, slack min 0 ticks of 1250 (n=215)
+wait loop exit late by 0/1/2/>2 ticks: 19/42/35/119
+clock jumps: 1354, total 47876 us
+结果: Tier 1 错过 1 次，起点抖动 20772 tick，
+  槽内 Tier 2/3 共 125177 tick。
 结果: Tier 2 低于最低值 0 个周期，audio-mix 错过 0 次。
 select> 10
 
 === 10 任何一级的失控任务只拖慢自己 / runaway only slows itself ===
 runaways: bad-driver (tier 1, blk slot), bad-encoder (tier 2, min 1000),
 bad-t3 (tier 3). Well behaved: vsync, timer-server, audio-mix, polite-t3.
-bad-driver  avg 395 max 606 us/period (slot 400)
-bad-encoder avg 1013 max 1214 us/period (min 1000, no suggested)
-bad-t3 avg 3491 us/period, polite-t3 avg 3529 us/period
-  audio-mix: jobs 200, misses 1, worst response 766 us (deadline 4000 us)
+bad-driver  avg 402 max 4736 us/period (slot 400)
+bad-encoder avg 1283 max 7699 us/period (min 1000, no suggested)
+bad-t3 avg 3441 us/period, polite-t3 avg 3352 us/period
+  audio-mix: jobs 200, misses 13, worst response 8754 us (deadline 4000 us)
 Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
   task           slot   jobs  miss  start_min  start_max  jitter  lat_max
-  display-vsync     0    200     2        400      29365   28965     8930
-  timer-server      1    200     1        362      10381   10019    12962
+  display-vsync     0    200    30        134      12878   12744    17915
+  timer-server      1    200    21        160      15481   15321    18069
   display-vsync last release: period 2040, tick 1275687500,
     epoch+k*P+offset 1275687500
   timer-server last release: period 2040, tick 1275843750,
     epoch+k*P+offset 1275843750
-T1MISS task=display-vsync period=1915 reason=skipped lat_us=-
-  deadline_us=500 J_us=10403 covered=yes uncovered_us=0 class=a
-T1MISS task=timer-server period=1915 reason=skipped lat_us=-
-  deadline_us=300 J_us=10403 covered=yes uncovered_us=0 class=a
-T1MISS task=display-vsync period=1916 reason=unfinished start_t=29365
-  lat_t=32300 lat_us=516 deadline_us=500 J_us=10574 class=a
-misses: class a (clock jump) 3, class b (kernel) 0, skipped periods 3
-Tier 2/3 ticks inside tier-1 slots: 670905
-结果: 守规矩的 Tier 1 错过 3 次，audio-mix 错过 1 次；
+T1MISS task=timer-server period=1911 reason=not_started start_t=-1
+  lat_t=26385 lat_us=422 deadline_us=300 J_us=1340 class=a
+T1MISS task=display-vsync period=1966 reason=not_started start_t=-1
+  lat_t=55576 lat_us=889 deadline_us=500 J_us=1248 class=a
+T1MISS task=display-vsync period=1974 reason=not_started start_t=-1
+  lat_t=35359 lat_us=565 deadline_us=500 J_us=803 class=a
+T1MISS task=timer-server period=1979 reason=not_started start_t=-1
+  lat_t=77949 lat_us=1247 deadline_us=300 J_us=2906 class=a
+T1MISS task=display-vsync period=1986 reason=not_started start_t=-1
+  lat_t=51156 lat_us=818 deadline_us=500 J_us=5944 class=a
+T1MISS task=display-vsync period=1987 reason=unfinished start_t=279
+  lat_t=110281 lat_us=1764 deadline_us=500 J_us=3082 class=a
+T1MISS task=timer-server period=1988 reason=unfinished start_t=213
+  lat_t=176599 lat_us=2825 deadline_us=300 J_us=7733 class=a
+T1MISS task=display-vsync period=1989 reason=not_started start_t=-1
+  lat_t=233586 lat_us=3737 deadline_us=500 J_us=7876 class=a
+T1MISS task=timer-server period=1989 reason=not_started start_t=-1
+  lat_t=77336 lat_us=1237 deadline_us=300 J_us=7876 class=a
+T1MISS task=display-vsync period=1990 reason=not_started start_t=-1
+  lat_t=108620 lat_us=1737 deadline_us=500 J_us=10490 class=a
+T1MISS task=timer-server period=1992 reason=not_started start_t=-1
+  lat_t=202432 lat_us=3238 deadline_us=300 J_us=7767 class=a
+T1MISS task=display-vsync period=1993 reason=not_started start_t=-1
+  lat_t=233587 lat_us=3737 deadline_us=500 J_us=8520 class=a
+T1MISS task=timer-server period=1993 reason=not_started start_t=-1
+  lat_t=77337 lat_us=1237 deadline_us=300 J_us=8520 class=a
+T1MISS task=display-vsync period=1994 reason=not_started start_t=-1
+  lat_t=108576 lat_us=1737 deadline_us=500 J_us=10490 class=a
+T1MISS task=display-vsync period=1995 reason=not_started start_t=-1
+  lat_t=82786 lat_us=1324 deadline_us=500 J_us=6347 class=a
+T1MISS task=display-vsync period=1996 reason=not_started start_t=-1
+  lat_t=109300 lat_us=1748 deadline_us=500 J_us=8273 class=a
+T1MISS task=display-vsync period=1997 reason=not_started start_t=-1
+  lat_t=233833 lat_us=3741 deadline_us=500 J_us=9738 class=a
+T1MISS task=timer-server period=1997 reason=not_started start_t=-1
+  lat_t=77583 lat_us=1241 deadline_us=300 J_us=9738 class=a
+T1MISS task=display-vsync period=1998 reason=not_started start_t=-1
+  lat_t=136799 lat_us=2188 deadline_us=500 J_us=11441 class=a
+T1MISS task=timer-server period=1998 reason=not_started start_t=-1
+  lat_t=202532 lat_us=3240 deadline_us=300 J_us=14701 class=a
+T1MISS task=display-vsync period=1999 reason=not_started start_t=-1
+  lat_t=233731 lat_us=3739 deadline_us=500 J_us=11188 class=a
+T1MISS task=timer-server period=1999 reason=not_started start_t=-1
+  lat_t=77481 lat_us=1239 deadline_us=300 J_us=11188 class=a
+T1MISS task=display-vsync period=2000 reason=not_started start_t=-1
+  lat_t=109277 lat_us=1748 deadline_us=500 J_us=10174 class=a
+T1MISS task=display-vsync period=2001 reason=not_started start_t=-1
+  lat_t=234408 lat_us=3750 deadline_us=500 J_us=8773 class=a
+T1MISS task=timer-server period=2001 reason=not_started start_t=-1
+  lat_t=78158 lat_us=1250 deadline_us=300 J_us=8773 class=a
+T1MISS task=display-vsync period=2002 reason=not_started start_t=-1
+  lat_t=109871 lat_us=1757 deadline_us=500 J_us=9215 class=a
+T1MISS task=display-vsync period=2003 reason=not_started start_t=-1
+  lat_t=30962 lat_us=495 deadline_us=500 J_us=6501 class=a
+T1MISS task=display-vsync period=2015 reason=not_started start_t=-1
+  lat_t=151812 lat_us=2428 deadline_us=500 J_us=7668 class=a
+T1MISS task=timer-server period=2016 reason=not_started start_t=-1
+  lat_t=202450 lat_us=3239 deadline_us=300 J_us=11143 class=a
+T1MISS task=display-vsync period=2017 reason=not_started start_t=-1
+  lat_t=144303 lat_us=2308 deadline_us=500 J_us=7119 class=a
+T1MISS task=display-vsync period=2018 reason=not_started start_t=-1
+  lat_t=110475 lat_us=1767 deadline_us=500 J_us=8761 class=a
+T1MISS task=display-vsync period=2019 reason=not_started start_t=-1
+  lat_t=233659 lat_us=3738 deadline_us=500 J_us=8091 class=a
+T1MISS task=timer-server period=2019 reason=not_started start_t=-1
+  lat_t=77409 lat_us=1238 deadline_us=300 J_us=8091 class=a
+T1MISS task=display-vsync period=2020 reason=not_started start_t=-1
+  lat_t=108697 lat_us=1739 deadline_us=500 J_us=8064 class=a
+T1MISS task=timer-server period=2022 reason=not_started start_t=-1
+  lat_t=98453 lat_us=1575 deadline_us=300 J_us=6291 class=a
+T1MISS task=display-vsync period=2023 reason=not_started start_t=-1
+  lat_t=233873 lat_us=3741 deadline_us=500 J_us=7136 class=a
+T1MISS task=timer-server period=2023 reason=not_started start_t=-1
+  lat_t=77623 lat_us=1241 deadline_us=300 J_us=7136 class=a
+T1MISS task=display-vsync period=2024 reason=not_started start_t=-1
+  lat_t=108577 lat_us=1737 deadline_us=500 J_us=8186 class=a
+T1MISS task=timer-server period=2024 reason=not_started start_t=-1
+  lat_t=203658 lat_us=3258 deadline_us=300 J_us=11465 class=a
+T1MISS task=timer-server period=2025 reason=not_started start_t=-1
+  lat_t=78048 lat_us=1248 deadline_us=300 J_us=11222 class=a
+T1MISS task=display-vsync period=2026 reason=not_started start_t=-1
+  lat_t=358476 lat_us=5735 deadline_us=500 J_us=12391 class=a
+T1MISS task=timer-server period=2026 reason=not_started start_t=-1
+  lat_t=202226 lat_us=3235 deadline_us=300 J_us=12391 class=a
+T1MISS task=display-vsync period=2027 reason=not_started start_t=-1
+  lat_t=88112 lat_us=1409 deadline_us=500 J_us=10745 class=a
+T1MISS task=display-vsync period=2028 reason=not_started start_t=-1
+  lat_t=168832 lat_us=2701 deadline_us=500 J_us=9117 class=a
+T1MISS task=timer-server period=2029 reason=not_started start_t=-1
+  lat_t=77792 lat_us=1244 deadline_us=300 J_us=9533 class=a
+T1MISS task=display-vsync period=2030 reason=not_started start_t=-1
+  lat_t=108974 lat_us=1743 deadline_us=500 J_us=8219 class=a
+T1MISS task=display-vsync period=2031 reason=not_started start_t=-1
+  lat_t=233797 lat_us=3740 deadline_us=500 J_us=8763 class=a
+T1MISS task=timer-server period=2031 reason=not_started start_t=-1
+  lat_t=77547 lat_us=1240 deadline_us=300 J_us=8763 class=a
+T1MISS task=display-vsync period=2032 reason=not_started start_t=-1
+  lat_t=358681 lat_us=5738 deadline_us=500 J_us=13186 class=a
+T1MISS task=timer-server period=2032 reason=not_started start_t=-1
+  lat_t=202431 lat_us=3238 deadline_us=300 J_us=13186 class=a
+T1MISS task=timer-server period=2037 reason=not_started start_t=-1
+  lat_t=78453 lat_us=1255 deadline_us=300 J_us=3498 class=a
+misses: class a (clock jump) 51, class b (kernel) 0, skipped periods 0
+Tier 2/3 ticks inside tier-1 slots: 2748029
+结果: 守规矩的 Tier 1 错过 51 次，audio-mix 错过 13 次；
   失控者都停在自己的额度。
 select> 11
 
 === 11 设备申请 Tier 1：不能打断的设备被拒 ===
-Two simulated devices (software models, not real hardware).
+Three simulated devices (software models, not real hardware).
 The system measures each one (8 full jobs, 8 aborts) with IRQs
 masked, only where the job ends before the next tier-1 guard.
+Admission uses only the declared (factory) values; the measured
+ones are for verification.
   device   preempt divisible max_job switch stop_bound | measured:
                                                        job_max  stop_max
-  sim-dma      yes       yes     400      5         20 |     396        16 us
-  sim-blk       no        no    2000     10         20 |    1991      1770 us
+  sim-dma      yes       yes     400      5         20 |     396        17 us
+  sim-blk       no        no    2000     10         20 |    1996      1770 us
+  sim-cam      yes       yes     300      5         30 |     291         8 us
 display-vsync already declares sim-dma 2000 us (Tier 1).
 
 cam-app asks Tier 1 (per 10000 us):
@@ -428,11 +528,15 @@ OK: admitted (not started; released again)
 rec-app asks Tier 1 (per 10000 us):
   sim-blk 1000 us
 REFUSED: (device not allowed in Tier 1)
-  missing: forcibly stoppable (sim-blk is non-preemptible;
-    measured stop 1770 us > bound 20 us)
+  missing: 不能强制叫停 (sim-blk is non-preemptible)
+  missing: 不可切分 (not divisible); exclusive use would waive this one
 rec-app asks Tier 2 (per 10000 us):
   sim-blk 1000 us
 OK: admitted (not started; released again)
+scan-app asks Tier 1 (per 10000 us):
+  sim-cam 500 us
+REFUSED: (device not allowed in Tier 1)
+  missing: 停止上限超过 Tier 1 限值 (declared stop 30 us > 20 us)
 select> 12
 
 === 12 超额申请在启动时被拒，并说明是哪种资源 ===
@@ -440,7 +544,7 @@ cpu-hog asks Tier 2 (per 10000 us):
   CPU 8200 us, memory 1024 KB
 REFUSED: CPU
   CPU overcommitted: reserve 350 + tier-1 1500 + tier-2 min 0
-    + guard 40 + this 8200 = 10090 > capacity 10000 us
+    + guard 80 + this 8200 = 10130 > capacity 10000 us
 mem-hog asks Tier 2 (per 10000 us):
   CPU 1000 us, memory 110000 KB
 REFUSED: memory
@@ -450,19 +554,148 @@ dma-hog asks Tier 2 (per 10000 us):
   CPU 1000 us, memory 1024 KB, sim-dma 8500 us
 REFUSED: sim-dma
   sim-dma overcommitted: reserve 0 + tier-1 2000 + tier-2 min 0
-    + guard 16 + this 8500 = 10516 > capacity 10000 us
+    + guard 20 + this 8500 = 10520 > capacity 10000 us
 all-hog asks Tier 2 (per 10000 us):
   CPU 8200 us, memory 110000 KB, sim-dma 8500 us
 REFUSED: CPU memory sim-dma
   CPU overcommitted: reserve 350 + tier-1 1500 + tier-2 min 0
-    + guard 40 + this 8200 = 10090 > capacity 10000 us
+    + guard 80 + this 8200 = 10130 > capacity 10000 us
   memory overcommitted: reserve 16384 + tier-1 13312 + tier-2 min 0
     + guard 0 + this 110000 = 139696 > capacity 131072 KB
   sim-dma overcommitted: reserve 0 + tier-1 2000 + tier-2 min 0
-    + guard 16 + this 8500 = 10516 > capacity 10000 us
+    + guard 20 + this 8500 = 10520 > capacity 10000 us
 fits asks Tier 2 (per 10000 us):
   CPU 8000 us, memory 90000 KB, sim-dma 7000 us
 OK: admitted (not started; released again)
+select> 13
+
+=== 13 预算令牌：驱动替谁干活就扣谁的预算 ===
+cam-app (tier 2, min 3000 us) and bg-caller (tier 3) call
+sim-dma-drv (passive server) for 50..400 us of device work each.
+calls 3523; measured by the kernel during the calls:
+  driver running 51948201 ticks + IPC kernel path 564707 ticks
+  = 52512908 ticks; caller budgets dropped by 52512908 ticks
+  longest call 321598 ticks; max |drop - measured| per call: 0 ticks
+  IPC kernel path charged to callers in total (not to the system
+  reserve): 1073221 ticks
+  driver's own budget used during the window: 0 ticks
+  driver's own wall-clock timing incl. preemption (reference only):
+  total 111767939 ticks
+Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
+  task           slot   jobs  miss  start_min  start_max  jitter  lat_max
+  display-vsync     0    200    20         76      88263   88187    30504
+  timer-server      1    200    30        113      18379   18266    20915
+  display-vsync last release: period 2313, tick 1446312500,
+    epoch+k*P+offset 1446312500
+  timer-server last release: period 2313, tick 1446468750,
+    epoch+k*P+offset 1446468750
+T1MISS task=timer-server period=2116 reason=late start_t=17105
+  lat_t=19635 lat_us=314 deadline_us=300 J_us=538 class=a
+T1MISS task=timer-server period=2126 reason=unfinished start_t=14642
+  lat_t=22924 lat_us=366 deadline_us=300 J_us=587 class=a
+T1MISS task=timer-server period=2130 reason=not_started start_t=-1
+  lat_t=22401 lat_us=358 deadline_us=300 J_us=762 class=a
+T1MISS task=display-vsync period=2132 reason=not_started start_t=-1
+  lat_t=67198 lat_us=1075 deadline_us=500 J_us=2149 class=a
+T1MISS task=display-vsync period=2140 reason=not_started start_t=-1
+  lat_t=109566 lat_us=1753 deadline_us=500 J_us=9081 class=a
+T1MISS task=display-vsync period=2141 reason=unfinished start_t=28583
+  lat_t=32384 lat_us=518 deadline_us=500 J_us=3283 class=a
+T1MISS task=timer-server period=2174 reason=not_started start_t=-1
+  lat_t=222854 lat_us=3565 deadline_us=300 J_us=6262 class=a
+T1MISS task=timer-server period=2177 reason=not_started start_t=-1
+  lat_t=126059 lat_us=2016 deadline_us=300 J_us=2384 class=a
+T1MISS task=display-vsync period=2189 reason=unfinished start_t=88263
+  lat_t=95047 lat_us=1520 deadline_us=500 J_us=4735 class=a
+T1MISS task=display-vsync period=2196 reason=not_started start_t=-1
+  lat_t=109077 lat_us=1745 deadline_us=500 J_us=3226 class=a
+T1MISS task=timer-server period=2197 reason=late start_t=18379
+  lat_t=20915 lat_us=334 deadline_us=300 J_us=7007 class=a
+T1MISS task=display-vsync period=2198 reason=not_started start_t=-1
+  lat_t=108994 lat_us=1743 deadline_us=500 J_us=4676 class=a
+T1MISS task=timer-server period=2199 reason=not_started start_t=-1
+  lat_t=147653 lat_us=2362 deadline_us=300 J_us=8324 class=a
+T1MISS task=timer-server period=2203 reason=not_started start_t=-1
+  lat_t=30792 lat_us=492 deadline_us=300 J_us=895 class=a
+T1MISS task=timer-server period=2204 reason=not_started start_t=-1
+  lat_t=32975 lat_us=527 deadline_us=300 J_us=1537 class=a
+T1MISS task=timer-server period=2207 reason=late start_t=18346
+  lat_t=20877 lat_us=334 deadline_us=300 J_us=2147 class=a
+T1MISS task=timer-server period=2211 reason=not_started start_t=-1
+  lat_t=43017 lat_us=688 deadline_us=300 J_us=863 class=a
+T1MISS task=timer-server period=2212 reason=not_started start_t=-1
+  lat_t=46062 lat_us=736 deadline_us=300 J_us=2391 class=a
+T1MISS task=timer-server period=2213 reason=not_started start_t=-1
+  lat_t=20000 lat_us=320 deadline_us=300 J_us=2042 class=a
+T1MISS task=timer-server period=2215 reason=not_started start_t=-1
+  lat_t=103388 lat_us=1654 deadline_us=300 J_us=2506 class=a
+T1MISS task=display-vsync period=2218 reason=not_started start_t=-1
+  lat_t=109371 lat_us=1749 deadline_us=500 J_us=3186 class=a
+T1MISS task=timer-server period=2220 reason=late start_t=17509
+  lat_t=20087 lat_us=321 deadline_us=300 J_us=1172 class=a
+T1MISS task=display-vsync period=2226 reason=not_started start_t=-1
+  lat_t=329222 lat_us=5267 deadline_us=500 J_us=8551 class=a
+T1MISS task=timer-server period=2226 reason=not_started start_t=-1
+  lat_t=172972 lat_us=2767 deadline_us=300 J_us=8551 class=a
+T1MISS task=timer-server period=2227 reason=not_started start_t=-1
+  lat_t=38654 lat_us=618 deadline_us=300 J_us=6938 class=a
+T1MISS task=timer-server period=2246 reason=not_started start_t=-1
+  lat_t=27571 lat_us=441 deadline_us=300 J_us=1204 class=a
+T1MISS task=display-vsync period=2251 reason=not_started start_t=-1
+  lat_t=234616 lat_us=3753 deadline_us=500 J_us=7044 class=a
+T1MISS task=timer-server period=2251 reason=not_started start_t=-1
+  lat_t=78366 lat_us=1253 deadline_us=300 J_us=7044 class=a
+T1MISS task=display-vsync period=2263 reason=not_started start_t=-1
+  lat_t=233803 lat_us=3740 deadline_us=500 J_us=3824 class=a
+T1MISS task=timer-server period=2263 reason=not_started start_t=-1
+  lat_t=77553 lat_us=1240 deadline_us=300 J_us=3824 class=a
+T1MISS task=display-vsync period=2265 reason=not_started start_t=-1
+  lat_t=71935 lat_us=1150 deadline_us=500 J_us=3766 class=a
+T1MISS task=timer-server period=2265 reason=not_started start_t=-1
+  lat_t=188333 lat_us=3013 deadline_us=300 J_us=6883 class=a
+T1MISS task=display-vsync period=2272 reason=not_started start_t=-1
+  lat_t=154011 lat_us=2464 deadline_us=500 J_us=4258 class=a
+T1MISS task=display-vsync period=2273 reason=unfinished start_t=8047
+  lat_t=125727 lat_us=2011 deadline_us=500 J_us=6014 class=a
+T1MISS task=timer-server period=2277 reason=not_started start_t=-1
+  lat_t=116325 lat_us=1861 deadline_us=300 J_us=2207 class=a
+T1MISS task=display-vsync period=2279 reason=not_started start_t=-1
+  lat_t=191211 lat_us=3059 deadline_us=500 J_us=4441 class=a
+T1MISS task=timer-server period=2279 reason=not_started start_t=-1
+  lat_t=34961 lat_us=559 deadline_us=300 J_us=4441 class=a
+T1MISS task=display-vsync period=2283 reason=not_started start_t=-1
+  lat_t=43225 lat_us=691 deadline_us=500 J_us=1010 class=a
+T1MISS task=timer-server period=2283 reason=not_started start_t=-1
+  lat_t=26222 lat_us=419 deadline_us=300 J_us=1613 class=a
+T1MISS task=display-vsync period=2284 reason=unfinished start_t=0
+  lat_t=31537 lat_us=504 deadline_us=500 J_us=6637 class=a
+T1MISS task=display-vsync period=2285 reason=not_started start_t=-1
+  lat_t=95772 lat_us=1532 deadline_us=500 J_us=2140 class=a
+T1MISS task=timer-server period=2287 reason=not_started start_t=-1
+  lat_t=18532 lat_us=296 deadline_us=300 J_us=416 class=a
+T1MISS task=timer-server period=2289 reason=not_started start_t=-1
+  lat_t=47302 lat_us=756 deadline_us=300 J_us=1335 class=a
+T1MISS task=display-vsync period=2290 reason=unfinished start_t=0
+  lat_t=110073 lat_us=1761 deadline_us=500 J_us=4747 class=a
+T1MISS task=display-vsync period=2291 reason=not_started start_t=-1
+  lat_t=233798 lat_us=3740 deadline_us=500 J_us=7793 class=a
+T1MISS task=timer-server period=2291 reason=not_started start_t=-1
+  lat_t=77548 lat_us=1240 deadline_us=300 J_us=7793 class=a
+T1MISS task=timer-server period=2292 reason=not_started start_t=-1
+  lat_t=70554 lat_us=1128 deadline_us=300 J_us=5933 class=a
+T1MISS task=display-vsync period=2308 reason=not_started start_t=-1
+  lat_t=109228 lat_us=1747 deadline_us=500 J_us=8779 class=a
+T1MISS task=timer-server period=2309 reason=not_started start_t=-1
+  lat_t=77611 lat_us=1241 deadline_us=300 J_us=4031 class=a
+T1MISS task=timer-server period=2310 reason=not_started start_t=-1
+  lat_t=202391 lat_us=3238 deadline_us=300 J_us=4541 class=a
+misses: class a (clock jump) 50, class b (kernel) 0, skipped periods 0
+kernel per period: max 113902 avg 5189 ticks, reserve 21875, over 3
+timer IRQ entry - CVAL: min 287 max 559566 ticks (n=1653)
+kernel entry -> eret (no slot wait): min 53 max 87930 ticks
+slot guard: path max 517 ticks, slack min 0 ticks of 1250 (n=115)
+wait loop exit late by 0/1/2/>2 ticks: 13/15/10/77
+clock jumps: 1092, total 251855 us
 select> 1
 
 === 1 资源总览 / resource overview ===
@@ -470,13 +703,13 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 168811 ticks/period (period 1328 of 2109)
+  measured since boot: max 113902 ticks/period (period 2290 of 2335)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500         537        0   2048
-  timer-server      1      3500    300          95      205   1024
+  display-vsync     0      1000    500        1886        0   2048
+  timer-server      1      3500    300        2825        0   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -484,12 +717,12 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [Tier 2] admitted apps (minimum is guaranteed, suggested is spare only)
   (none)
-  minimum sum: CPU 0 / 8110 us, memory 0 / 101376 KB
+  minimum sum: CPU 0 / 8070 us, memory 0 / 101376 KB
   admission: reserve 350 + tier-1 1500 + tier-2 min 0
-    + guard 40 = 1890 <= 10000 us
+    + guard 80 = 1930 <= 10000 us
 
 [Tier 3] everyone else, round robin 1000 us, leftover only
-  CPU not promised to anyone: 8110 us/period
+  CPU not promised to anyone: 8070 us/period
 pressure: off
 select> x
 未知选项。按 h 看命令。
@@ -508,6 +741,7 @@ select> h
   10 任何一级的失控任务只拖慢自己
   11 设备申请 Tier 1：不能打断的设备被拒（说明缺哪一条）
   12 超额申请被拒（说明是哪种资源）
+  13 预算令牌：驱动替谁干活就扣谁的预算
   h  帮助    q  提示如何退出 QEMU
 select> QEMU: Terminated
 
@@ -517,19 +751,19 @@ select> QEMU: Terminated
 ================================================================================
 
 Quota OS microkernel
-Version: 009 (d2c58c4)
+Version: 010 (4f077b3)
 基于三级资源声明的微内核，
 保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 [boot] x0=0x42000000 physical RAM span 64 MB (probed)
 [boot] DTB at 0x42000000
 [boot] DTB memory 67108864 bytes
 [boot] system reserve 350 us/period, 16384 KB;
-       tier-1 1500 us/period, 13312 KB; guard 40 us/period
-[boot] kernel image+bss 475 KB of the 16384 KB system reserve
+       tier-1 1500 us/period, 13312 KB; guard 80 us/period
+[boot] kernel image+bss 481 KB of the 16384 KB system reserve
 [boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
 [boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
 [boot] tier-1 display-vsync and timer-server bound to their slots
-[boot] slot table from tick 625000, period 625000 ticks, guard 625 ticks
+[boot] slot table from tick 625000, period 625000 ticks, guard 1250 ticks
 [boot] shell task running
 
 命令（输入数字后回车）:
@@ -545,6 +779,7 @@ Version: 009 (d2c58c4)
   10 任何一级的失控任务只拖慢自己
   11 设备申请 Tier 1：不能打断的设备被拒（说明缺哪一条）
   12 超额申请被拒（说明是哪种资源）
+  13 预算令牌：驱动替谁干活就扣谁的预算
   h  帮助    q  提示如何退出 QEMU
 select> 1
 
@@ -553,13 +788,13 @@ RAM 65536 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 67103 ticks/period (period 0 of 19)
+  measured since boot: max 67965 ticks/period (period 0 of 20)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500          91      409   2048
-  timer-server      1      3500    300          66      234   1024
+  display-vsync     0      1000    500         107      393   2048
+  timer-server      1      3500    300          59      241   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -567,17 +802,17 @@ RAM 65536 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [Tier 2] admitted apps (minimum is guaranteed, suggested is spare only)
   (none)
-  minimum sum: CPU 0 / 8110 us, memory 0 / 35840 KB
+  minimum sum: CPU 0 / 8070 us, memory 0 / 35840 KB
   admission: reserve 350 + tier-1 1500 + tier-2 min 0
-    + guard 40 = 1890 <= 10000 us
+    + guard 80 = 1930 <= 10000 us
 
 [Tier 3] everyone else, round robin 1000 us, leftover only
-  CPU not promised to anyone: 8110 us/period
+  CPU not promised to anyone: 8070 us/period
 pressure: off
 select> 4
 
 === 4 旧设备：超过整机容量 / old device: request too big ===
-apps get at most CPU 8110 us/period and memory 35840 KB on this device.
+apps get at most CPU 8070 us/period and memory 35840 KB on this device.
 
 Neural Forge (CPU min 1000 us, memory min 81920 KB):
 REFUSED: device does not meet minimum requirements
@@ -593,7 +828,7 @@ No app can be closed to make room: this device is too small.
 
 Render Farm (CPU min 9000 us, memory min 4096 KB):
 REFUSED: device does not meet minimum requirements
-  minimum CPU 9000 us > 8110 us/period for apps
+  minimum CPU 9000 us > 8070 us/period for apps
   (period - system reserve - tier-1 - guard)
 No app can be closed to make room: this device is too small.
 select> 2
@@ -639,13 +874,13 @@ RAM 65536 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 67103 ticks/period (period 0 of 160)
+  measured since boot: max 67965 ticks/period (period 0 of 165)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500          94      406   2048
-  timer-server      1      3500    300          76      224   1024
+  display-vsync     0      1000    500         107      393   2048
+  timer-server      1      3500    300          63      237   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -653,12 +888,12 @@ RAM 65536 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [Tier 2] admitted apps (minimum is guaranteed, suggested is spare only)
   Pixel Racer    CPU min 3000 + sugg 1000 us, mem min 8192 KB, granted 20480 KB
-  minimum sum: CPU 3000 / 8110 us, memory 8192 / 35840 KB
+  minimum sum: CPU 3000 / 8070 us, memory 8192 / 35840 KB
   admission: reserve 350 + tier-1 1500 + tier-2 min 3000
-    + guard 40 = 4890 <= 10000 us
+    + guard 80 = 4930 <= 10000 us
 
 [Tier 3] everyone else, round robin 1000 us, leftover only
-  CPU not promised to anyone: 5110 us/period
+  CPU not promised to anyone: 5070 us/period
 pressure: off
 select> QEMU: Terminated
 

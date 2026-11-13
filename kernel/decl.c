@@ -17,7 +17,9 @@
 #define DEV_RESET_US 2      /* 能打断的设备收到中止后复位所需时间 */
 #define DEV_TRIALS 8
 
-enum { R_CPU, R_MEM, R_DMA, R_BLK, NRES };
+enum { R_CPU, R_MEM, R_DMA, R_BLK, R_CAM, NRES };
+#define NDEV 3
+#define T1_STOP_LIMIT_US 20   /* Tier 1 设备的停止上限不得超过它（算进保护时间） */
 
 struct sim_dev {
     const char *name;
@@ -31,13 +33,14 @@ struct sim_dev {
     uint64_t job_max_t, stop_max_t;
 };
 
-static struct sim_dev devs[2] = {
+static struct sim_dev devs[NDEV] = {
     {"sim-dma", 400, 5, 20, 1, 1, 395, 0, 0, 0},
     {"sim-blk", 2000, 10, 20, 0, 0, 1990, 0, 0, 0},
+    {"sim-cam", 300, 5, 30, 1, 1, 290, 0, 0, 0},
 };
 
-static const char *res_name[NRES] = {"CPU", "memory", "sim-dma", "sim-blk"};
-static const char *res_unit[NRES] = {"us", "KB", "us", "us"};
+static const char *res_name[NRES] = {"CPU", "memory", "sim-dma", "sim-blk", "sim-cam"};
+static const char *res_unit[NRES] = {"us", "KB", "us", "us", "us"};
 
 struct decl {
     char who[NAME_LEN];
@@ -119,7 +122,7 @@ static void dev_measure(struct sim_dev *d)
 
 static void measure_all(void)
 {
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < NDEV; i++)
         if (!devs[i].measured)
             dev_measure(&devs[i]);
 }
@@ -134,7 +137,7 @@ static void print_devices(void)
 {
     printf("  device   preempt divisible max_job switch stop_bound | measured:\n");
     printf("                                                       job_max  stop_max\n");
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < NDEV; i++) {
         struct sim_dev *d = &devs[i];
         printf("  %s  %7s %9s %7u %6u %10u | %7lu %9lu us\n", d->name,
                d->preemptible ? "yes" : "no", d->divisible ? "yes" : "no", d->max_job_us,
@@ -198,7 +201,7 @@ static uint64_t t2_of(int r)
     return s;
 }
 
-/* 保护时间：CPU 每个 Tier 1 槽前 GUARD_US；设备每条 Tier 1 声明留一次实测的停住时间。 */
+/* 保护时间：CPU 每个 Tier 1 槽前 GUARD_US；设备每条 Tier 1 声明留一次声明的停止上限。 */
 static uint64_t guard_of(int r, int extra_t1)
 {
     if (r == R_CPU)
@@ -210,10 +213,11 @@ static uint64_t guard_of(int r, int extra_t1)
     for (int i = 0; i < MAX_DECL; i++)
         if (reg[i].live && reg[i].tier == TIER1 && reg[i].b[r])
             n++;
-    return n * up_us(d->stop_max_t);
+    return n * d->stop_us;   /* 只用出厂声明的停止上限：每次启动结果都一样 */
 }
 
-/* Tier 1 设备条件；返回缺的条件个数，并把缺的写进 why。 */
+/* Tier 1 设备条件，只看出厂声明（实测只用来核对，见菜单 11 的表）。
+ * 不满足时把缺的条件全部写进 why，返回非 0。 */
 static int t1_device_rule(const char *who, int r)
 {
     struct sim_dev *d = &devs[r - R_DMA];
@@ -221,42 +225,27 @@ static int t1_device_rule(const char *who, int r)
     for (int i = 0; i < MAX_DECL; i++)
         if (reg[i].live && reg[i].b[r] && strcmp(reg[i].who, who))
             other = 1;
-    int stop_ok = d->preemptible && d->stop_max_t <= us_to_ticks(d->stop_us);
-    int wcet_ok = d->job_max_t <= us_to_ticks(d->max_job_us);
-    int miss = 0;
+    int bound_ok = d->stop_us <= T1_STOP_LIMIT_US;
+    int refuse = !d->preemptible || !bound_ok || (other && !d->divisible);
+    if (!refuse)
+        return 0;
     if (!d->preemptible) {
-        wadd("  missing: forcibly stoppable (");
+        wadd("  missing: 不能强制叫停 (");
         wadd(d->name);
-        wadd(" is non-preemptible;\n    measured stop ");
-        wadd_u(up_us(d->stop_max_t));
-        wadd(" us > bound ");
-        wadd_u(d->stop_us);
-        wadd(" us)\n");
-        return 1;   /* 不能打断的设备一律不进 Tier 1，独占也不行 */
+        wadd(" is non-preemptible)\n");
     }
-    if (!other)
-        return 0;   /* 独占 */
+    if (!bound_ok) {
+        wadd("  missing: 停止上限超过 Tier 1 限值 (declared stop ");
+        wadd_u(d->stop_us);
+        wadd(" us > ");
+        wadd_u(T1_STOP_LIMIT_US);
+        wadd(" us)\n");
+    }
     if (!d->divisible) {
-        wadd("  missing: divisible\n");
-        miss++;
+        wadd("  missing: 不可切分 (not divisible)");
+        wadd(other ? "\n" : "; exclusive use would waive this one\n");
     }
-    if (!stop_ok) {
-        wadd("  missing: forcibly stoppable (measured stop ");
-        wadd_u(up_us(d->stop_max_t));
-        wadd(" us > bound ");
-        wadd_u(d->stop_us);
-        wadd(" us)\n");
-        miss++;
-    }
-    if (!wcet_ok) {
-        wadd("  missing: bounded worst case (measured job ");
-        wadd_u(up_us(d->job_max_t));
-        wadd(" us > declared ");
-        wadd_u(d->max_job_us);
-        wadd(" us)\n");
-        miss++;
-    }
-    return miss;
+    return 1;
 }
 
 /* 返回超额资源的位图（1<<r）；Tier 1 设备条件不满足时位图里加 1<<8。 */
@@ -315,9 +304,9 @@ static void print_req(const char *who, int tier, const uint64_t *b)
 }
 
 static int try_req(const char *who, int tier, uint64_t cpu, uint64_t mem, uint64_t dma,
-                   uint64_t blk, int verbose)
+                   uint64_t blk, uint64_t cam, int verbose)
 {
-    uint64_t b[NRES] = {cpu, mem, dma, blk};
+    uint64_t b[NRES] = {cpu, mem, dma, blk, cam};
     int bad = admit(who, tier, b);
     if (verbose) {
         print_req(who, tier, b);
@@ -353,27 +342,30 @@ static int why_has(const char *s)
 void decl_demo_device_tier1(void)
 {
     printf("\n=== 11 设备申请 Tier 1：不能打断的设备被拒 ===\n");
-    printf("Two simulated devices (software models, not real hardware).\n");
+    printf("Three simulated devices (software models, not real hardware).\n");
     printf("The system measures each one (%d full jobs, %d aborts) with IRQs\n",
            DEV_TRIALS, DEV_TRIALS);
     printf("masked, only where the job ends before the next tier-1 guard.\n");
+    printf("Admission uses only the declared (factory) values; the measured\n");
+    printf("ones are for verification.\n");
     measure_all();
     print_devices();
     printf("display-vsync already declares sim-dma 2000 us (Tier 1).\n\n");
-    try_req("cam-app", TIER1, 0, 0, 1000, 0, 1);
-    try_req("rec-app", TIER1, 0, 0, 0, 1000, 1);
-    try_req("rec-app", TIER2, 0, 0, 0, 1000, 1);
+    try_req("cam-app", TIER1, 0, 0, 1000, 0, 0, 1);
+    try_req("rec-app", TIER1, 0, 0, 0, 1000, 0, 1);
+    try_req("rec-app", TIER2, 0, 0, 0, 1000, 0, 1);
+    try_req("scan-app", TIER1, 0, 0, 0, 0, 500, 1);
 }
 
 void decl_demo_overcommit(void)
 {
     printf("\n=== 12 超额申请在启动时被拒，并说明是哪种资源 ===\n");
     measure_all();
-    try_req("cpu-hog", TIER2, 8200, 1024, 0, 0, 1);
-    try_req("mem-hog", TIER2, 1000, 110000, 0, 0, 1);
-    try_req("dma-hog", TIER2, 1000, 1024, 8500, 0, 1);
-    try_req("all-hog", TIER2, 8200, 110000, 8500, 0, 1);
-    try_req("fits", TIER2, 8000, 90000, 7000, 0, 1);
+    try_req("cpu-hog", TIER2, 8200, 1024, 0, 0, 0, 1);
+    try_req("mem-hog", TIER2, 1000, 110000, 0, 0, 0, 1);
+    try_req("dma-hog", TIER2, 1000, 1024, 8500, 0, 0, 1);
+    try_req("all-hog", TIER2, 8200, 110000, 8500, 0, 0, 1);
+    try_req("fits", TIER2, 8000, 90000, 7000, 0, 0, 1);
 }
 
 /* ---------- E1 验收（qa 引导参数 e1） ---------- */
@@ -385,19 +377,34 @@ void decl_qa_e1(int unused)
     /* 第 2 项：不能打断的设备申请 Tier 1，100 次都要被拒并写出缺的条件 */
     int n = 0, refused = 0, named = 0;
     for (uint64_t b = 100; b <= 10000; b += 100) {
-        int bad = try_req("rec-app", TIER1, 0, 0, 0, b, 0);
+        int bad = try_req("rec-app", TIER1, 0, 0, 0, b, 0, 0);
         n++;
         if (bad & (1 << 8))
             refused++;
-        if (why_has("missing: forcibly stoppable") && why_has("non-preemptible"))
+        if (why_has("不能强制叫停") && why_has("不可切分"))
             named++;
     }
-    int ctrl_ok = try_req("cam-app", TIER1, 0, 0, 1000, 0, 0) == 0 &&
-                  try_req("rec-app", TIER2, 0, 0, 0, 1000, 0) == 0;
+    int ctrl_ok = try_req("cam-app", TIER1, 0, 0, 1000, 0, 0, 0) == 0 &&
+                  try_req("rec-app", TIER2, 0, 0, 0, 1000, 0, 0) == 0;
     printf("E1 item2 non-preemptible Tier 1: asked %d, refused %d,\n", n, refused);
-    printf("  missing condition named %d; controls admitted: %s\n", named,
+    printf("  both missing conditions named %d; controls admitted: %s\n", named,
            ctrl_ok ? "yes" : "no");
     printf("E1 item2 %s\n", refused == n && named == n && ctrl_ok ? "PASS" : "FAIL");
+
+    /* 出厂声明的停止上限超过 Tier 1 限值：固定拒绝，与实测无关 */
+    int bn = 0, brefused = 0;
+    for (uint64_t b = 100; b <= 3000; b += 100) {
+        int bad = try_req("scan-app", TIER1, 0, 0, 0, 0, b, 0);
+        bn++;
+        if ((bad & (1 << 8)) && why_has("停止上限超过 Tier 1 限值"))
+            brefused++;
+    }
+    int bctrl = try_req("scan-app", TIER2, 0, 0, 0, 0, 500, 0) == 0;
+    printf("E1 declared-bound sim-cam (declared stop %u us > %u us) Tier 1:\n",
+           devs[2].stop_us, T1_STOP_LIMIT_US);
+    printf("  asked %d, refused naming the bound %d; Tier 2 control admitted: %s\n", bn,
+           brefused, bctrl ? "yes" : "no");
+    printf("E1 declared-bound %s\n", brefused == bn && bctrl ? "PASS" : "FAIL");
 
     /* 第 4 项：超额在启动时被拒，并写出是哪种资源 */
     static const struct {
@@ -408,13 +415,13 @@ void decl_qa_e1(int unused)
         {1000, 110000, 0, 1 << R_MEM},
         {1000, 1024, 8500, 1 << R_DMA},
         {8200, 110000, 8500, (1 << R_CPU) | (1 << R_MEM) | (1 << R_DMA)},
-        {8111, 0, 0, 1 << R_CPU},       /* 350+1500+8111+40 = 10001 */
-        {8110, 0, 0, 0},                /* 正好 10000 */
+        {8071, 0, 0, 1 << R_CPU},       /* 350+1500+8071+80 = 10001 */
+        {8070, 0, 0, 0},                /* 正好 10000 */
         {8000, 90000, 7000, 0},
     };
     int cases = 0, right = 0, rnamed = 0;
     for (unsigned i = 0; i < sizeof c / sizeof c[0]; i++) {
-        int bad = try_req("probe", TIER2, c[i].cpu, c[i].mem, c[i].dma, 0, 0);
+        int bad = try_req("probe", TIER2, c[i].cpu, c[i].mem, c[i].dma, 0, 0, 0);
         cases++;
         if (bad == c[i].want)
             right++;

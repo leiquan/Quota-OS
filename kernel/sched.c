@@ -288,6 +288,11 @@ static void set_entry(struct task *t, void (*entry)(void))
     ((struct irq_frame *)t->sp)->elr = (uint64_t)entry;
 }
 
+void task_set_entry(struct task *t, void (*entry)(void))
+{
+    set_entry(t, entry);
+}
+
 /* 死循环型立刻就绪；周期作业等下一次释放。 */
 void task_start(struct task *t)
 {
@@ -377,13 +382,29 @@ static void slot_overlap(struct task *t, uint64_t a, uint64_t b)
     }
 }
 
+static struct ipc_stats ipc;
+
 static void charge(struct task *t, uint64_t a, uint64_t b)
 {
     if (!t || b <= a)
         return;
     slot_overlap(t, a, b);
-    if (t != idle_task)
+    if (t == idle_task)
+        return;
+    if (t->sc) {
+        /* 服务端在替调用者干活：记在调用者的预算上，服务端自己的不动 */
+        t->sc->used_t += b - a;
+        t->call_ran_t += b - a;
+    } else {
         t->used_t += b - a;
+    }
+}
+
+void sched_ipc_stats(struct ipc_stats *s, int reset)
+{
+    *s = ipc;
+    if (reset)
+        memset(&ipc, 0, sizeof ipc);
 }
 
 static void kernel_stint(uint64_t a, uint64_t b, int guard)
@@ -463,6 +484,8 @@ static void end_period(uint64_t now, int skipped)
             if (t->tier == TIER2 && t->kind == KIND_SPIN && t->used_t < t->min_t)
                 t->w.short_periods++;
         }
+        if (t->state == TASK_IPC)
+            t->ipc_base -= (int64_t)t->used_t;
         t->used_t = 0;
     }
     for (int i = 0; i <= rec; i++) {
@@ -524,6 +547,19 @@ static void begin_period(void)
 
 /* ---------- 挑选 ---------- */
 
+/* 调用者在等 IPC 回复时，它的预算由服务端来用。 */
+static int runnable(struct task *t)
+{
+    return t->state == TASK_READY ||
+           (t->state == TASK_IPC && t->server && t->server->caller == t &&
+            t->server->state == TASK_READY);
+}
+
+static struct task *runner(struct task *t)
+{
+    return t->state == TASK_IPC ? t->server : t;
+}
+
 static struct task *pick_t2(int sugg)
 {
     if (sugg && resource_pressure())
@@ -533,13 +569,13 @@ static struct task *pick_t2(int sugg)
         if (i >= n2)
             i -= n2;
         struct task *t = lst2[i];
-        if (t->state != TASK_READY)
+        if (!runnable(t))
             continue;
         uint64_t cap = t->min_t + (sugg ? t->sugg_t : 0);
         if (t->used_t < cap) {
             rr2 = i;
             k_arm_rel = cap - t->used_t;
-            return t;
+            return runner(t);
         }
     }
     return 0;
@@ -552,10 +588,10 @@ static struct task *pick_t3(void)
         if (i >= n3)
             i -= n3;
         struct task *t = lst3[i];
-        if (t->state == TASK_READY) {
+        if (runnable(t)) {
             rr3 = i;
             k_arm_rel = Q3;
-            return t;
+            return runner(t);
         }
     }
     return 0;
@@ -611,13 +647,93 @@ static struct task *dispatch(uint64_t now)
     return t;
 }
 
+static int k_ipc_op;
+/* 上一段内核停留是 IPC 系统调用：记在这个预算上（MCS：调用路径用调用者的预算），不算系统预留 */
+static struct task *prev_stint_sc, *prev_stint_srv;
+
+/* 服务端开始替调用者 c 干活：从这一刻起它用 c 的预算。 */
+static void ipc_begin(struct task *s, struct task *c)
+{
+    c->ipc_base = (int64_t)c->used_t;
+    s->caller = c;
+    s->sc = c->sc ? c->sc : c;
+    s->call_ran_t = 0;
+    s->call_kern_t = 0;
+    ((struct irq_frame *)s->sp)->r[0] = ((struct irq_frame *)c->sp)->r[1];
+    s->state = TASK_READY;
+}
+
+/* svc #1：调用（x0 = 服务端任务号，x1 = 请求）；svc #2：服务端回复（x0 = 回复）并等下一次。
+ * 服务端忙时调用者排队（状态 TASK_IPC，但不可运行），回复后按任务号轮转接下一个。 */
+static void ipc_op(struct task *t, int op)
+{
+    struct irq_frame *f = (struct irq_frame *)t->sp;
+    if (op == 1) {
+        uint64_t id = f->r[0];
+        struct task *s = id < MAX_TASKS ? &tasks[id] : 0;
+        if (!s || s->kind != KIND_SERVER || s->state == TASK_EMPTY || s->state == TASK_DEAD) {
+            f->r[0] = ~0ull;    /* 没有这个服务端：调用失败 */
+            return;
+        }
+        t->state = TASK_IPC;
+        t->server = s;
+        prev_stint_sc = t->sc ? t->sc : t;
+        if (!s->caller && s->state == TASK_BLOCKED) {
+            ipc_begin(s, t);
+            prev_stint_srv = s;
+        }
+    } else if (op == 2 && t->kind == KIND_SERVER) {
+        struct task *c = t->caller;
+        if (c) {
+            struct task *owner = t->sc;
+            prev_stint_sc = owner;
+            uint64_t drop = (uint64_t)((int64_t)owner->used_t - owner->ipc_base);
+            uint64_t m = t->call_ran_t + t->call_kern_t;
+            ipc.run_sum += t->call_ran_t;
+            uint64_t d = drop > m ? drop - m : m - drop;
+            ipc.calls++;
+            ipc.drop_sum += drop;
+            ipc.meas_sum += m;
+            ipc.self_sum += f->r[0];
+            if (m > ipc.meas_max)
+                ipc.meas_max = m;
+            if (d > ipc.diff_max)
+                ipc.diff_max = d;
+            ((struct irq_frame *)c->sp)->r[0] = f->r[0];
+            c->server = 0;
+            c->state = TASK_READY;
+            t->caller = 0;
+            t->sc = 0;
+        }
+        t->state = TASK_BLOCKED;
+        int from = c ? c->id : 0;
+        for (int n = 1; n <= MAX_TASKS; n++) {
+            struct task *q = &tasks[(from + n) % MAX_TASKS];
+            if (q->state == TASK_IPC && q->server == t) {
+                ipc_begin(t, q);
+                break;
+            }
+        }
+    }
+}
+
 static uint64_t schedule(uint64_t sp, int timer)
 {
     uint64_t entry = k_entry_ts;
     uint64_t eret = k_eret_ts;
     struct task *prev = cur;
 
-    kernel_stint(prev_entry, eret, prev_guard);
+    if (prev_stint_sc && !prev_guard && eret > prev_entry) {
+        uint64_t d = eret - prev_entry;
+        prev_stint_sc->used_t += d;
+        ipc.kern_sum += d;
+        if (prev_stint_srv && prev_stint_srv->sc == prev_stint_sc)
+            prev_stint_srv->call_kern_t += d;
+    } else {
+        kernel_stint(prev_entry, eret, prev_guard);
+    }
+    prev_stint_sc = 0;
+    prev_stint_srv = 0;
     if (prev_guard) {
         uint64_t d = k_spin_late;
         ks[0].spin_hist[d > 2 ? 3 : d]++;
@@ -645,7 +761,11 @@ static uint64_t schedule(uint64_t sp, int timer)
     charge(prev, eret, entry);
     if (prev->state == TASK_RUNNING)
         prev->state = TASK_READY;
-    if (!timer && prev->kind == KIND_JOB && prev->state == TASK_READY) {
+    int op = timer ? 0 : k_ipc_op;
+    k_ipc_op = 0;
+    if (op)
+        ipc_op(prev, op);
+    if (!timer && !op && prev->kind == KIND_JOB && prev->state == TASK_READY) {
         job_done(prev, entry);
         prev->state = TASK_BLOCKED;
     }
@@ -715,8 +835,10 @@ uint64_t handle_sync(uint64_t frame_sp)
     uint64_t esr;
     asm volatile("mrs %0, esr_el1" : "=r"(esr));
     uint32_t ec = (uint32_t)((esr >> 26) & 0x3f);
-    if (ec == 0x15)
+    if (ec == 0x15) {
+        k_ipc_op = (int)(esr & 0xffff);
         return schedule(frame_sp, 0);
+    }
     if (dtb_fault_expected() && (ec == 0x24 || ec == 0x25)) {
         dtb_note_fault();
         f->elr += 4;

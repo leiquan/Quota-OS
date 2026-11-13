@@ -34,3 +34,13 @@ void str_copy(char *dst, const char *src, int cap)
         dst[i] = src[i];
     dst[i] = 0;
 }
+
+__attribute__((optimize("no-tree-loop-distribute-patterns")))
+void *memcpy(void *dst, const void *src, size_t n)
+{
+    uint8_t *d = dst;
+    const uint8_t *s = src;
+    while (n--)
+        *d++ = *s++;
+    return dst;
+}

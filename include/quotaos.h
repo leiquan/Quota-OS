@@ -2,7 +2,7 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "009"
+#define QUOTAOS_VERSION     "010"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -18,7 +18,7 @@
  */
 #define PERIOD_US           10000u
 #define T3_QUANTUM_US       1000u
-#define GUARD_US            10u      /* 槽前多少微秒停下窗口任务，内核原地等到槽起点 */
+#define GUARD_US            20u      /* 槽前多少微秒停下窗口任务，内核原地等到槽起点；v010 起 20：IPC 的 svc 可能恰好在保护区前进内核 */
 #define SYS_RESERVE_US      350u     /* 系统预留 CPU：实测每周期最坏 15290 tick（245 us）+ 余量，见 README */
 #define KERNEL_RESERVE_KB   (16u * 1024u)
 #define JUMP_US             20u      /* 定时器或槽起点迟到超过这么多，记一次时钟跳动 */
@@ -35,6 +35,7 @@
 #define TASK_RUNNING        2
 #define TASK_BLOCKED        3
 #define TASK_DEAD           4
+#define TASK_IPC            5   /* 发出 IPC 调用、等回复；它的预算借给服务端用 */
 
 #define TIER_IDLE           0
 #define TIER1               1
@@ -45,6 +46,8 @@
 #define KIND_JOB            1   /* 周期作业：释放后做 work_us，svc 交还 */
 #define KIND_SHELL          2
 #define KIND_IDLE           3
+#define KIND_SERVER         4   /* 被动服务端（驱动）：自己不被调度，只在调用者的预算上跑 */
+#define TIER_SERVER         0
 
 #define ADMIT_OK            0
 #define ADMIT_DEVICE        1
@@ -102,6 +105,14 @@ struct task {
     uint32_t misses;
     uint64_t used_max_all;      /* 开机以来单周期最多用了多少（Tier 1 的浪费 = 槽长 - 它） */
     struct task_win w;
+
+    /* E2：预算令牌随 IPC 走（seL4 MCS 式）。 */
+    struct task *sc;            /* 服务端正在用谁的预算；0 = 自己 */
+    struct task *server;        /* 调用者：在等哪个服务端 */
+    struct task *caller;        /* 服务端：正在替谁干活 */
+    int64_t ipc_base;           /* 调用者：发出调用时的 used_t（跨周期时减去清零的部分） */
+    uint64_t call_ran_t;        /* 服务端：本次调用里内核量到的运行时间 */
+    uint64_t call_kern_t;       /* 服务端：本次调用里记在调用者头上的 IPC 内核路径时间 */
 };
 
 struct tier1_decl {
@@ -211,6 +222,13 @@ uint64_t sched_irq_lat_max(void);
 uint64_t sched_periods(void);
 uint64_t sched_foreign_window(void);
 uint64_t sched_next_guard(uint64_t now);
+void task_set_entry(struct task *t, void (*entry)(void));
+struct ipc_stats {
+    uint64_t calls, drop_sum, meas_sum, meas_max, diff_max, srv_used_change, self_sum;
+    uint64_t run_sum, kern_sum;
+};
+void sched_ipc_stats(struct ipc_stats *s, int reset);
+void e2_demo(uint32_t periods, int qa_line);
 void sched_total_misses(uint64_t *a, uint64_t *b);
 
 void decl_init(void);
