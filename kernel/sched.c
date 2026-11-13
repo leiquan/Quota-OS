@@ -423,6 +423,7 @@ static void charge(struct task *t, uint64_t a, uint64_t b)
     if (t->sc) {
         t->call_ran_t += b - a;
         x->p_run += b - a;
+        ipc.run_cum += b - a;
     } else {
         x->p_own += b - a;
     }
@@ -451,11 +452,39 @@ static uint64_t bw_room(struct task *t)
     return (need + t->bw_rate - 1) / t->bw_rate;
 }
 
+static uint64_t inflight_run(uint64_t *calls)
+{
+    uint64_t sum = 0, n = 0;
+    for (int i = 0; i < MAX_TASKS; i++)
+        if (tasks[i].kind == KIND_SERVER && tasks[i].caller && tasks[i].state != TASK_EMPTY &&
+            tasks[i].state != TASK_DEAD) {
+            sum += tasks[i].call_ran_t;
+            n++;
+        }
+    if (calls)
+        *calls = n;
+    return sum;
+}
+
+static void ipc_snap(uint64_t *v)
+{
+    v[0] = ipc.run_cum;
+    v[1] = ipc.kern_in;
+    v[2] = ipc.kern_entry;
+    v[3] = ipc.kern_reply;
+}
+
 void sched_ipc_stats(struct ipc_stats *s, int reset)
 {
+    asm volatile("msr daifset, #2" ::: "memory");
     *s = ipc;
-    if (reset)
+    s->t_read = ticks_now();
+    if (reset) {
         memset(&ipc, 0, sizeof ipc);
+        ipc.t_reset = ticks_now();
+        ipc.infl_reset_run = inflight_run(0);
+    }
+    asm volatile("msr daifclr, #2" ::: "memory");
 }
 
 static void kernel_stint(uint64_t a, uint64_t b, int guard)
@@ -543,7 +572,9 @@ static void end_period(uint64_t now, int skipped)
             ipc.w_kent += t->p_kent;
             ipc.w_krep += t->p_krep;
         }
-        t->p_own = t->p_run = t->p_kin = t->p_kent = t->p_krep = 0;
+        if (rec && t->p_hr > ipc.hr_pp_max)
+            ipc.hr_pp_max = t->p_hr;
+        t->p_own = t->p_run = t->p_kin = t->p_kent = t->p_krep = t->p_hr = 0;
         if (t->state == TASK_IPC)
             t->ipc_base -= (int64_t)t->used_t;
         t->used_t = 0;
@@ -585,6 +616,7 @@ static void end_period(uint64_t now, int skipped)
 
 static void finish_bench(void)
 {
+    ipc.infl_end_run = inflight_run(&ipc.infl_end_calls);
     dev_unbind_locked();
     for (int i = 0; i < MAX_TASKS; i++)
         if (tasks[i].bench_owned && tasks[i].state != TASK_EMPTY)
@@ -607,8 +639,14 @@ static void begin_period(void)
         for (int i = 0; i < MAX_TASKS; i++)
             win_reset(&tasks[i]);
         bench_state = 2;
+        ipc_snap(ipc.snap0);
+        ipc.t_w0 = pstart;
+        ipc.p_w0 = pk;
     } else if (bench_state == 2) {
         if (--bench_left == 0) {
+            ipc_snap(ipc.snap1);
+            ipc.t_w1 = pstart;
+            ipc.p_w1 = pk - 1;
             rec = 0;
             bench_state = 0;
             finish_bench();
@@ -880,12 +918,20 @@ static uint64_t schedule(uint64_t sp, int timer)
     if (prev_stint_sc && !prev_guard && eret > prev_entry) {
         uint64_t d = eret - prev_entry;
         struct task *x = prev_stint_sc;
-        /* Tier 2 只记到预算上限为止；超出的部分（调用者预算在内核路径里用完）算系统预留并计数 */
+        /* 全部记在调用者头上。Tier 2 超出预算上限的部分（调用者预算在内核路径里用完）
+         * 从它准入时多留的 IPC 余量里出（v013 起；v012 及以前改记系统预留）。 */
         uint64_t c = d;
-        if (x->tier == TIER2)
-            c = x->run_cap > x->used_t ? x->run_cap - x->used_t : 0;
-        if (c > d)
-            c = d;
+        if (x->tier == TIER2) {
+            uint64_t room = x->run_cap > x->used_t ? x->run_cap - x->used_t : 0;
+            if (d > room) {
+                uint64_t o = d - room;
+                ipc.hr_n++;
+                ipc.hr_sum += o;
+                if (o > ipc.hr_max)
+                    ipc.hr_max = o;
+                x->p_hr += o;
+            }
+        }
         x->used_t += c;
         ipc.kern_sum += c;
         if (prev_stint_srv && prev_stint_srv->sc == x) {
@@ -898,13 +944,6 @@ static uint64_t schedule(uint64_t sp, int timer)
         } else {
             ipc.kern_entry += c;
             x->p_kent += c;
-        }
-        if (c < d) {
-            ipc.excess_n++;
-            ipc.excess_sum += d - c;
-            if (d - c > ipc.excess_max)
-                ipc.excess_max = d - c;
-            k_this_period += d - c;
         }
     } else {
         kernel_stint(prev_entry, eret, prev_guard);

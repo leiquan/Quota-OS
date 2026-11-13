@@ -1,4 +1,4 @@
-# Quota OS（版本 012）
+# Quota OS（版本 013）
 
 基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 
@@ -28,6 +28,7 @@ License: [Apache-2.0](LICENSE)
 | E2（v010） | 预算令牌：驱动（被动服务端）替谁干活就扣谁的预算，IPC 内核路径也记在调用方；设备 Tier 1 准入只用出厂声明值，拒绝列出全部缺的条件 | 第 8 项和 E1 各项 icount 30 轮 × GICv2/GICv3 全部 PASS | `docs/accept-v010/`，见下文「v010（E2）」 |
 | E3（v011） | 设备闸门、超时强制中止并降到 Tier 3、健康监测（实测超出声明）和按策略处理已有 Tier 1 应用、首页提示、中断风暴限流、少报模式；另修 IPC 路径里定时器中断被推迟（v010 的 342 tick） | 第 1、3、5、6、7 项和策略检查 icount 30 轮 × GICv2/GICv3 全部 PASS | `docs/accept-v011/`，见下文「v011（E3）」 |
 | E4（v012） | 内存带宽按周期限流（模拟访存计数，超额停到下个周期、不欠账）、缓存着色（每个 Tier 1 任务独占自己的颜色）；另修 v011 的槽前保护区余量（e2 里 0 tick）、出口尾巴里到期的中断，菜单 13 的 IPC 内核路径分三段并做整窗核对 | 第 9、10 项 icount 30 轮 × GICv2/GICv3 全部 PASS；真实隔离效果：缺真实板子 | `docs/accept-v012/`，见下文「v012（E4）」 |
+| v013 | 菜单 13 两种计数口径逐项对账（窗口起止、窗口前后余量）；Tier 2 调用者的 IPC 内核路径超出部分改记调用者准入时多留的余量，系统预留 0 | e2 30 轮 × GICv2/GICv3 `E2 item8 PASS`，对账误差 0 | `docs/accept-v013/`，见下文「v013」 |
 
 分支 `rework-partitioning`，对比：https://github.com/leiquan/quota-os/compare/main...rework-partitioning
 
@@ -69,7 +70,7 @@ v007 起换成十个按意图命名的演示：
 | 17 | 缓存着色：每个 Tier 1 任务独占自己的缓存颜色（v012 起） | 新增 |
 | — | 分级开关（OFF 对照） | 5，删除：严格分区没有「关掉」这一档 |
 
-## 资源控制设计（规划中，代码尚未实现，见提交 E）
+## 资源控制设计（E 已实现：v009–v013，QEMU 上验证；真实硬件隔离效果缺真实板子）
 - **统一声明**：所有资源（CPU、内存、设备占用时间、内存带宽、缓存分区）都用「周期 P 内占用 B」声明，三个层级的含义对每种资源都一样。
 - **准入**：每种资源各算一遍：一级预留 + 二级保底之和 + 系统预留 + 保护时间 ≤ 容量。任何一种超了，就拒绝启动，并说明超的是哪一项。
 - **一级条件**：一级用到的每样资源，要么独占，要么同时满足三条：能切分、能强制停下（从下令到停住的最长时间实测过，并算进保护时间）、最坏耗时有上限并且实测过。不能打断的设备一律不进一级。
@@ -260,6 +261,36 @@ qa 其他计时演示的中断进入最大都是 3 tick。GICv3 菜单 9 的 5 t
 
 旧功能（icount）：e1 三项 PASS（`docs/accept-v012/e1-icount-gicv{2,3}.txt`）；e3 第 1、3、5、6、7 项和策略检查 PASS（`docs/accept-v012/e3-icount-gicv{2,3}.txt`）；e2 见上。qa 与 v011 的比较（`docs/accept-v012/compare-qa-icount-v011-v012-gicv{2,3}.txt`）只多出版本行、着色开机行、应用可用内存（101376 → 89600 KB 及相关数字）、拒绝理由里的「color padding」和新诊断行。菜单回归（`docs/regress-v012/menus-v012-gicv{2,3}.txt`，与 v011 的比较见 `docs/regress-v012/compare-v011-v012.txt`，普通模式）：开机验证两次都通过；除了上面这些，多出菜单 16、17 和帮助两行；其余差别是普通模式下每次都不同的计数（调用次数、作业数、中断数、实测耗时）。最宽一行不超过 80 列。
 
+## v013：菜单 13 对账和 IPC 余量（内核 sha256 `ed778b57b055…`，编译于 36f3c33）
+
+### 两种口径为什么对不上（v012 的 26331404 和 26312481）
+
+v012 菜单 13 有两种计数：累计计数（三段内核路径、驱动运行）从演示开始清零那一刻算到演示结束读出那一刻；整窗核对的 w_* 只加记录窗口里结束了的周期。v013 在窗口开始和结束时各拍一次累计计数的快照，把差别拆成「窗口前」和「窗口后」两段。e2 每轮（`docs/accept-v013/e2-gicv{2,3}/`，每组 30 份完全相同，GICv2 和 GICv3 只差开机的 GIC 行和清零时刻 60 tick）：
+
+- 清零在 tick 6232416（GICv3 6232476），记录窗口是周期 9..1008 = tick 6250000..631250000，读出在 631254612。清零落在周期 8 里，所以窗口前有一段不到一个周期的余量；窗口最后一个周期在演示任务被收掉之前已经结算（`end_period` 在 `rec` 还是 1 时运行），所以窗口后是 0。
+- 逐项：驱动运行 0 + 207874191 + 0 = 207874191；调用窗口 0 + 11581183 + 0 = 11581183；进入和排队 856 + 1687487 + 0 = 1688343；回复返回 0 + 13364995 + 0 = 13364995。四项误差都是 0。
+- 另一个差别是口径不同：第一行的「driver running」是按回复了的调用累计的（207868839），不是按记账时刻。207868839 = 记账时刻累计 207874191 + 清零时还没回复的调用在清零前已跑的 7504 − 结束时还没回复的 1 个调用已跑的 12856，误差 0。
+- 改代码前先用一个没提交的调试版（v012 的记账加上窗口快照）在 e2 上查过，结论一样：差别全在窗口前，窗口后是 0。那次的数字没有提交日志，所以这里不引用。
+
+`E2 item8` 现在还要求这四项「窗口前 + 窗口 + 窗口后 = 累计」逐项误差 0、回复口径和记账口径相差为 0。菜单回归（普通模式）里两次也都是误差 0（`docs/regress-v013/menus-v013-gicv{2,3}.txt`）。
+
+### IPC 内核路径超出调用者预算的部分
+
+v010–v012 里，Tier 2 调用者预算在 IPC 内核路径中途用完时，超出的部分记在系统预留上（v012 的 e2：145 次，共 76531，最多 892 tick），和「全部记在调用者头上」矛盾。v013 改成全部记在调用者头上；Tier 2 超出预算上限的部分从它准入时多留的 IPC 余量里出。准入时用 IPC 的 Tier 2 应用按「最低值 + 120 us」算 CPU（e2 里 `cam-app`：350 + 1500 + 80 + 0 + 3120 = 5050 ≤ 10000）。120 us = 7500 tick 大于实测最长的一次内核停留（v012 qa-long 6622 tick，v013 qa-long 6467 tick）。超出只发生在调用者预算到头的那一段，用完后本周期不会再被挑中。另外如果「建议值」那一轮又到头，一个周期最多两次，这种情况还没有测过。e2：158 次，共 83437 tick，单次最多 866，一个周期最多 866（≤ 7500），记到系统预留 0。
+
+对系统预留余量的影响（内核每周期，预留 21875 tick）：
+
+| 运行 | v012 平均 / 最大 | v013 平均 / 最大 | 日志 |
+| --- | --- | --- | --- |
+| e2 | 12172 / 15600 | 12078 / 15596 | `docs/accept-v012/e2-gicv2/`、`docs/accept-v013/e2-gicv2/` |
+| e3 超时演示 | 11577 / 15865 | 11437 / 13864 | `docs/accept-v01{2,3}/e3-icount-gicv2.txt` |
+| qa 菜单 9 | 17561 / 19992 | 17700 / 19992 | `docs/accept-v01{2,3}/qa-icount-gicv2.txt` |
+| qa-long（100000 个周期，没有 IPC） | 17558 / 20549 | 17697 / 20394 | `docs/qa-long-v012/qa-long-icount-gicv2.txt`、`docs/accept-v013/qa-long-icount-gicv2.txt` |
+
+qa-long 不用 IPC，变化只是代码变了；最大值离预留还差 1481 tick。v013 的 qa-long 只跑了 GICv2 一次，Tier 1 错过 0、抖动 0，其余结果和 v012 相同（逐行比较只差版本行、内核大小、Tier 3 合计 4819 / 4821 us、内核每周期和 entry→eret 最大值）。
+
+旧功能（icount，GICv2 和 GICv3 各一次）：e1 三项、e3 第 1、3、5、6、7 项和策略、e4 第 9、10 项都 PASS（`docs/accept-v013/`）；中断进入 − CVAL 最大都是 3 tick。qa 与 v012 的比较（`docs/accept-v013/compare-qa-icount-v012-v013-gicv{2,3}.txt`）只差版本行。菜单回归与 v012 的比较见 `docs/regress-v013/compare-v012-v013.txt`。
+
 ## 编译
 
 一条命令：
@@ -410,7 +441,7 @@ kernel/      串口、设备树、GIC、定时器、资源账本、调度、菜�
 include/     公共类型
 prebuilt/    编好的 quotaos.bin / quotaos.elf
 docs/demo-output.txt     串口实录
-docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/ docs/accept-v008/ docs/regress-v008/ docs/accept-v009/ docs/regress-v009/ docs/accept-v010/ docs/regress-v010/ docs/accept-v011/ docs/regress-v011/ docs/accept-v012/ docs/regress-v012/ docs/qa-long-v012/   各提交的验收日志
+docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/ docs/accept-v008/ docs/regress-v008/ docs/accept-v009/ docs/regress-v009/ docs/accept-v010/ docs/regress-v010/ docs/accept-v011/ docs/regress-v011/ docs/accept-v012/ docs/regress-v012/ docs/qa-long-v012/ docs/accept-v013/ docs/regress-v013/   各提交的验收日志
 tools/qemu_serial.py     驱动 QEMU 串口的公共模块
 tools/capture_demos.py   自动按菜单跑完并检查提示符
 tools/menu_regress.py    菜单功能回归：跑固定流程，屏蔽计时数字后逐行比较

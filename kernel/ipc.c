@@ -61,6 +61,7 @@ void e2_demo(uint32_t periods, int qa_line)
     bg->bench_owned = 1;
     task_start(app);
     task_start(bg);
+    decl_try_ipc_t2("cam-app", 3000);
     printf("cam-app (tier 2, min 3000 us) and bg-caller (tier 3) call\n");
     printf("sim-dma-drv (passive server) for 50..400 us of device work each.\n");
     struct ipc_stats s;
@@ -76,7 +77,7 @@ void e2_demo(uint32_t periods, int qa_line)
            s.drop_sum);
     printf("  longest call %lu ticks; max |drop - measured| per call: %lu ticks\n",
            s.meas_max, s.diff_max);
-    printf("  IPC kernel path charged to callers in total (not to the system\n");
+    printf("  IPC kernel path charged to callers in total (none to the system\n");
     printf("  reserve): %lu ticks\n", s.kern_sum);
     printf("    = in-call window %lu + entry and queueing %lu\n", s.kern_in, s.kern_entry);
     printf("    + reply return %lu (sum %lu)\n", s.kern_reply,
@@ -88,9 +89,38 @@ void e2_demo(uint32_t periods, int qa_line)
     printf("    = driver run %lu + in-call %lu\n", s.w_run, s.w_kin);
     printf("    + entry %lu + reply %lu\n", s.w_kent, s.w_krep);
     printf("    = %lu; error %lu ticks\n", wsum, werr);
-    printf("  IPC kernel path past the end of the caller's budget, charged to\n");
-    printf("  the system reserve instead: %lu times, total %lu, max %lu ticks\n",
-           s.excess_n, s.excess_sum, s.excess_max);
+    /* v013：两种口径对账。累计 = 窗口前 + 窗口（按周期结算的 w_*）+ 窗口后，逐项精确相等。 */
+    printf("  counting windows (ticks):\n");
+    printf("    cumulative: from stats reset %lu to read %lu\n", s.t_reset, s.t_read);
+    printf("    per-period: periods %lu..%lu, ticks %lu..%lu\n", s.p_w0, s.p_w1,
+           s.t_w0, s.t_w1);
+    printf("  part         before     window      after  cumulative  err\n");
+    static const char *pn[4] = {"driver run", "in-call", "entry", "reply"};
+    uint64_t wv[4] = {s.w_run, s.w_kin, s.w_kent, s.w_krep};
+    uint64_t cv[4] = {s.run_cum, s.kern_in, s.kern_entry, s.kern_reply};
+    uint64_t rerr = 0;
+    for (int i = 0; i < 4; i++) {
+        uint64_t before = s.snap0[i], after = cv[i] - s.snap1[i];
+        uint64_t sum = before + wv[i] + after;
+        uint64_t e = sum > cv[i] ? sum - cv[i] : cv[i] - sum;
+        rerr += e;
+        printf("  ");
+        put_padded(pn[i], 10);
+        printf(" %8lu %10lu %10lu %11lu %4lu\n", before, wv[i], after, cv[i], e);
+    }
+    int64_t rdiff = (int64_t)s.run_sum - (int64_t)(s.run_cum + s.infl_reset_run - s.infl_end_run);
+    uint64_t rd = rdiff < 0 ? (uint64_t)-rdiff : (uint64_t)rdiff;
+    printf("  driver run per replied call %lu = charged %lu\n", s.run_sum, s.run_cum);
+    printf("    + ran before reset in calls open then %lu - ran in %lu calls\n",
+           s.infl_reset_run, s.infl_end_calls);
+    printf("    still open at the end %lu; error %lu ticks\n", s.infl_end_run, rd);
+    rerr += rd;
+    printf("  IPC kernel path past the end of a tier-2 caller's budget, taken\n");
+    printf("  from its admitted IPC headroom (%u us = %lu ticks per period):\n",
+           IPC_HEADROOM_US, us_to_ticks(IPC_HEADROOM_US));
+    printf("    %lu times, total %lu, max %lu ticks; most in one period %lu;\n",
+           s.hr_n, s.hr_sum, s.hr_max, s.hr_pp_max);
+    printf("    charged to the system reserve: 0\n");
     printf("  driver's own budget used during the window: %lu ticks\n", drv_change);
     printf("  driver's own wall-clock timing incl. preemption (reference only):\n");
     printf("  total %lu ticks\n", s.self_sum);
@@ -99,7 +129,8 @@ void e2_demo(uint32_t periods, int qa_line)
     if (qa_line)
         printf("E2 item8 %s\n",
                s.calls > 0 && s.diff_max <= 1 && drv_change == 0 &&
-               s.kern_in + s.kern_entry + s.kern_reply == s.kern_sum && werr == 0 ? "PASS" : "FAIL");
+               s.kern_in + s.kern_entry + s.kern_reply == s.kern_sum && werr == 0 &&
+               rerr == 0 && s.hr_pp_max <= us_to_ticks(IPC_HEADROOM_US) ? "PASS" : "FAIL");
 }
 
 /* ---------- E3：设备闸门、超时降级、中断风暴 ---------- */

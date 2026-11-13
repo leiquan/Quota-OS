@@ -2,7 +2,9 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "012"
+#define QUOTAOS_VERSION     "013"
+/* Tier 2 应用用 IPC 时准入多留的余量：调用者预算在 IPC 内核路径里用完时超出的部分从这里出 */
+#define IPC_HEADROOM_US     120   /* 大于实测最长的一次内核停留（qa-long 6622 tick = 106 us） */
 
 #include <stdint.h>
 #include <stddef.h>
@@ -115,6 +117,7 @@ struct task {
     int ipc_q_over;             /* 队列满过：回复时退回全扫 */
     int ipc_queued;             /* 调用者：在某个服务端的队列里 */
     uint64_t p_own, p_run, p_kin, p_kent, p_krep;   /* 本周期：自己跑 / 驱动替它跑 / 三段内核路径 */
+    uint64_t p_hr;              /* 本周期用掉的 IPC 余量（Tier 2） */
     struct task *caller;        /* 服务端：正在替谁干活 */
     int64_t ipc_base;           /* 调用者：发出调用时的 used_t（跨周期时减去清零的部分） */
     uint64_t call_ran_t;        /* 服务端：本次调用里内核量到的运行时间 */
@@ -271,6 +274,14 @@ struct ipc_stats {
     /* 整个窗口的核对（按周期结算，和预算同一口径）：调用者预算减少总量
      * = 各任务周期用量之和 - 任务自己跑的部分；应等于驱动替它跑的 + 三段内核路径 */
     uint64_t w_used, w_own, w_run, w_kin, w_kent, w_krep;
+    /* v013：两种口径的边界。累计计数（run_cum、kern_in/entry/reply）从清零那一刻
+     * 算到读出那一刻；w_* 只算记录窗口里结束了的周期。窗口起止时各拍一次累计计数的快照。 */
+    uint64_t run_cum;                       /* 驱动替调用者跑的，按记账时刻累计 */
+    uint64_t t_reset, t_read, t_w0, t_w1, p_w0, p_w1;
+    uint64_t snap0[4], snap1[4];            /* run_cum, kern_in, kern_entry, kern_reply */
+    uint64_t infl_reset_run, infl_end_run, infl_end_calls;  /* 边界上没回复的调用已跑的部分 */
+    /* v013：Tier 2 调用者的 IPC 内核路径超出其预算上限的部分，记在调用者准入时多留的余量上 */
+    uint64_t hr_n, hr_sum, hr_max, hr_pp_max;
 };
 void sched_ipc_stats(struct ipc_stats *s, int reset);
 void e2_demo(uint32_t periods, int qa_line);
@@ -332,6 +343,7 @@ void color_report(int qa_line);
 void e4_demo_bandwidth(uint32_t periods, int qa_line);
 void e4_demo_color(int qa_line);
 int decl_try_bw(const char *who, int tier, uint64_t accesses);
+int decl_try_ipc_t2(const char *who, uint64_t min_us);
 uint64_t decl_bw_capacity(void);
 void e3_demo_timeout(uint32_t periods, int qa_line);
 void e3_demo_storm(uint32_t periods, int qa_line);
