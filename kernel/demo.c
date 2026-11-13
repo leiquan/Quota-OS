@@ -9,12 +9,9 @@
  *  6 失范隔离：tier-2 死循环 + tier-3 忙等，tier-1 和守规矩的 tier-2 零错过
  *  7 声明超过本机：device does not meet minimum requirements
  *  8 内存压力，收回弹性配额
- *  9 测量最小 CPU 切片（定时器分辨率 + 切换开销 + 实测）
- * 10 几十个 tier-2 虚拟 CPU，各自一条预算服务器
+ * 10 几十个 tier-2 虚拟 CPU，各自一条预算服务器（编号沿用旧菜单，9 已删除）
  */
 #include "quotaos.h"
-
-static uint32_t measured_slice_us;
 
 static int parse_int(const char *s)
 {
@@ -65,10 +62,7 @@ static void cmd_help(void)
     printf("  6  失范应用隔离：tier-2 死循环 + tier-3 占 CPU\n");
     printf("  7  启动 Cluster Sim（声明超过本机容量）\n");
     printf("  8  制造内存压力，收回弹性配额\n");
-    printf("  9  测量这台 QEMU 上有意义的最小 CPU 切片\n");
     printf("  10 启动几十个带独立切片的 tier-2 应用\n");
-    printf("  11 失范任务跑 10000 周期，记录每周期用量（当前预算策略）\n");
-    printf("  12 切换预算策略：新=欠账扣回+定时器提前，旧=原来的做法\n");
     printf("  h  帮助    q  提示如何退出 QEMU\n");
 }
 
@@ -363,213 +357,6 @@ static void cmd_contain(void)
     sched_set_tiering(saved);
 }
 
-static void cmd_diag(void)
-{
-    printf("\n=== tier-1 budget overrun probe ===\n");
-    printf("same task set as containment, %s policy, 10000 periods.\n",
-           sched_payback() ? "new" : "old");
-    printf("records bad-driver slices whose timer was armed to the remaining budget.\n");
-    int saved = sched_tiering();
-    sched_set_tiering(1);
-    if (resource_cpu_remaining_us() < 2000) {
-        printf("REFUSED: please close %s first\n",
-               resource_running(0) ? resource_running(0)->name : "another app");
-        sched_set_tiering(saved);
-        return;
-    }
-    struct app_manifest audio_m = {
-        "audio-mix", "守规矩的混音，400us 工作 / 1000us 预算", 512, 512, 1000, 0
-    };
-    struct app_manifest bad_m = {
-        "bad-encoder", "死循环，声明 1000us 却想占满整核", 512, 512, 1000, 0
-    };
-    if (resource_commit(&audio_m) != ADMIT_OK || resource_commit(&bad_m) != ADMIT_OK) {
-        printf("%s", resource_reason());
-        resource_close_name("audio-mix");
-        resource_close_name("bad-encoder");
-        sched_set_tiering(saved);
-        return;
-    }
-    struct task *bad_drv = task_create("bad-driver", TIER1, quotaos_spinner_entry);
-    bad_drv->budget_us = 400;
-    bad_drv->rel_deadline_us = PERIOD_US;
-    bad_drv->keep_running = 1;
-    bad_drv->bench_owned = 1;
-    struct task *audio = task_create("audio-mix", TIER2, quotaos_periodic_entry);
-    audio->budget_us = 1000;
-    audio->work_us = 400;
-    audio->rel_deadline_us = DEADLINE_AUDIO_US;
-    audio->periodic = 1;
-    audio->bench_owned = 1;
-    audio->wait_release = 1;
-    audio->state = TASK_BLOCKED;
-    struct task *bad = task_create("bad-encoder", TIER2, quotaos_spinner_entry);
-    bad->budget_us = 1000;
-    bad->keep_running = 1;
-    bad->bench_owned = 1;
-    struct task *hog = task_create("bg-hog", TIER3, quotaos_spinner_entry);
-    hog->keep_running = 1;
-    hog->bench_owned = 1;
-    task_reset_window(bad_drv);
-    diag_watch(bad_drv);
-    bench_begin(10000);
-    block_for_bench();
-    printf("tier-1 bad-driver recv_avg %u us over %u periods (cap 400)\n",
-           avg_u(bad_drv->w_sum_recv, bad_drv->w_periods), bad_drv->w_periods);
-    diag_report();
-    resource_close_name("audio-mix");
-    resource_close_name("bad-encoder");
-    sched_set_tiering(saved);
-}
-
-static volatile int pings_done;
-
-static void ping_entry(void)
-{
-    uint64_t prev = now_us();
-    for (int i = 0; i < 24; i++) {
-        asm volatile("svc #1" ::: "memory");
-        uint64_t n = now_us();
-        uint32_t half = 0;
-        if (n > prev)
-            half = (uint32_t)((n - prev) / 2);
-        if (i >= 1 && half >= 1 && half <= 60)
-            switch_measure_note(half);
-        prev = n;
-    }
-    pings_done++;
-    if (pings_done >= 2) {
-        struct task *sh = sched_shell();
-        if (sh && sh->state == TASK_BLOCKED && !sh->wait_bench)
-            sh->state = TASK_READY;
-    }
-    struct task *me = sched_current();
-    me->state = TASK_BLOCKED;
-    asm volatile("svc #0" ::: "memory");
-}
-
-static int slice_pass(struct task **ts, int n, uint32_t slice, uint32_t *avg_out, uint32_t *miss_out)
-{
-    uint64_t sum = 0;
-    uint32_t periods = 0;
-    uint32_t misses = 0;
-    uint32_t worst = 0;
-    for (int i = 0; i < n; i++) {
-        sum += ts[i]->w_sum_recv;
-        periods += ts[i]->w_periods;
-        misses += ts[i]->w_miss;
-        if (ts[i]->w_max_recv > worst)
-            worst = ts[i]->w_max_recv;
-    }
-    uint32_t avg = avg_u(sum, periods);
-    *avg_out = avg;
-    *miss_out = misses;
-    uint32_t hi = slice + (slice / 2 > 50 ? slice / 2 : 50);
-    int ok = misses == 0 && periods > 0 && avg * 100 >= slice * 80 && avg <= hi;
-    (void)worst;
-    return ok;
-}
-
-static void run_slice_set(uint32_t slice, int n, int periods, struct task **out)
-{
-    for (int i = 0; i < n; i++) {
-        char name[16];
-        set_name(name, "s", i);
-        struct task *t = task_create(name, TIER2, quotaos_spinner_entry);
-        t->budget_us = slice;
-        t->keep_running = 1;
-        t->bench_owned = 1;
-        task_reset_window(t);
-        out[i] = t;
-    }
-    bench_watch(0);
-    bench_begin(periods);
-    block_for_bench();
-}
-
-static void cmd_minslice(void)
-{
-    printf("\n=== 最小切片 / minimum useful slice ===\n");
-    printf("下界来自两件事：定时器实际能稳定响的间隔，和一次任务切换的开销。\n");
-    printf("切片若比这两者之和还短，声明的 CPU 会被切换吃掉，虚拟 CPU 就没有意义。\n");
-    printf("CNTFRQ = %lu Hz\n", timer_freq());
-
-    sched_set_count_guarantees(0);
-    static const uint32_t probes[] = {20, 50, 100, 200, 500, 1000};
-    uint32_t stable = 0;
-    printf("timer interval probe (guest CNTPCT microseconds):\n");
-    printf("  requested  samples  min_us  avg_us  max_us\n");
-    for (unsigned i = 0; i < sizeof probes / sizeof probes[0]; i++) {
-        probe_begin(probes[i]);
-        uint64_t t0 = now_us();
-        while (!probe_done() && now_us() - t0 < 80000)
-            asm volatile("yield");
-        uint32_t mn = 0, avg = 0, mx = 0;
-        int ns = probe_samples(&mn, &avg, &mx);
-        printf("  %9u  %7d  %6u  %6u  %6u\n", probes[i], ns, mn, avg, mx);
-        if (!stable && ns >= 4 && avg >= probes[i] / 2 && avg <= probes[i] * 2 &&
-            mx <= probes[i] * 3)
-            stable = probes[i];
-    }
-
-    printf("context-switch probe: two tasks yield to each other, sample = round-trip/2\n");
-    printf("只统计 1..60 us 的样本，更大的多半是被常驻 tier-1 工作插了一脚。\n");
-    pings_done = 0;
-    switch_measure_begin();
-    struct task *p0 = task_create("ping-a", TIER3, ping_entry);
-    struct task *p1 = task_create("ping-b", TIER3, ping_entry);
-    (void)p0;
-    (void)p1;
-    sched_arm_shell_timeout(now_us() + 100000);
-    struct task *sh = sched_current();
-    sh->state = TASK_BLOCKED;
-    asm volatile("svc #0" ::: "memory");
-    sched_arm_shell_timeout(0);
-    switch_measure_end();
-    p0->state = TASK_DEAD;
-    p1->state = TASK_DEAD;
-
-    uint32_t smin = 0, savg = 0, smax = 0, sn = 0;
-    int have = switch_measure_result(&smin, &savg, &smax, &sn);
-    if (have)
-        printf("context switch: n=%u min=%u avg=%u max=%u us\n", sn, smin, savg, smax);
-    else
-        printf("context switch: no clean sample, assume 30 us\n");
-    if (!have)
-        savg = 30;
-    if (!stable)
-        stable = 200;
-
-    uint32_t bound = stable + savg * 2;
-    printf("practical lower bound = stable_timer + 2*switch = %u + 2*%u = %u us\n",
-           stable, savg, bound);
-
-    static const uint32_t cands[] = {40, 80, 120, 200, 300};
-    printf("empirical sweep: 6 tier-2 spinners, each must receive its slice (8 periods)\n");
-    printf("  slice_us  recv_avg  under_miss  pass\n");
-    uint32_t empirical = 0;
-    struct task *ts[6];
-    for (unsigned i = 0; i < sizeof cands / sizeof cands[0]; i++) {
-        run_slice_set(cands[i], 6, 8, ts);
-        uint32_t avg = 0, misses = 0;
-        int pass = slice_pass(ts, 6, cands[i], &avg, &misses);
-        /* 交付值离声明太远时，多出来的全是定时器误差，不能当可用切片。 */
-        int faithful = pass && avg * 10 >= cands[i] * 8 && avg * 10 <= cands[i] * 13;
-        int useful = faithful && cands[i] >= bound;
-        const char *tag = useful ? "PASS" : (pass ? "loose" : "fail");
-        printf("  %7u  %8u  %10u  %s\n", cands[i], avg, misses, tag);
-        if (useful && !empirical)
-            empirical = cands[i];
-    }
-    sched_set_count_guarantees(1);
-
-    if (!empirical)
-        empirical = bound < 300 ? bound : 300;
-    measured_slice_us = empirical;
-    printf("measured minimum useful slice on this QEMU run: %u us\n", measured_slice_us);
-    printf("公式给出的下界是 %u us。演示用的批量切片不会低于测到的最小值。\n", bound);
-}
-
 static void cmd_many(void)
 {
     printf("\n=== 每应用 CPU 切片 / per-app budget servers ===\n");
@@ -580,21 +367,11 @@ static void cmd_many(void)
         printf("应用未启动。\n");
         return;
     }
-    uint32_t slice = measured_slice_us ? measured_slice_us : 200;
-    if (slice < 200)
-        slice = 200;
+    const uint32_t slice = 200;
     uint32_t cap = resource_cpu_remaining_us();
     int n = 32;
-    if (slice == 0)
-        slice = 200;
     while (n > 0 && (uint32_t)n * slice > cap)
         n--;
-    if (n < 24 && cap / 200 >= 24) {
-        slice = 200;
-        n = (int)(cap / slice);
-        if (n > 32)
-            n = 32;
-    }
     if (n < 1) {
         printf("没有足够的 CPU 预算。\n");
         return;
@@ -610,15 +387,6 @@ static void cmd_many(void)
     int started = 0;
     for (int i = 0; i < n; i++) {
         set_name(names[i], "app-", i);
-        /* set_name writes prefix then two digits. "app-" is 4 chars + 2 digits.
-         * Rebuild a cleaner name. */
-        names[i][0] = 'a';
-        names[i][1] = 'p';
-        names[i][2] = 'p';
-        names[i][3] = '-';
-        names[i][4] = '0' + (i / 10) % 10;
-        names[i][5] = '0' + (i % 10);
-        names[i][6] = 0;
         struct app_manifest m = {names[i], "per-app slice", 256, 256, slice, 0};
         if (resource_commit(&m) != ADMIT_OK) {
             printf("%s", resource_reason());
@@ -720,14 +488,7 @@ void shell_main(void)
         readline(line, sizeof line);
         if (line[0] == 0)
             continue;
-        if (strcmp(line, "12") == 0) {
-            sched_set_payback(!sched_payback());
-            printf("预算策略: %s  提前量 %lu ns（%lu ticks，启动时实测）\n",
-                   sched_payback() ? "新（欠账扣回 + 定时器提前）" : "旧（不扣账、不提前）",
-                   (unsigned long)sched_advance_ns(), sched_advance_ticks());
-        } else if (strcmp(line, "11") == 0)
-            cmd_diag();
-        else if (strcmp(line, "10") == 0)
+        if (strcmp(line, "10") == 0)
             cmd_many();
         else if (line[0] == '1' && line[1] == 0)
             cmd_table();
@@ -745,8 +506,6 @@ void shell_main(void)
             cmd_device();
         else if (line[0] == '8' && line[1] == 0)
             cmd_pressure();
-        else if (line[0] == '9' && line[1] == 0)
-            cmd_minslice();
         else if (line[0] == 'h' || line[0] == 'H' || line[0] == '?')
             cmd_help();
         else if (line[0] == 'q' || line[0] == 'Q')

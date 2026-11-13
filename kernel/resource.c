@@ -124,12 +124,7 @@ void resource_init(uint64_t ram_bytes)
     printf("[boot] tier-1 reserved %u KB and %u us/period\n", tier1_mem(), tier1_cpu());
 }
 
-uint64_t resource_ram_kb(void)
-{
-    return ram_kb;
-}
-
-uint64_t resource_app_mem_capacity_kb(void)
+static uint64_t app_mem_capacity_kb(void)
 {
     uint64_t fixed = (uint64_t)KERNEL_RESERVE_KB + tier1_mem();
     if (ram_kb <= fixed)
@@ -137,7 +132,7 @@ uint64_t resource_app_mem_capacity_kb(void)
     return ram_kb - fixed;
 }
 
-uint32_t resource_app_cpu_capacity_us(void)
+static uint32_t app_cpu_capacity_us(void)
 {
     uint32_t t1 = tier1_cpu();
     if (t1 >= PERIOD_US)
@@ -147,14 +142,14 @@ uint32_t resource_app_cpu_capacity_us(void)
 
 uint32_t resource_cpu_remaining_us(void)
 {
-    uint32_t cap = resource_app_cpu_capacity_us();
+    uint32_t cap = app_cpu_capacity_us();
     uint32_t used = sum_cpu();
     return used >= cap ? 0 : cap - used;
 }
 
 uint64_t resource_mem_remaining_kb(void)
 {
-    uint64_t cap = resource_app_mem_capacity_kb();
+    uint64_t cap = app_mem_capacity_kb();
     uint64_t used = sum_min_kb();
     return used >= cap ? 0 : cap - used;
 }
@@ -221,14 +216,6 @@ const struct running_app *resource_running(int index)
     return 0;
 }
 
-static void name_copy(char *dst, const char *src, int cap)
-{
-    int i = 0;
-    for (; i < cap - 1 && src && src[i]; i++)
-        dst[i] = src[i];
-    dst[i] = 0;
-}
-
 int resource_check(const struct app_manifest *m)
 {
     rclear();
@@ -243,8 +230,8 @@ int resource_check(const struct app_manifest *m)
         return ADMIT_DUP;
     }
 
-    uint64_t mem_cap = resource_app_mem_capacity_kb();
-    uint32_t cpu_cap = resource_app_cpu_capacity_us();
+    uint64_t mem_cap = app_mem_capacity_kb();
+    uint32_t cpu_cap = app_cpu_capacity_us();
     int mem_over = m->mem_min_kb > mem_cap || m->mem_min_kb > ram_kb;
     int cpu_over = m->cpu_budget_us > cpu_cap;
 
@@ -283,7 +270,7 @@ int resource_check(const struct app_manifest *m)
             uint64_t mem2 = mem_left + apps[i].mem_min_kb;
             uint32_t cpu2 = cpu_left + apps[i].cpu_budget_us;
             if (m->mem_min_kb <= mem2 && m->cpu_budget_us <= cpu2) {
-                name_copy(names[nc], apps[i].name, 32);
+                str_copy(names[nc], apps[i].name, 32);
                 nc++;
             }
         }
@@ -291,7 +278,7 @@ int resource_check(const struct app_manifest *m)
             for (int i = 0; i < MAX_APPS && nc < 8; i++) {
                 if (!apps[i].alive)
                     continue;
-                name_copy(names[nc], apps[i].name, 32);
+                str_copy(names[nc], apps[i].name, 32);
                 nc++;
             }
         }
@@ -337,14 +324,14 @@ int resource_commit(const struct app_manifest *m)
     }
 
     /* 保底必须落下。弹性如果占着坑，先收回再分配。 */
-    while (sum_granted_kb() + m->mem_min_kb > resource_app_mem_capacity_kb()) {
+    while (sum_granted_kb() + m->mem_min_kb > app_mem_capacity_kb()) {
         if (reclaim_elastic() == 0)
             break;
     }
 
     struct running_app *a = &apps[slot];
     memset(a, 0, sizeof *a);
-    name_copy(a->name, m->name, (int)sizeof a->name);
+    str_copy(a->name, m->name, (int)sizeof a->name);
     a->mem_min_kb = m->mem_min_kb;
     a->mem_max_kb = m->mem_max_kb;
     a->cpu_budget_us = m->cpu_budget_us;
@@ -353,7 +340,7 @@ int resource_commit(const struct app_manifest *m)
     a->alive = 1;
 
     uint64_t room = 0;
-    uint64_t cap = resource_app_mem_capacity_kb();
+    uint64_t cap = app_mem_capacity_kb();
     uint64_t granted = sum_granted_kb();
     if (cap > granted)
         room = cap - granted;
@@ -416,8 +403,8 @@ void resource_show(void)
 {
     uint32_t t1cpu = tier1_cpu();
     uint32_t t1mem = tier1_mem();
-    uint64_t mem_cap = resource_app_mem_capacity_kb();
-    uint32_t cpu_cap = resource_app_cpu_capacity_us();
+    uint64_t mem_cap = app_mem_capacity_kb();
+    uint32_t cpu_cap = app_cpu_capacity_us();
 
     printf("\n========== 资源表 / resource table ==========\n");
     printf("检测到的 RAM: %lu KB (%lu MB)，来自设备树/探测\n", ram_kb, ram_kb / 1024);

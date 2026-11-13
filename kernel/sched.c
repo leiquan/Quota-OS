@@ -25,8 +25,7 @@ static struct task *idle_task;
 static struct task *shell_task;
 
 static int tiering_on = 1;
-/* 新策略：超出部分从下周期扣回，并且预算定时器按启动时实测的触发延迟提前。 */
-static int payback_on = 1;
+/* 预算策略：超出部分从下周期扣回（欠账），预算定时器按启动时实测的触发延迟提前。 */
 static uint64_t timer_advance_ticks;
 static int count_guarantees = 1;
 static int rr_cursor[4];
@@ -57,84 +56,26 @@ static struct {
 } samples[MAX_SAMPLES];
 static int sample_n;
 
-static int probe_mode;
-static uint32_t probe_target;
-static uint32_t probe_deltas[16];
-static int probe_count;
-static uint64_t probe_last;
-
-static int sw_on;
-static uint32_t sw_min, sw_max, sw_n;
-static uint64_t sw_sum;
-static uint64_t shell_unblock_at;
-
-/*
- * 预算超支诊断。不改变挑选顺序、量子或 charge() 的算法，只在既有路径上读 CNTPCT。
- *
- * 一次“预算切片”从 run_start 记到 charge() 采样。超出量
- *   over = (charge_pct - run_start_pct) - armed_ticks
- * 可以分成三段，并且三段相加等于 over：
- *   记账偏差 skew          = (cval - run_start_pct) - armed_ticks
- *   定时器触发延迟 trig     = entry_pct - cval
- *   入口到记账点 e2charge   = charge_pct - entry_pct
- * 入口到 pick_next、以及 pick 到 eret，发生在 charge() 之后，不进 used_us。
- */
-#define DIAG_MAX 1200
-
-struct diag_sample {
-    int32_t trig_ns;
-    int32_t entry_to_pick_ns;
-    int32_t cs_ns;
-    int32_t acct_ns;
-    int32_t over_ns;
-    int32_t skew_ns;
-    int32_t entry_to_charge_ns;
-    int32_t charged_us;
-    int32_t q_us;
-};
-
-static struct diag_sample diag_samples[DIAG_MAX];
-static int diag_n;
-static int diag_pending;
-static int diag_stamp_pick;
-static int diag_skipped;
-static struct task *diag_task;
-#define PERIOD_LOG 16384
-static uint32_t period_used[PERIOD_LOG];
-static int period_n;
-static struct task *period_task;
 #define CAL_MAX 80
 static volatile int cal_mode;
 static volatile int cal_count;
 static int64_t cal_late[CAL_MAX];
-static uint64_t diag_decision_pct;
-static int32_t diag_pending_cs_index;
 
-uint64_t irq_entry_pct;
-uint64_t irq_eret_pct;
+uint64_t irq_entry_pct; /* vectors.S 在 IRQ 入口写入的 CNTPCT */
 
 static uint64_t armed_cval;
-static uint64_t armed_ticks;
-static uint64_t armed_run_start_pct;
-static uint64_t armed_run_start_us;
 static uint32_t armed_q_us;
 static int armed_budget_slice;
 static struct task *armed_task;
 static uint64_t latched_cval;
-static uint64_t latched_entry;
-
-static uint64_t run_start_pct;
 
 struct task *sched_current(void) { return current_task; }
 int sched_tiering(void) { return tiering_on; }
-struct task *sched_shell(void) { return shell_task; }
 uint64_t sched_period_skips(void) { return period_skips; }
 uint32_t sched_max_us(void) { return max_sched_us; }
 uint32_t sched_overruns(void) { return sched_overrun_n; }
 uint32_t sched_clock_stalls(void) { return clock_stalls; }
 uint32_t sched_clock_stall_max_us(void) { return clock_stall_max_us; }
-int bench_active(void) { return bench_on; }
-int bench_recording(void) { return bench_rec; }
 
 void sched_set_tiering(int on)
 {
@@ -156,7 +97,6 @@ void sched_set_tiering(int on)
     }
 }
 void sched_set_count_guarantees(int on) { count_guarantees = on ? 1 : 0; }
-void sched_arm_shell_timeout(uint64_t abs_us) { shell_unblock_at = abs_us; }
 
 struct task *sched_task_at(int index)
 {
@@ -176,14 +116,6 @@ struct task *sched_find(const char *name)
             return &tasks[i];
     }
     return 0;
-}
-
-static void name_copy(char *dst, const char *src)
-{
-    int i = 0;
-    for (; i < NAME_LEN - 1 && src && src[i]; i++)
-        dst[i] = src[i];
-    dst[i] = 0;
 }
 
 static void task_exit(void)
@@ -218,7 +150,7 @@ struct task *task_create(const char *name, int tier, void (*entry)(void))
         t->stack = stacks[i];
         t->tier = tier;
         t->state = TASK_READY;
-        name_copy(t->name, name);
+        str_copy(t->name, name, NAME_LEN);
         make_frame(t, entry);
         return t;
     }
@@ -235,10 +167,8 @@ void task_reset_window(struct task *t)
     t->w_miss = 0;
     t->w_max_lat = 0;
     t->w_max_resp = 0;
-    t->w_sum_resp = 0;
     t->w_sum_recv = 0;
     t->w_periods = 0;
-    t->w_max_recv = 0;
 }
 
 static void idle_entry(void)
@@ -250,7 +180,7 @@ static void idle_entry(void)
 static uint32_t guaranteed_budget(const struct task *t)
 {
     uint32_t b = t->budget_us;
-    if (!payback_on || t->debt_us == 0)
+    if (t->debt_us == 0)
         return b;
     if (t->debt_us >= b)
         return 0;
@@ -270,7 +200,7 @@ static uint32_t cap_of(struct task *t)
 /* 本周期用量相对申请量的差额，记入下周期要扣的欠账。多用就欠，少用就还。 */
 static void settle_debt(struct task *t)
 {
-    if (!payback_on || t->budget_us == 0)
+    if (t->budget_us == 0)
         return;
     if (t->tier != TIER1 && t->tier != TIER2)
         return;
@@ -356,13 +286,9 @@ static void on_boundary(uint64_t period_start)
             t->w_sum_recv += t->used_us;
             if (t->w_periods < 100000)
                 t->w_periods++;
-            if (t->used_us > t->w_max_recv)
-                t->w_max_recv = t->used_us;
             if (t->bench_owned && t->keep_running && t->budget_us &&
                 t->used_us * 100u < t->budget_us * 70u)
                 t->w_miss++;
-            if (period_task == t && period_n < PERIOD_LOG)
-                period_used[period_n++] = t->used_us;
         }
         bench_n++;
     }
@@ -500,18 +426,15 @@ static void arm_for(struct task *next)
     uint64_t ticks = (q * timer_freq()) / 1000000ull;
     if (ticks < 1)
         ticks = 1;
-    /* 只在新策略、并且这次量子是被保底预算截断时提前。补偿量是启动时测到的触发延迟。 */
-    if (payback_on && budget_limited && timer_advance_ticks > 0) {
+    /* 只在这次量子是被保底预算截断时提前。补偿量是启动时测到的触发延迟。 */
+    if (budget_limited && timer_advance_ticks > 0) {
         uint64_t min_ticks = (20ull * timer_freq()) / 1000000ull;
         if (ticks > timer_advance_ticks + min_ticks)
             ticks -= timer_advance_ticks;
     }
-    ticks = timer_arm_ticks(ticks);
-    armed_ticks = ticks;
+    timer_arm_ticks(ticks);
     armed_cval = timer_read_cval();
     armed_q_us = (uint32_t)q;
-    armed_run_start_pct = run_start_pct;
-    armed_run_start_us = run_start_us;
     armed_task = next;
     armed_budget_slice = budget_limited && remain >= 20 && q == remain;
 }
@@ -556,58 +479,10 @@ static void maybe_throttle(struct task *t)
     }
 }
 
-static void diag_finalize(void)
-{
-    if (!diag_pending)
-        return;
-    uint64_t eret = irq_eret_pct;
-    if (eret < diag_decision_pct)
-        return;
-    if (diag_pending_cs_index >= 0 && diag_pending_cs_index < diag_n) {
-        diag_samples[diag_pending_cs_index].cs_ns =
-            (int32_t)timer_ticks_to_ns((int64_t)(eret - diag_decision_pct));
-    }
-    diag_pending = 0;
-}
-
-static void diag_on_slice(struct task *prev, uint32_t charged_us, uint64_t charge_pct)
-{
-    if (!diag_task || prev != diag_task || !armed_budget_slice)
-        return;
-    if (armed_task != prev || latched_cval != armed_cval || armed_ticks == 0) {
-        diag_skipped++;
-        return;
-    }
-    if (diag_n >= DIAG_MAX)
-        return;
-
-    int64_t skew = (int64_t)(armed_cval - armed_run_start_pct) - (int64_t)armed_ticks;
-    int64_t trig = (int64_t)(latched_entry - armed_cval);
-    int64_t e2c = (int64_t)(charge_pct - latched_entry);
-    int64_t over = (int64_t)(charge_pct - armed_run_start_pct) - (int64_t)armed_ticks;
-
-    struct diag_sample *s = &diag_samples[diag_n];
-    s->trig_ns = (int32_t)timer_ticks_to_ns(trig);
-    s->skew_ns = (int32_t)timer_ticks_to_ns(skew);
-    s->entry_to_charge_ns = (int32_t)timer_ticks_to_ns(e2c);
-    s->acct_ns = (int32_t)timer_ticks_to_ns(skew + e2c);
-    s->over_ns = (int32_t)timer_ticks_to_ns(over);
-    s->entry_to_pick_ns = -1;
-    s->cs_ns = -1;
-    s->charged_us = (int32_t)charged_us;
-    s->q_us = (int32_t)armed_q_us;
-    diag_pending_cs_index = diag_n;
-    diag_pending = 1;
-    diag_stamp_pick = 1;
-    diag_n++;
-}
-
 static uint64_t schedule(uint64_t old_sp)
 {
-    uint64_t charge_pct = timer_read_pct();
     uint64_t enter = now_us();
     struct task *prev = current_task;
-    uint32_t charged_us = 0;
 
     /*
      * 两次调度之间的间隔如果明显大于上次装上的量子，说明虚拟时钟在
@@ -636,20 +511,19 @@ static uint64_t schedule(uint64_t old_sp)
         prev->sp = old_sp;
         if (prev->state == TASK_RUNNING)
             prev->state = TASK_READY;
-        charged_us = charge(prev, enter);
+        charge(prev, enter);
         maybe_throttle(prev);
         /*
          * 提前量会让定时器在账面还没到 cap 时响。这声响就是本段预算的结束，
          * 否则任务会被立刻再调度，提前量就白扣了。
          */
-        if (payback_on && armed_budget_slice && prev == armed_task &&
+        if (armed_budget_slice && prev == armed_task &&
             armed_cval != 0 && latched_cval == armed_cval && prev->budget_us &&
             prev->state != TASK_BLOCKED && prev->state != TASK_DEAD) {
             prev->throttled = 1;
             prev->throttle_events++;
             prev->state = TASK_BLOCKED;
         }
-        diag_on_slice(prev, charged_us, charge_pct);
     }
 
     uint64_t now = now_us();
@@ -670,22 +544,10 @@ static uint64_t schedule(uint64_t old_sp)
         bench_rec = 0;
         finish_bench();
     }
-    if (shell_unblock_at && now_us() > shell_unblock_at && shell_task &&
-        shell_task->state == TASK_BLOCKED && !shell_task->wait_bench) {
-        shell_task->state = TASK_READY;
-        shell_unblock_at = 0;
-    }
 
     struct task *next = pick_next();
     if (!next)
         next = idle_task;
-    if (diag_stamp_pick && diag_n > 0) {
-        uint64_t decision = timer_read_pct();
-        diag_decision_pct = decision;
-        diag_samples[diag_n - 1].entry_to_pick_ns =
-            (int32_t)timer_ticks_to_ns((int64_t)(decision - latched_entry));
-        diag_stamp_pick = 0;
-    }
     if (next->job_open && !next->started) {
         next->started = 1;
         next->start_us = now_us();
@@ -693,7 +555,6 @@ static uint64_t schedule(uint64_t old_sp)
     next->state = TASK_RUNNING;
     current_task = next;
     run_start_us = now_us();
-    run_start_pct = timer_read_pct();
     arm_for(next);
 
     uint64_t cost64 = now_us() - enter;
@@ -718,40 +579,14 @@ static uint64_t schedule(uint64_t old_sp)
     return next->sp;
 }
 
-static uint64_t probe_tick(uint64_t sp)
-{
-    uint64_t now = now_us();
-    if (probe_last != 0 && probe_count < 16) {
-        uint64_t d = now - probe_last;
-        probe_deltas[probe_count++] = d > 1000000 ? 1000000 : (uint32_t)d;
-    }
-    probe_last = now;
-    if (probe_count >= 10) {
-        probe_mode = 0;
-        sched_left_us = now;
-        return schedule(sp);
-    }
-    timer_arm_us(probe_target ? probe_target : 1000);
-    /* 探针期间不进 schedule。把“上次离开”拨到现在，避免整段探针被当成时钟跳动。 */
-    sched_left_us = now;
-    return sp;
-}
-
-volatile uint64_t irq_entries;
-volatile uint32_t last_iar;
-
 uint64_t handle_irq(uint64_t frame_sp)
 {
-    irq_entries++;
-    diag_finalize();
-    latched_entry = irq_entry_pct;
     latched_cval = timer_read_cval();
     uint32_t iar = gic_ack();
-    last_iar = iar;
     uint32_t id = iar & 0x3ffu;
     if (id == 30 && cal_mode) {
         if (cal_count < CAL_MAX)
-            cal_late[cal_count++] = (int64_t)latched_entry - (int64_t)latched_cval;
+            cal_late[cal_count++] = (int64_t)irq_entry_pct - (int64_t)latched_cval;
         if (cal_count >= 64)
             cal_mode = 0;
         timer_arm_us(cal_mode ? 400 : 1000000);
@@ -766,10 +601,8 @@ uint64_t handle_irq(uint64_t frame_sp)
     }
     if (id < 1020)
         gic_eoi(iar);
-    if (id == 1023 || id != 30)
+    if (id != 30)
         return frame_sp;
-    if (probe_mode == 1)
-        return probe_tick(frame_sp);
     return schedule(frame_sp);
 }
 
@@ -780,9 +613,6 @@ uint64_t handle_sync(uint64_t frame_sp)
     asm volatile("mrs %0, esr_el1" : "=r"(esr));
     uint32_t ec = (uint32_t)((esr >> 26) & 0x3f);
     if (ec == 0x15) {
-        uint32_t imm = (uint32_t)(esr & 0xffffu);
-        if (imm == 1 && current_task && current_task->state == TASK_RUNNING)
-            current_task->state = TASK_READY;
         return schedule(frame_sp);
     }
     if (dtb_fault_expected() && (ec == 0x24 || ec == 0x25)) {
@@ -830,14 +660,11 @@ void quotaos_periodic_entry(void)
                 t->hits++;
             if (lat > t->max_lat_us)
                 t->max_lat_us = lat;
-            if (resp > t->max_resp_us)
-                t->max_resp_us = resp;
         }
         if (t->seen_release && !tiering_on && miss)
             t->misses_off++;
         if (bench_rec && t->seen_release) {
             t->w_jobs++;
-            t->w_sum_resp += resp;
             if (lat > t->w_max_lat)
                 t->w_max_lat = lat;
             if (resp > t->w_max_resp)
@@ -899,7 +726,6 @@ void sched_start(void (*shell_entry)(void))
     shell_task->state = TASK_RUNNING;
     current_task = shell_task;
     run_start_us = now_us();
-    run_start_pct = timer_read_pct();
     arm_for(shell_task);
     start_first_task(shell_task->sp);
 }
@@ -947,107 +773,6 @@ void bench_sample(int i, uint32_t *lat, uint32_t *resp, int *miss)
     *miss = samples[i].miss;
 }
 
-void probe_begin(uint32_t target_us)
-{
-    asm volatile("msr daifset, #2" ::: "memory");
-    probe_target = target_us;
-    probe_count = 0;
-    probe_last = 0;
-    probe_mode = 1;
-    timer_arm_us(target_us);
-    asm volatile("msr daifclr, #2" ::: "memory");
-}
-
-int probe_done(void)
-{
-    return probe_mode == 0 && probe_count >= 8;
-}
-
-int probe_samples(uint32_t *min_us, uint32_t *avg_us, uint32_t *max_us)
-{
-    if (probe_count <= 1)
-        return 0;
-    /* 丢掉第一拍，它夹着上一次普通调度的间隔。 */
-    uint32_t mn = 0xffffffffu, mx = 0, n = 0;
-    uint64_t sum = 0;
-    for (int i = 1; i < probe_count; i++) {
-        uint32_t d = probe_deltas[i];
-        if (d < mn)
-            mn = d;
-        if (d > mx)
-            mx = d;
-        sum += d;
-        n++;
-    }
-    if (!n)
-        return 0;
-    *min_us = mn;
-    *max_us = mx;
-    *avg_us = (uint32_t)(sum / n);
-    return (int)n;
-}
-
-void switch_measure_begin(void)
-{
-    sw_on = 1;
-    sw_min = 0xffffffffu;
-    sw_max = 0;
-    sw_n = 0;
-    sw_sum = 0;
-}
-
-void switch_measure_note(uint32_t us)
-{
-    if (!sw_on)
-        return;
-    asm volatile("msr daifset, #2" ::: "memory");
-    if (us < sw_min)
-        sw_min = us;
-    if (us > sw_max)
-        sw_max = us;
-    sw_sum += us;
-    sw_n++;
-    asm volatile("msr daifclr, #2" ::: "memory");
-}
-
-void switch_measure_end(void)
-{
-    sw_on = 0;
-}
-
-int switch_measure_result(uint32_t *min_us, uint32_t *avg_us, uint32_t *max_us, uint32_t *n)
-{
-    if (!sw_n)
-        return 0;
-    *min_us = sw_min;
-    *max_us = sw_max;
-    *avg_us = (uint32_t)(sw_sum / sw_n);
-    *n = sw_n;
-    return 1;
-}
-
-void diag_watch(struct task *t)
-{
-    diag_task = 0;
-    period_task = t;
-    period_n = 0;
-    diag_pending = 0;
-    diag_stamp_pick = 0;
-    if (t)
-        t->debt_us = 0;
-}
-
-void sched_set_payback(int on)
-{
-    payback_on = on ? 1 : 0;
-    for (int i = 0; i < MAX_TASKS; i++)
-        tasks[i].debt_us = 0;
-}
-
-int sched_payback(void) { return payback_on; }
-uint64_t sched_advance_ticks(void) { return timer_advance_ticks; }
-uint64_t sched_advance_ns(void) { return (uint64_t)timer_ticks_to_ns((int64_t)timer_advance_ticks); }
-
 void timer_calibrate(void)
 {
     cal_count = 0;
@@ -1078,57 +803,4 @@ void timer_calibrate(void)
     printf("[boot] timer latency calibration n=%d mean=%ld ns max=%ld ns advance_ticks=%lu\n",
            n, n ? (long)timer_ticks_to_ns(sum / n) : 0L,
            (long)timer_ticks_to_ns(mx), timer_advance_ticks);
-}
-
-static void diag_stat(int32_t (*field)(const struct diag_sample *), int skip_neg,
-                      int64_t *sum, int32_t *mx, int *n)
-{
-    *sum = 0;
-    *mx = 0;
-    *n = 0;
-    int any = 0;
-    for (int i = 0; i < diag_n; i++) {
-        int32_t v = field(&diag_samples[i]);
-        if (skip_neg && v < 0)
-            continue;
-        if (!any || v > *mx)
-            *mx = v;
-        *sum += v;
-        (*n)++;
-        any = 1;
-    }
-}
-
-static int32_t f_trig(const struct diag_sample *s) { return s->trig_ns; }
-static int32_t f_pick(const struct diag_sample *s) { return s->entry_to_pick_ns; }
-static int32_t f_cs(const struct diag_sample *s) { return s->cs_ns; }
-static int32_t f_acct(const struct diag_sample *s) { return s->acct_ns; }
-static int32_t f_over(const struct diag_sample *s) { return s->over_ns; }
-static int32_t f_skew(const struct diag_sample *s) { return s->skew_ns; }
-static int32_t f_e2c(const struct diag_sample *s) { return s->entry_to_charge_ns; }
-
-static void diag_line(const char *name, int32_t (*field)(const struct diag_sample *), int skip_neg)
-{
-    int64_t sum;
-    int32_t mx;
-    int n;
-    diag_stat(field, skip_neg, &sum, &mx, &n);
-    int64_t mean = n ? sum / n : 0;
-    printf("  %-22s  n=%4d  mean=%8ld ns  max=%8d ns\n", name, n, mean, mx);
-}
-
-void diag_report(void)
-{
-    diag_finalize();
-    printf("\n=== budget period log ===\n");
-    printf("policy=%s advance_ns=%lu advance_ticks=%lu samples=%d\n",
-           payback_on ? "new" : "old",
-           (unsigned long)sched_advance_ns(), timer_advance_ticks, period_n);
-    printf("PERIOD_CSV_BEGIN\n");
-    printf("i,used_us\n");
-    for (int i = 0; i < period_n; i++)
-        printf("%d,%u\n", i, period_used[i]);
-    printf("PERIOD_CSV_END\n");
-    printf("PERIOD_DONE\n");
-    period_task = 0;
 }

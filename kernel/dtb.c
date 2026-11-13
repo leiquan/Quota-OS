@@ -32,11 +32,6 @@ static int probe32(uint64_t addr, uint32_t *out)
     return 0;
 }
 
-static uint32_t bswap32(uint32_t x)
-{
-    return (x >> 24) | ((x >> 8) & 0xff00u) | ((x << 8) & 0xff0000u) | (x << 24);
-}
-
 static uint64_t detect_ram_span(void)
 {
     uint64_t base = 0x40000000ull;
@@ -51,17 +46,6 @@ static uint64_t detect_ram_span(void)
     if (size == 0)
         size = 128ull << 20;
     return size;
-}
-
-static int looks_like_dtb(uint64_t p)
-{
-    uint32_t magic, total;
-    if (probe32(p, &magic) || probe32(p + 4, &total))
-        return 0;
-    if (magic != 0xedfe0dd0u)
-        return 0;
-    total = bswap32(total);
-    return total >= 64 && total <= 2u * 1024u * 1024u;
 }
 
 static uint32_t be32_at(const uint8_t *p)

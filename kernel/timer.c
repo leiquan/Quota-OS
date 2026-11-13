@@ -46,13 +46,6 @@ uint64_t timer_arm_us(uint64_t us)
     return timer_arm_ticks(ticks);
 }
 
-uint64_t timer_read_pct(void)
-{
-    uint64_t v;
-    asm volatile("mrs %0, cntpct_el0" : "=r"(v));
-    return v;
-}
-
 uint64_t timer_read_cval(void)
 {
     uint64_t v;

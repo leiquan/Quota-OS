@@ -84,9 +84,8 @@ vectors:
     add     sp, sp, #272
 .endm
 
-/* 诊断用时间戳。不改变谁被选中、预算怎么扣，只在入口和 eret 前各读一次 CNTPCT。 */
+/* IRQ 入口时间戳（CNTPCT），启动时用来校准定时器触发延迟。 */
 .global irq_entry_pct
-.global irq_eret_pct
 
 el1_irq:
     stp     x16, x17, [sp, #-16]!
@@ -99,11 +98,6 @@ el1_irq:
     bl      handle_irq          /* 返回值 x0 = 下一个任务的栈（可能已切换） */
     mov     sp, x0
     restore_regs
-    stp     x16, x17, [sp, #-16]!
-    mrs     x16, cntpct_el0
-    ldr     x17, =irq_eret_pct
-    str     x16, [x17]
-    ldp     x16, x17, [sp], #16
     eret
 
 el1_sync:
