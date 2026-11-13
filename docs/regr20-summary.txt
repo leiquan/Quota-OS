@@ -1,0 +1,21 @@
+run 01 exit=0 sched_max=249us misses_on=[0, 0] clock_stall=39x/2902us OK
+run 02 exit=0 sched_max=476us misses_on=[0, 0] clock_stall=33x/2653us OK
+run 03 exit=0 sched_max=407us misses_on=[0, 0] clock_stall=38x/2602us OK
+run 04 exit=0 sched_max=238us misses_on=[0, 0] clock_stall=25x/3720us OK
+run 05 exit=0 sched_max=246us misses_on=[0, 0] clock_stall=30x/2717us OK
+run 06 exit=0 sched_max=300us misses_on=[0, 0] clock_stall=29x/2646us OK
+run 07 exit=0 sched_max=289us misses_on=[0, 0] clock_stall=56x/2613us OK
+run 08 exit=0 sched_max=241us misses_on=[0, 0] clock_stall=19x/2553us OK
+run 09 exit=0 sched_max=310us misses_on=[0, 0] clock_stall=23x/2911us OK
+run 10 exit=0 sched_max=262us misses_on=[0, 0] clock_stall=33x/3150us OK
+run 11 exit=0 sched_max=237us misses_on=[0, 0] clock_stall=20x/2515us OK
+run 12 exit=0 sched_max=323us misses_on=[0, 0] clock_stall=34x/5692us OK
+run 13 exit=0 sched_max=249us misses_on=[0, 0] clock_stall=29x/2604us OK
+run 14 exit=0 sched_max=234us misses_on=[0, 0] clock_stall=27x/2601us OK
+run 15 exit=0 sched_max=313us misses_on=[0, 0] clock_stall=116x/3247us OK
+run 16 exit=0 sched_max=240us misses_on=[0, 0] clock_stall=64x/2738us OK
+run 17 exit=0 sched_max=248us misses_on=[0, 0] clock_stall=105x/3156us OK
+run 18 exit=0 sched_max=264us misses_on=[0, 0] clock_stall=31x/3726us OK
+run 19 exit=0 sched_max=237us misses_on=[0, 0] clock_stall=26x/2717us OK
+run 20 exit=0 sched_max=244us misses_on=[0, 0] clock_stall=22x/2721us OK
+20/20
