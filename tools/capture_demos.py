@@ -10,7 +10,7 @@ QEMU = [
     "qemu-system-aarch64",
     "-machine", "virt,gic-version=2",
     "-cpu", "cortex-a72",
-    "-nographic",
+    "-nographic", "-nic", "none",
     "-kernel", "build/quotaos.bin",
 ]
 
@@ -126,7 +126,8 @@ def main():
         (None, None, 5),
     ]
 
-    os.chdir("/workspace")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(root)
     print("running 128M ...", flush=True)
     ok128, text128 = run_case("128M", big_steps, 180)
     open("/tmp/demo128.txt", "w").write(text128)
