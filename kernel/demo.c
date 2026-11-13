@@ -566,6 +566,8 @@ static void cmd_help(void)
     printf("  8  Tier 2 最低值有保证，建议值在压力下收回\n");
     printf("  9  Tier 3 过载不影响上层\n");
     printf("  10 任何一级的失控任务只拖慢自己\n");
+    printf("  11 设备申请 Tier 1：不能打断的设备被拒（说明缺哪一条）\n");
+    printf("  12 超额申请被拒（说明是哪种资源）\n");
     printf("  h  帮助    q  提示如何退出 QEMU\n");
 }
 
@@ -596,7 +598,16 @@ static void run_qa(int long_run)
 void shell_main(void)
 {
     printf("[boot] shell task running\n");
+    decl_init();
     const char *args = dtb_bootargs();
+    if (strcmp(args, "e1") == 0) {
+        decl_demo_device_tier1();
+        decl_demo_overcommit();
+        decl_qa_e1(0);
+        printf("QA DONE\n");
+        for (;;)
+            asm volatile("wfi");
+    }
     if (strcmp(args, "qa") == 0)
         run_qa(0);
     if (strcmp(args, "qa-long") == 0)
@@ -618,6 +629,8 @@ void shell_main(void)
         case 8: cmd_t2(); break;
         case 9: cmd_overload(); break;
         case 10: cmd_runaway(); break;
+        case 11: decl_demo_device_tier1(); break;
+        case 12: decl_demo_overcommit(); break;
         default:
             if (line[0] == 'h' || line[0] == 'H' || line[0] == '?')
                 cmd_help();

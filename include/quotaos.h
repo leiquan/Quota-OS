@@ -2,7 +2,7 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "008"
+#define QUOTAOS_VERSION     "009"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -210,6 +210,13 @@ uint64_t sched_kernel_max_period(void);
 uint64_t sched_irq_lat_max(void);
 uint64_t sched_periods(void);
 uint64_t sched_foreign_window(void);
+uint64_t sched_next_guard(uint64_t now);
+void sched_total_misses(uint64_t *a, uint64_t *b);
+
+void decl_init(void);
+void decl_demo_device_tier1(void);
+void decl_demo_overcommit(void);
+void decl_qa_e1(int runs_hint);
 
 uint64_t handle_irq(uint64_t frame_sp);
 uint64_t handle_sync(uint64_t frame_sp);

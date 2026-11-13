@@ -901,3 +901,26 @@ void sched_start(void (*shell_entry)(void))
     k_eret_ts = prev_entry;
     start_first_task(shell_task->sp);
 }
+
+/* now 之后最近一个 Tier 1 保护区的起点；now 已经在保护区或槽内就返回 now。
+ * 设备闸门用它判断一个作业能不能在下一个 Tier 1 窗口前做完。 */
+uint64_t sched_next_guard(uint64_t now)
+{
+    uint64_t k = now >= epoch ? (now - epoch) / P : 0;
+    for (uint64_t kk = k; kk <= k + 1; kk++)
+        for (int s = 0; s < nslots; s++) {
+            uint64_t g = epoch + kk * P + slot_off[s] - G;
+            uint64_t e = epoch + kk * P + slot_off[s] + slot_len[s];
+            if (now < g)
+                return g;
+            if (now < e)
+                return now;
+        }
+    return now;
+}
+
+void sched_total_misses(uint64_t *a, uint64_t *b)
+{
+    *a = ks[0].miss_a;
+    *b = ks[0].miss_b;
+}

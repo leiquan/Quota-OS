@@ -13,7 +13,7 @@
 ================================================================================
 
 Quota OS microkernel
-Version: 008 (f9119e9)
+Version: 009 (d2c58c4)
 基于三级资源声明的微内核，
 保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 [boot] x0=0x44000000 physical RAM span 128 MB (probed)
@@ -21,7 +21,7 @@ Version: 008 (f9119e9)
 [boot] DTB memory 134217728 bytes
 [boot] system reserve 350 us/period, 16384 KB;
        tier-1 1500 us/period, 13312 KB; guard 40 us/period
-[boot] kernel image+bss 465 KB of the 16384 KB system reserve
+[boot] kernel image+bss 475 KB of the 16384 KB system reserve
 [boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
 [boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
 [boot] tier-1 display-vsync and timer-server bound to their slots
@@ -39,6 +39,8 @@ Version: 008 (f9119e9)
   8  Tier 2 最低值有保证，建议值在压力下收回
   9  Tier 3 过载不影响上层
   10 任何一级的失控任务只拖慢自己
+  11 设备申请 Tier 1：不能打断的设备被拒（说明缺哪一条）
+  12 超额申请被拒（说明是哪种资源）
   h  帮助    q  提示如何退出 QEMU
 select> 1
 
@@ -47,13 +49,13 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 65391 ticks/period (period 0 of 19)
+  measured since boot: max 68901 ticks/period (period 0 of 19)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500         120      380   2048
-  timer-server      1      3500    300          51      249   1024
+  display-vsync     0      1000    500          91      409   2048
+  timer-server      1      3500    300          95      205   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -178,13 +180,13 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 65391 ticks/period (period 0 of 366)
+  measured since boot: max 68901 ticks/period (period 0 of 367)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500         280      220   2048
-  timer-server      1      3500    300          56      244   1024
+  display-vsync     0      1000    500         108      392   2048
+  timer-server      1      3500    300          95      205   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -267,50 +269,54 @@ select> 5
 at the same tick of its slot every period and finish inside it.
 Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
   task           slot   jobs  miss  start_min  start_max  jitter  lat_max
-  display-vsync     0    200     0        410      15955   15545    21000
-  timer-server      1    200     1        359      18097   17738    13384
+  display-vsync     0    200     1        399      17870   17471    22910
+  timer-server      1    200     1        395      14424   14029    17023
   display-vsync last release: period 734, tick 459437500,
     epoch+k*P+offset 459437500
   timer-server last release: period 734, tick 459593750,
     epoch+k*P+offset 459593750
-T1MISS task=timer-server period=704 reason=unfinished start_t=18097
-  lat_t=19510 lat_us=312 deadline_us=300 J_us=694 class=a
-misses: class a (clock jump) 1, class b (kernel) 0, skipped periods 0
-kernel per period: max 15715 avg 3485 ticks, reserve 21875, over 0
-timer IRQ entry - CVAL: min 521 max 28804 ticks (n=2768)
-kernel entry -> eret (no slot wait): min 56 max 7792 ticks
+T1MISS task=display-vsync period=591 reason=not_started start_t=-1
+  lat_t=33661 lat_us=538 deadline_us=500 J_us=687 class=a
+T1MISS task=timer-server period=630 reason=not_started start_t=-1
+  lat_t=25042 lat_us=400 deadline_us=300 J_us=680 class=a
+misses: class a (clock jump) 2, class b (kernel) 0, skipped periods 0
+kernel per period: max 14289 avg 3242 ticks, reserve 21875, over 0
+timer IRQ entry - CVAL: min 611 max 88658 ticks (n=2779)
+kernel entry -> eret (no slot wait): min 55 max 6733 ticks
 slot guard: path max 0 ticks, slack min 0 ticks of 625 (n=0)
 wait loop exit late by 0/1/2/>2 ticks: 0/0/0/0
-clock jumps: 1269, total 61899 us
-结果: Tier 1 错过 1 次，起点抖动 17738 tick，
-  槽内 Tier 2/3 共 728360 tick。
+clock jumps: 1066, total 62055 us
+结果: Tier 1 错过 2 次，起点抖动 17471 tick，
+  槽内 Tier 2/3 共 961091 tick。
 select> 6
 
 === 6 Tier 1 超时在槽尾被掐断 / tier-1 overrun cut at slot end ===
 bad-driver loops forever in the blk-driver slot (25000 ticks).
-bad-driver per period: min 22405 max 43511 ticks, slot 25000 ticks
-cut by the slot-end timer: IRQ entry at most 61449 ticks after slot end
+bad-driver per period: min 18718 max 35755 ticks, slot 25000 ticks
+cut by the slot-end timer: IRQ entry at most 45479 ticks after slot end
 Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
   task           slot   jobs  miss  start_min  start_max  jitter  lat_max
-  display-vsync     0    200     0        379      19725   19346    24774
-  timer-server      1    200     1        359      11052   10693    13592
+  display-vsync     0    200     0        455      23674   23219    28715
+  timer-server      1    200     2        448      14559   14111    17098
   display-vsync last release: period 955, tick 597562500,
     epoch+k*P+offset 597562500
   timer-server last release: period 955, tick 597718750,
     epoch+k*P+offset 597718750
-T1MISS task=timer-server period=826 reason=not_started start_t=-1
-  lat_t=60824 lat_us=973 deadline_us=300 J_us=1213 class=a
-misses: class a (clock jump) 1, class b (kernel) 0, skipped periods 0
+T1MISS task=timer-server period=779 reason=not_started start_t=-1
+  lat_t=36818 lat_us=589 deadline_us=300 J_us=1549 class=a
+T1MISS task=timer-server period=834 reason=not_started start_t=-1
+  lat_t=22769 lat_us=364 deadline_us=300 J_us=1844 class=a
+misses: class a (clock jump) 2, class b (kernel) 0, skipped periods 0
 Tier 1 slots over 200 periods (ticks per period, average)
   slot owner          start    len  owner_used  idle  foreign(total)
-     0 display-vsync   62500  31250        5224 24799   189297
-     1 timer-server   218750  18750        2713 15054   135661
-     2 (empty)        375000  18750           0 18165    80536
-     3 bad-driver     500000  25000       24393     0    81816
-Tier 2/3 ticks inside any Tier 1 slot: 487310 (in 798 runs)
-  of which not covered by clock jumps: 236039
-结果: bad-driver 每周期最多 43511 tick（槽长 25000）；
-  其他 Tier 1 错过 1 次。
+     0 display-vsync   62500  31250        5226 21999   751813
+     1 timer-server   218750  18750        2697 14994   162039
+     2 (empty)        375000  18750           0 18020   109552
+     3 bad-driver     500000  25000       24096     0   138746
+Tier 2/3 ticks inside any Tier 1 slot: 1162150 (in 799 runs)
+  of which not covered by clock jumps: 224282
+结果: bad-driver 每周期最多 35755 tick（槽长 25000）；
+  其他 Tier 1 错过 2 次。
 select> 7
 
 === 7 Tier 1 槽从不外借 / tier-1 slots never lent ===
@@ -319,29 +325,29 @@ gic-server and blk-driver slots have no task. A greedy tier-2 app
 and 8 tier-3 loops want every tick they can get.
 Tier 1 slots over 200 periods (ticks per period, average)
   slot owner          start    len  owner_used  idle  foreign(total)
-     0 display-vsync   62500  31250        5259 24992   142207
-     1 timer-server   218750  18750        2778 14241   279597
-     2 (empty)        375000  18750           0 16489   399932
-     3 (empty)        500000  25000           0 23548   235616
-Tier 2/3 ticks inside any Tier 1 slot: 1057352 (in 799 runs)
-  of which not covered by clock jumps: 144077
+     0 display-vsync   62500  31250        5244 24177   302296
+     1 timer-server   218750  18750        2727 12145   716074
+     2 (empty)        375000  18750           0 14917   716174
+     3 (empty)        500000  25000           0 22858   379670
+Tier 2/3 ticks inside any Tier 1 slot: 2114214 (in 794 runs)
+  of which not covered by clock jumps: 109597
   app           min_us sugg_us  recv_min recv_avg recv_max  short
-  greedy-app      1000    6000      7007     7031     7403      0
-结果: 空出来的槽时间全部空转，Tier 2/3 在槽内 1057352 tick。
+  greedy-app      1000    6000      7001     7043     7536      0
+结果: 空出来的槽时间全部空转，Tier 2/3 在槽内 2114214 tick。
 select> 8
 
 === 8 Tier 2 最低值有保证，建议值在压力下收回 ===
 app-A min 2000 + sugg 1000 us, app-B min 2000 + sugg 2000 us,
 8 tier-3 loops. Phase 1: no pressure.
   app           min_us sugg_us  recv_min recv_avg recv_max  short
-  app-A           2000    1000      2041     3019     3241      0
-  app-B           2000    2000      1635     4057    12363      1
+  app-A           2000    1000      3001     3025     3272      0
+  app-B           2000    2000      3814     4036     4429      0
 Phase 2: memory/CPU pressure ON, suggested is reclaimed.
 pressure ON: reclaimed 0 KB of suggested memory; minimums untouched.
   app           min_us sugg_us  recv_min recv_avg recv_max  short
-  app-A           2000    1000      2002     2017     2261      0
-  app-B           2000    2000      2001     2028     2433      0
-结果: 无压力时最少拿到 2041/1635 us，有压力时 2002/2001 us；
+  app-A           2000    1000      2003     2019     2313      0
+  app-B           2000    2000      2000     2018     2247      0
+结果: 无压力时最少拿到 3001/3814 us，有压力时 2003/2000 us；
   低于最低值的周期 0 个。
 select> 9
 
@@ -349,63 +355,114 @@ select> 9
 32 tier-3 busy loops for 200 periods, with a tier-2 game and audio-mix.
 Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
   task           slot   jobs  miss  start_min  start_max  jitter  lat_max
-  display-vsync     0    200     0        392      13180   12788    18224
-  timer-server      1    200     1        362      10303    9941    12893
-  display-vsync last release: period 1820, tick 1138187500,
-    epoch+k*P+offset 1138187500
-  timer-server last release: period 1820, tick 1138343750,
-    epoch+k*P+offset 1138343750
-T1MISS task=timer-server period=1800 reason=not_started start_t=-1
-  lat_t=54275 lat_us=868 deadline_us=300 J_us=1742 class=a
-misses: class a (clock jump) 1, class b (kernel) 0, skipped periods 0
+  display-vsync     0    200     0        350      13411   13061    18456
+  timer-server      1    200     0        355       2458    2103     5000
+  display-vsync last release: period 1819, tick 1137562500,
+    epoch+k*P+offset 1137562500
+  timer-server last release: period 1819, tick 1137718750,
+    epoch+k*P+offset 1137718750
+misses: class a (clock jump) 0, class b (kernel) 0, skipped periods 0
   app           min_us sugg_us  recv_min recv_avg recv_max  short
-  game            2000    1000      3010     3024     3398      0
-  audio-mix: jobs 200, misses 0, worst response 683 us (deadline 4000 us)
-tier-3 per loop: avg 108..197 us/period, all 32 together 4942 us
+  game            2000    1000      3010     3019     3225      0
+  audio-mix: jobs 200, misses 0, worst response 448 us (deadline 4000 us)
+tier-3 per loop: avg 113..199 us/period, all 32 together 4965 us
 Tier 1 slots over 200 periods (ticks per period, average)
   slot owner          start    len  owner_used  idle  foreign(total)
-     0 display-vsync   62500  31250        5235 24902   158961
-     1 timer-server   218750  18750        2726 15019   140466
-     2 (empty)        375000  18750           0 17984   109364
-     3 (empty)        500000  25000           0 24166   121472
-Tier 2/3 ticks inside any Tier 1 slot: 530263 (in 800 runs)
-  of which not covered by clock jumps: 239230
-kernel per period: max 8883 avg 3829 ticks, reserve 21875, over 0
-timer IRQ entry - CVAL: min 661 max 87420 ticks (n=2797)
-kernel entry -> eret (no slot wait): min 44 max 2213 ticks
+     0 display-vsync   62500  31250        5210 25278   101305
+     1 timer-server   218750  18750        2717 15441    66457
+     2 (empty)        375000  18750           0 18077    97104
+     3 (empty)        500000  25000           0 23980   152974
+Tier 2/3 ticks inside any Tier 1 slot: 417840 (in 799 runs)
+  of which not covered by clock jumps: 207291
+kernel per period: max 7387 avg 3125 ticks, reserve 21875, over 0
+timer IRQ entry - CVAL: min 593 max 24434 ticks (n=2800)
+kernel entry -> eret (no slot wait): min 50 max 2678 ticks
 slot guard: path max 0 ticks, slack min 0 ticks of 625 (n=0)
 wait loop exit late by 0/1/2/>2 ticks: 0/0/0/0
-clock jumps: 1108, total 48963 us
-结果: Tier 1 错过 1 次，起点抖动 12788 tick，
-  槽内 Tier 2/3 共 530263 tick。
+clock jumps: 922, total 38191 us
+结果: Tier 1 错过 0 次，起点抖动 13061 tick，
+  槽内 Tier 2/3 共 417840 tick。
 结果: Tier 2 低于最低值 0 个周期，audio-mix 错过 0 次。
 select> 10
 
 === 10 任何一级的失控任务只拖慢自己 / runaway only slows itself ===
 runaways: bad-driver (tier 1, blk slot), bad-encoder (tier 2, min 1000),
 bad-t3 (tier 3). Well behaved: vsync, timer-server, audio-mix, polite-t3.
-bad-driver  avg 401 max 619 us/period (slot 400)
-bad-encoder avg 1017 max 1331 us/period (min 1000, no suggested)
-bad-t3 avg 3480 us/period, polite-t3 avg 3489 us/period
-  audio-mix: jobs 200, misses 0, worst response 683 us (deadline 4000 us)
+bad-driver  avg 395 max 606 us/period (slot 400)
+bad-encoder avg 1013 max 1214 us/period (min 1000, no suggested)
+bad-t3 avg 3491 us/period, polite-t3 avg 3529 us/period
+  audio-mix: jobs 200, misses 1, worst response 766 us (deadline 4000 us)
 Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
   task           slot   jobs  miss  start_min  start_max  jitter  lat_max
-  display-vsync     0    200     0        429      25954   25525    30994
-  timer-server      1    200     3        437      18930   18493    21515
-  display-vsync last release: period 2041, tick 1276312500,
-    epoch+k*P+offset 1276312500
-  timer-server last release: period 2041, tick 1276468750,
-    epoch+k*P+offset 1276468750
-T1MISS task=timer-server period=1901 reason=unfinished start_t=17947
-  lat_t=19490 lat_us=311 deadline_us=300 J_us=487 class=a
-T1MISS task=timer-server period=1939 reason=not_started start_t=-1
-  lat_t=23215 lat_us=371 deadline_us=300 J_us=1357 class=a
-T1MISS task=timer-server period=1973 reason=late start_t=18930
-  lat_t=21515 lat_us=344 deadline_us=300 J_us=1028 class=a
-misses: class a (clock jump) 3, class b (kernel) 0, skipped periods 0
-Tier 2/3 ticks inside tier-1 slots: 572191
-结果: 守规矩的 Tier 1 错过 3 次，audio-mix 错过 0 次；
+  display-vsync     0    200     2        400      29365   28965     8930
+  timer-server      1    200     1        362      10381   10019    12962
+  display-vsync last release: period 2040, tick 1275687500,
+    epoch+k*P+offset 1275687500
+  timer-server last release: period 2040, tick 1275843750,
+    epoch+k*P+offset 1275843750
+T1MISS task=display-vsync period=1915 reason=skipped lat_us=-
+  deadline_us=500 J_us=10403 covered=yes uncovered_us=0 class=a
+T1MISS task=timer-server period=1915 reason=skipped lat_us=-
+  deadline_us=300 J_us=10403 covered=yes uncovered_us=0 class=a
+T1MISS task=display-vsync period=1916 reason=unfinished start_t=29365
+  lat_t=32300 lat_us=516 deadline_us=500 J_us=10574 class=a
+misses: class a (clock jump) 3, class b (kernel) 0, skipped periods 3
+Tier 2/3 ticks inside tier-1 slots: 670905
+结果: 守规矩的 Tier 1 错过 3 次，audio-mix 错过 1 次；
   失控者都停在自己的额度。
+select> 11
+
+=== 11 设备申请 Tier 1：不能打断的设备被拒 ===
+Two simulated devices (software models, not real hardware).
+The system measures each one (8 full jobs, 8 aborts) with IRQs
+masked, only where the job ends before the next tier-1 guard.
+  device   preempt divisible max_job switch stop_bound | measured:
+                                                       job_max  stop_max
+  sim-dma      yes       yes     400      5         20 |     396        16 us
+  sim-blk       no        no    2000     10         20 |    1991      1770 us
+display-vsync already declares sim-dma 2000 us (Tier 1).
+
+cam-app asks Tier 1 (per 10000 us):
+  sim-dma 1000 us
+OK: admitted (not started; released again)
+rec-app asks Tier 1 (per 10000 us):
+  sim-blk 1000 us
+REFUSED: (device not allowed in Tier 1)
+  missing: forcibly stoppable (sim-blk is non-preemptible;
+    measured stop 1770 us > bound 20 us)
+rec-app asks Tier 2 (per 10000 us):
+  sim-blk 1000 us
+OK: admitted (not started; released again)
+select> 12
+
+=== 12 超额申请在启动时被拒，并说明是哪种资源 ===
+cpu-hog asks Tier 2 (per 10000 us):
+  CPU 8200 us, memory 1024 KB
+REFUSED: CPU
+  CPU overcommitted: reserve 350 + tier-1 1500 + tier-2 min 0
+    + guard 40 + this 8200 = 10090 > capacity 10000 us
+mem-hog asks Tier 2 (per 10000 us):
+  CPU 1000 us, memory 110000 KB
+REFUSED: memory
+  memory overcommitted: reserve 16384 + tier-1 13312 + tier-2 min 0
+    + guard 0 + this 110000 = 139696 > capacity 131072 KB
+dma-hog asks Tier 2 (per 10000 us):
+  CPU 1000 us, memory 1024 KB, sim-dma 8500 us
+REFUSED: sim-dma
+  sim-dma overcommitted: reserve 0 + tier-1 2000 + tier-2 min 0
+    + guard 16 + this 8500 = 10516 > capacity 10000 us
+all-hog asks Tier 2 (per 10000 us):
+  CPU 8200 us, memory 110000 KB, sim-dma 8500 us
+REFUSED: CPU memory sim-dma
+  CPU overcommitted: reserve 350 + tier-1 1500 + tier-2 min 0
+    + guard 40 + this 8200 = 10090 > capacity 10000 us
+  memory overcommitted: reserve 16384 + tier-1 13312 + tier-2 min 0
+    + guard 0 + this 110000 = 139696 > capacity 131072 KB
+  sim-dma overcommitted: reserve 0 + tier-1 2000 + tier-2 min 0
+    + guard 16 + this 8500 = 10516 > capacity 10000 us
+fits asks Tier 2 (per 10000 us):
+  CPU 8000 us, memory 90000 KB, sim-dma 7000 us
+OK: admitted (not started; released again)
 select> 1
 
 === 1 资源总览 / resource overview ===
@@ -413,13 +470,13 @@ RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 65391 ticks/period (period 0 of 2061)
+  measured since boot: max 168811 ticks/period (period 1328 of 2109)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500         280      220   2048
-  timer-server      1      3500    300          69      231   1024
+  display-vsync     0      1000    500         537        0   2048
+  timer-server      1      3500    300          95      205   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -449,6 +506,8 @@ select> h
   8  Tier 2 最低值有保证，建议值在压力下收回
   9  Tier 3 过载不影响上层
   10 任何一级的失控任务只拖慢自己
+  11 设备申请 Tier 1：不能打断的设备被拒（说明缺哪一条）
+  12 超额申请被拒（说明是哪种资源）
   h  帮助    q  提示如何退出 QEMU
 select> QEMU: Terminated
 
@@ -458,7 +517,7 @@ select> QEMU: Terminated
 ================================================================================
 
 Quota OS microkernel
-Version: 008 (f9119e9)
+Version: 009 (d2c58c4)
 基于三级资源声明的微内核，
 保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 [boot] x0=0x42000000 physical RAM span 64 MB (probed)
@@ -466,7 +525,7 @@ Version: 008 (f9119e9)
 [boot] DTB memory 67108864 bytes
 [boot] system reserve 350 us/period, 16384 KB;
        tier-1 1500 us/period, 13312 KB; guard 40 us/period
-[boot] kernel image+bss 465 KB of the 16384 KB system reserve
+[boot] kernel image+bss 475 KB of the 16384 KB system reserve
 [boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
 [boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
 [boot] tier-1 display-vsync and timer-server bound to their slots
@@ -484,6 +543,8 @@ Version: 008 (f9119e9)
   8  Tier 2 最低值有保证，建议值在压力下收回
   9  Tier 3 过载不影响上层
   10 任何一级的失控任务只拖慢自己
+  11 设备申请 Tier 1：不能打断的设备被拒（说明缺哪一条）
+  12 超额申请被拒（说明是哪种资源）
   h  帮助    q  提示如何退出 QEMU
 select> 1
 
@@ -492,13 +553,13 @@ RAM 65536 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 82181 ticks/period (period 0 of 19)
+  measured since boot: max 67103 ticks/period (period 0 of 19)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
-  display-vsync     0      1000    500          94      406   2048
-  timer-server      1      3500    300          74      226   1024
+  display-vsync     0      1000    500          91      409   2048
+  timer-server      1      3500    300          66      234   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096
@@ -578,13 +639,13 @@ RAM 65536 KB. CPU period 10000 us. 1 tick = 16 ns.
 
 [系统预留] kernel, fixed, never lent
   CPU 350 us/period = 21875 ticks
-  measured since boot: max 82181 ticks/period (period 0 of 161)
+  measured since boot: max 67103 ticks/period (period 0 of 160)
   memory 16384 KB
 
 [Tier 1] one fixed slot per task; unused time stays idle
   task           slot offset_us len_us max_used_us waste_us mem_kb
   display-vsync     0      1000    500          94      406   2048
-  timer-server      1      3500    300          74      226   1024
+  timer-server      1      3500    300          76      224   1024
   gic-server        2      6000    300           0      300   2048
   blk-driver        3      8000    400           0      400   4096
   net-driver        -         -      -           -        -   4096

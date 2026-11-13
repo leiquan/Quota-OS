@@ -1,4 +1,4 @@
-# Quota OS（版本 008）
+# Quota OS（版本 009）
 
 基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 
@@ -24,7 +24,8 @@ License: [Apache-2.0](LICENSE)
 | C `252a90d` | 从设备树识别 GIC（中断控制器）v2 / v3 | 已验收 | `docs/gic-C/` |
 | `d03cd22` | 启动横幅和 README 换成上面的定位句 | 已推送 | — |
 | D（v007） | 严格时间分区（Tier 1 时间槽表）、系统预留、准入含保护时间、十个按意图命名的演示、T1MISS 行带 `J_us=` 和 class a/b | icount 下菜单 5–10 的 Tier 1 错过 0 次、起点抖动 0 tick、槽内 Tier 2/3 0 tick；普通模式照实列出，只作参考 | `docs/accept-D/`、`docs/regress-D/`，见下文「v007 验收」 |
-| E | 设备和共享硬件的统一规则（下文设计） | 设计已定、未实现 | — |
+| E1（v009） | 统一声明「层级，周期内占用 B」：CPU、内存、两个模拟设备的占用时间；按资源准入；不能打断的设备申请 Tier 1 被拒并写出缺的条件；超额被拒并写出资源名 | 第 2、4 项 icount 30 轮全部 PASS | `docs/accept-v009/`，见下文「v009（E1）」 |
+| E2–E4 | 预算令牌、设备闸门、带宽限流和缓存着色（下文设计） | 未实现 | — |
 
 分支 `rework-partitioning`，对比：https://github.com/leiquan/quota-os/compare/main...rework-partitioning
 
@@ -67,13 +68,15 @@ v007 起换成十个按意图命名的演示：
 - **共享硬件**：内存带宽按周期限制访问次数，缓存用着色分区，都按最坏情况留余量。
 - **不在本设计范围内**：硬件故障靠看门狗和降级显示兜底；实际隔离效果要在真实的 MPAM 板子上验证，QEMU 上只能验证规则逻辑。
 
+（v009 起统一声明和按资源准入已经实现，覆盖 CPU、内存和两个模拟设备，见下文「v009：E1」；本节其余部分仍是设计。）
+
 补充（同为设计，未实现）：
 
 - 新设备一律从 Tier 3 开始。设备描述（出厂写死）四项：单次作业最长耗时、切换开销、从下令中止到停住的最长时间、能否打断。运行时用系统实测值，不用设备自报。
 - 超时：强制中止/复位，作业丢弃并计数，设备降到 Tier 3，记一行日志（设备名、实测耗时、声明耗时、周期号）。
 - 内存带宽按 MemGuard 的做法：每周期访问次数预算，超了就停到下个周期，下个周期额度恢复，不欠账。Tier 1 的物理页按缓存颜色分配。
 
-E 的验收项（测试给出，QEMU icount 模式每项 30 轮；全部尚未实现，没有结果）：
+E 的验收项（测试给出，QEMU icount 模式每项 30 轮；第 2、4 项已在 v009 实现并通过，见「v009（E1）」，其余尚未实现，没有结果）：
 
 1. 少报耗时、但能打断的模拟设备：Tier 1 错过 0 次。
 2. 不能打断的设备申请 Tier 1：100% 在准入时被拒，并说明缺哪一条。
@@ -118,6 +121,26 @@ icount（`docs/accept-D/qa-icount-run{1,2,3}.txt` 三次逐字节相同；`qa-ic
 - `tools/menu_regress.py compare` 改成空白归一：按所有空白（含换行）切词、每个中日韩字符单独算一个词，再逐词比较；计时行（含续行）的数字照旧屏蔽。拆行、对齐不算区别，改字或改功能数字算。v007 的期望输出没有重新生成。
 - 证据（`docs/accept-v008/summary.txt`）：v007 和 v008 的 icount qa 日志去掉全部空白后、不屏蔽数字，除版本行外完全相同；菜单回归和 qa 日志的空白归一比较只差版本行（`docs/regress-v008/compare-v007-v008.txt`、`docs/accept-v008/compare-qa-icount-v007-v008.txt`）；最宽一行 79 列（`python3 tools/width_check.py <日志>` 列出超过 80 列的行）。
 - icount 重复 10 次（`docs/accept-v008/repeat/`）：文件 sha256 有 3 种；去掉两行中断进入时延后 10 份完全相同。这两行的最大值有时是 5 tick 而不是 3 tick（见上文 v007 的「已知」），原因未查明。
+
+## v009：E1 统一声明和按资源准入（内核 sha256 `ede1ecfe159f…`，编译于 d2c58c4）
+
+实现在 `kernel/decl.c`，菜单 11、12 可在 UTM / QEMU 串口里直接看到。
+
+- 资源：CPU（us/周期）、内存（KB）、`sim-dma` 和 `sim-blk` 两个**模拟设备**（内核里的软件模型，不是真实硬件）的占用时间（us/周期）。周期 P = 10000 us。
+- 准入，每种资源各算一遍：系统预留 + Tier 1 + Tier 2 最低值之和 + 保护时间 + 本次申请 ≤ 容量。CPU 的保护时间是 4 个槽 × 10 us；设备的保护时间是每条 Tier 1 声明一次实测停住时间。超了就 `REFUSED: <资源名>`，并打印那种资源的算式。Tier 3 不做准入。
+- 设备描述（出厂写死）：单次作业最长耗时、切换开销、从下令中止到停住的上限、能否打断、能否切分。系统自己量：在关中断、并确认作业能在下一个 Tier 1 保护区之前做完的窗口里，跑 8 次完整作业、8 次中途中止，取最大值；不用设备自报。
+- Tier 1 设备规则：不能打断的设备一律不进 Tier 1（独占也不行），拒绝里写 `missing: forcibly stoppable (… is non-preemptible; measured stop … > bound …)`；能打断的设备要么独占，要么同时满足能切分、实测停住时间 ≤ 上限、实测最长作业 ≤ 声明，缺哪条写哪条。
+- `display-vsync` 在 `sim-dma` 上有一条 2000 us 的 Tier 1 声明，只是声明，这一版没有驱动真的去用设备（令牌和闸门在 E2、E3）。
+
+验收（`python3 tools/acceptance.py build/quotaos.bin <out> icount e1`，引导参数 `e1` 依次跑菜单 11、12 和下面两项检查，然后 `QA DONE`）：30 轮日志在 `docs/accept-v009/e1/`，30 份逐字节相同（`SHA256SUMS`）。
+
+- 第 2 项：`sim-blk`（不能打断）申请 Tier 1，B 从 100 到 10000 us 共 100 次：拒绝 100，写出缺的条件 100；对照组（`sim-dma` 的 Tier 1、`sim-blk` 的 Tier 2）都被接纳。`E1 item2 PASS` × 30。
+- 第 4 项：7 个用例（只超 CPU、只超内存、只超 `sim-dma`、三样都超、CPU 多 1 us、CPU 正好用满、都放得下），判定 7/7 正确，拒绝里写出的资源名与超的资源完全一致 7/7。`E1 item4 PASS` × 30。
+- 同一次启动里 Tier 1 错过 0 次（含设备实测的关中断窗口）。icount 下实测：`sim-dma` 最长作业 396 us、停住 7 us；`sim-blk` 最长作业 1991 us、中止后要 1770 us 才停（不能打断，只能等做完）。
+
+普通模式（不加 icount）的数字只作参考：`docs/regress-v009/menus-v009-gicv2.txt` 那次 `sim-dma` 实测停住 21 us，超过上限 20 us，于是 `cam-app` 的 Tier 1 申请也被拒（`missing: forcibly stoppable`）；`docs/demo-output.txt` 那次是 16 us，被接纳。实测值受宿主机时钟跳动影响，规则按实测值保守处理。
+
+旧功能没有变：v008 和 v009 的 icount qa 日志空白归一比较只差版本行（`docs/accept-v009/compare-qa-icount-v008-v009.txt`）；菜单回归只多出菜单 11、12 和帮助里的两行（`docs/regress-v009/compare-v008-v009.txt`）。
 
 ## 编译
 
@@ -265,11 +288,11 @@ python3 tools/menu_regress.py compare docs/gic-C/menus-gicv2.txt /tmp/menus-v3.t
 
 ```text
 boot/        启动、异常向量、链接脚本
-kernel/      串口、设备树、GIC、定时器、资源账本、调度、菜单
+kernel/      串口、设备树、GIC、定时器、资源账本、调度、菜单、统一声明（decl.c）
 include/     公共类型
 prebuilt/    编好的 quotaos.bin / quotaos.elf
 docs/demo-output.txt     串口实录
-docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/ docs/accept-v008/ docs/regress-v008/   各提交的验收日志
+docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/ docs/accept-v008/ docs/regress-v008/ docs/accept-v009/ docs/regress-v009/   各提交的验收日志
 tools/qemu_serial.py     驱动 QEMU 串口的公共模块
 tools/capture_demos.py   自动按菜单跑完并检查提示符
 tools/menu_regress.py    菜单功能回归：跑固定流程，屏蔽计时数字后逐行比较
