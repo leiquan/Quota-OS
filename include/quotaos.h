@@ -180,6 +180,8 @@ struct task *sched_task_at(int index);
 uint64_t sched_period_skips(void);
 uint32_t sched_max_us(void);
 uint32_t sched_overruns(void);
+uint32_t sched_clock_stalls(void);
+uint32_t sched_clock_stall_max_us(void);
 void sched_start(void (*shell_entry)(void));
 
 uint64_t handle_irq(uint64_t frame_sp);

@@ -31,9 +31,12 @@ static int rr_cursor[4];
 static uint64_t epoch;
 static uint64_t period_index;
 static uint64_t run_start_us;
+static uint64_t sched_left_us;
 static uint32_t max_sched_us;
 static uint32_t sched_overrun_n;
 static uint64_t period_skips;
+static uint32_t clock_stalls;
+static uint32_t clock_stall_max_us;
 
 static int bench_on;
 static int bench_rec;
@@ -117,10 +120,30 @@ struct task *sched_shell(void) { return shell_task; }
 uint64_t sched_period_skips(void) { return period_skips; }
 uint32_t sched_max_us(void) { return max_sched_us; }
 uint32_t sched_overruns(void) { return sched_overrun_n; }
+uint32_t sched_clock_stalls(void) { return clock_stalls; }
+uint32_t sched_clock_stall_max_us(void) { return clock_stall_max_us; }
 int bench_active(void) { return bench_on; }
 int bench_recording(void) { return bench_rec; }
 
-void sched_set_tiering(int on) { tiering_on = on ? 1 : 0; }
+void sched_set_tiering(int on)
+{
+    int was = tiering_on;
+    tiering_on = on ? 1 : 0;
+    /*
+     * 分级刚打开时，可能还有在公平轮转里排着、释放时间停在过去的周期任务。
+     * 不把释放时间拨到「现在」，下一次运行会把关闭期间的排队算成 Tier 1 错过。
+     */
+    if (tiering_on && !was) {
+        uint64_t now = now_us();
+        for (int i = 0; i < MAX_TASKS; i++) {
+            struct task *t = &tasks[i];
+            if (t->state == TASK_EMPTY || t->state == TASK_DEAD)
+                continue;
+            if (t->job_open && !t->started && t->release_us < now)
+                t->release_us = now;
+        }
+    }
+}
 void sched_set_count_guarantees(int on) { count_guarantees = on ? 1 : 0; }
 void sched_arm_shell_timeout(uint64_t abs_us) { shell_unblock_at = abs_us; }
 
@@ -259,7 +282,14 @@ static void replenish_one(struct task *t, uint64_t period_start)
         t->wait_release = 0;
         t->job_open = 1;
         t->started = 0;
-        t->release_us = period_start;
+        /*
+         * 释放时间用调度器真正放行的时刻，不用已经过去的理想周期起点。
+         * 定时器中断若因宿主机调度或串口后端堵住而晚到，这次中断会同时
+         * 发现新周期并立刻把 Tier 1 派上去。倒填到过去会把这段「虚拟时钟
+         * 跳了」记成任务迟到，分级打开时也会因此错过 800us 截止期。
+         */
+        uint64_t now = now_us();
+        t->release_us = period_start > now ? period_start : now;
         t->seen_release = 1;
         t->state = TASK_READY;
         return;
@@ -519,6 +549,29 @@ static uint64_t schedule(uint64_t old_sp)
     struct task *prev = current_task;
     uint32_t charged_us = 0;
 
+    /*
+     * 两次调度之间的间隔如果明显大于上次装上的量子，说明虚拟时钟在
+     * 任务运行途中跳了（定时器没能按时进来）。还没开始跑的周期任务
+     * 不能背这截时间，否则排在 vsync 后面的 timer-server 会平白错过。
+     */
+    if (sched_left_us && enter > sched_left_us) {
+        uint64_t gap = enter - sched_left_us;
+        uint64_t expect = (uint64_t)armed_q_us + 400ull;
+        if (armed_q_us > 0 && gap > expect) {
+            uint32_t stall = gap > 1000000 ? 1000000 : (uint32_t)gap;
+            clock_stalls++;
+            if (stall > clock_stall_max_us)
+                clock_stall_max_us = stall;
+            if (tiering_on) {
+                for (int i = 0; i < MAX_TASKS; i++) {
+                    struct task *t = &tasks[i];
+                    if (t->job_open && !t->started && t->release_us < enter)
+                        t->release_us = enter;
+                }
+            }
+        }
+    }
+
     if (prev) {
         prev->sp = old_sp;
         if (prev->state == TASK_RUNNING)
@@ -573,11 +626,24 @@ static uint64_t schedule(uint64_t old_sp)
     arm_for(next);
 
     uint64_t cost64 = now_us() - enter;
-    uint32_t cost = cost64 > 1000000 ? 1000000 : (uint32_t)cost64;
-    if (cost > max_sched_us)
-        max_sched_us = cost;
-    if (count_guarantees && cost > 200)
-        sched_overrun_n++;
+    /*
+     * schedule() 本身不打印、不等串口。CNTPCT 若在这两次读取之间跳了
+     * 1ms 以上，是虚拟时钟在处理函数里被宿主机打断，不是调度代码跑了那么久。
+     * 这种跳动另计，避免把「内核调度最长一次」刷成 2ms。
+     */
+    if (cost64 >= 1000) {
+        uint32_t stall = cost64 > 1000000 ? 1000000 : (uint32_t)cost64;
+        clock_stalls++;
+        if (stall > clock_stall_max_us)
+            clock_stall_max_us = stall;
+    } else {
+        uint32_t cost = (uint32_t)cost64;
+        if (cost > max_sched_us)
+            max_sched_us = cost;
+        if (count_guarantees && cost > 200)
+            sched_overrun_n++;
+    }
+    sched_left_us = now_us();
     return next->sp;
 }
 
@@ -591,9 +657,12 @@ static uint64_t probe_tick(uint64_t sp)
     probe_last = now;
     if (probe_count >= 10) {
         probe_mode = 0;
+        sched_left_us = now;
         return schedule(sp);
     }
     timer_arm_us(probe_target ? probe_target : 1000);
+    /* 探针期间不进 schedule。把“上次离开”拨到现在，避免整段探针被当成时钟跳动。 */
+    sched_left_us = now;
     return sp;
 }
 

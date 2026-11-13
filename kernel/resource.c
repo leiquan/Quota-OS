@@ -423,8 +423,9 @@ void resource_show(void)
     printf("检测到的 RAM: %lu KB (%lu MB)，来自设备树/探测\n", ram_kb, ram_kb / 1024);
     printf("内核保留:     %u KB（映像、栈、内核记账，不参与应用分配）\n", KERNEL_RESERVE_KB);
     printf("CPU 周期:     %u us    分级调度: %s\n", PERIOD_US, sched_tiering() ? "ON" : "OFF");
-    printf("内核调度最长一次: %u us   超过 200us 的次数: %u   跳过的周期: %lu\n",
-           sched_max_us(), sched_overruns(), sched_period_skips());
+    printf("内核调度最长一次: %u us   超过 200us 的次数: %u   跳过的周期: %lu   时钟跳动: %u 次/最长 %u us\n",
+           sched_max_us(), sched_overruns(), sched_period_skips(),
+           sched_clock_stalls(), sched_clock_stall_max_us());
 
     printf("\n[Tier 1] 厂商声明，启动时静态保留，不能被抢走\n");
     for (unsigned i = 0; i < sizeof tier1_table / sizeof tier1_table[0]; i++) {
