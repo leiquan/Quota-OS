@@ -78,6 +78,16 @@ void e2_demo(uint32_t periods, int qa_line)
            s.meas_max, s.diff_max);
     printf("  IPC kernel path charged to callers in total (not to the system\n");
     printf("  reserve): %lu ticks\n", s.kern_sum);
+    printf("    = in-call window %lu + entry and queueing %lu\n", s.kern_in, s.kern_entry);
+    printf("    + reply return %lu (sum %lu)\n", s.kern_reply,
+           s.kern_in + s.kern_entry + s.kern_reply);
+    uint64_t wdrop = s.w_used - s.w_own;
+    uint64_t wsum = s.w_run + s.w_kin + s.w_kent + s.w_krep;
+    uint64_t werr = wdrop > wsum ? wdrop - wsum : wsum - wdrop;
+    printf("  whole window (per-period budgets): caller budget drops %lu\n", wdrop);
+    printf("    = driver run %lu + in-call %lu\n", s.w_run, s.w_kin);
+    printf("    + entry %lu + reply %lu\n", s.w_kent, s.w_krep);
+    printf("    = %lu; error %lu ticks\n", wsum, werr);
     printf("  IPC kernel path past the end of the caller's budget, charged to\n");
     printf("  the system reserve instead: %lu times, total %lu, max %lu ticks\n",
            s.excess_n, s.excess_sum, s.excess_max);
@@ -88,7 +98,8 @@ void e2_demo(uint32_t periods, int qa_line)
     sched_print_kernel();
     if (qa_line)
         printf("E2 item8 %s\n",
-               s.calls > 0 && s.diff_max <= 1 && drv_change == 0 ? "PASS" : "FAIL");
+               s.calls > 0 && s.diff_max <= 1 && drv_change == 0 &&
+               s.kern_in + s.kern_entry + s.kern_reply == s.kern_sum && werr == 0 ? "PASS" : "FAIL");
 }
 
 /* ---------- E3：设备闸门、超时降级、中断风暴 ---------- */

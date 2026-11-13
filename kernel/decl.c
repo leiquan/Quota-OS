@@ -17,7 +17,9 @@
 #define DEV_RESET_US 2      /* 能打断的设备收到中止后复位所需时间 */
 #define DEV_TRIALS 8
 
-enum { R_CPU, R_MEM, R_DMA, R_BLK, R_CAM, NRES };
+enum { R_CPU, R_MEM, R_DMA, R_BLK, R_CAM, R_BW, NRES };
+#define BW_CAP 2000000u       /* 模拟总线：每周期最多访存次数 */
+#define BW_RESERVE 100000u    /* 系统预留的访存次数 */
 #define NDEV 3
 #define T1_STOP_LIMIT_US 20   /* Tier 1 设备的停止上限不得超过它（算进保护时间） */
 
@@ -37,8 +39,8 @@ struct sim_dev *decl_dev(int i)
     return i >= 0 && i < NDEV ? &devs[i] : 0;
 }
 
-static const char *res_name[NRES] = {"CPU", "memory", "sim-dma", "sim-blk", "sim-cam"};
-static const char *res_unit[NRES] = {"us", "KB", "us", "us", "us"};
+static const char *res_name[NRES] = {"CPU", "memory", "sim-dma", "sim-blk", "sim-cam", "mem-bw"};
+static const char *res_unit[NRES] = {"us", "KB", "us", "us", "us", "accesses"};
 
 #define POL_NONE 0
 #define POL_DEGRADE 1
@@ -65,6 +67,12 @@ void decl_init(void)
     reg[0].b[R_DMA] = 2000;
     reg[0].live = 1;
     reg[0].policy = POL_DEGRADE;
+    reg[0].b[R_BW] = 200000;      /* v012：Tier 1 的访存次数 */
+    str_copy(reg[1].who, "timer-server", NAME_LEN);
+    reg[1].tier = TIER1;
+    reg[1].b[R_BW] = 50000;
+    reg[1].live = 1;
+    reg[1].policy = POL_DEGRADE;
     for (int i = 0; i < NDEV; i++)
         devs[i].state = DEV_NEW;
 }
@@ -182,12 +190,12 @@ static void wadd_u(uint64_t v)
 
 static uint64_t cap_of(int r)
 {
-    return r == R_MEM ? resource_ram_kb() : PERIOD_US;
+    return r == R_MEM ? resource_ram_kb() : r == R_BW ? BW_CAP : PERIOD_US;
 }
 
 static uint64_t reserve_of(int r)
 {
-    return r == R_CPU ? SYS_RESERVE_US : r == R_MEM ? KERNEL_RESERVE_KB : 0;
+    return r == R_CPU ? SYS_RESERVE_US : r == R_MEM ? KERNEL_RESERVE_KB : r == R_BW ? BW_RESERVE : 0;
 }
 
 static uint64_t t1_of(int r)
@@ -214,6 +222,8 @@ static uint64_t guard_of(int r, int extra_t1)
     if (r == R_CPU)
         return resource_guard_us();
     if (r == R_MEM)
+        return color_padding_kb();   /* v012：缓存着色补齐 */
+    if (r == R_BW)
         return 0;
     struct sim_dev *d = &devs[r - R_DMA];
     uint64_t n = extra_t1;
@@ -280,10 +290,10 @@ static int admit(const char *who, int tier, const uint64_t *b)
     int bad = 0;
     if (tier == TIER3)
         return 0;   /* 三级只分剩下的，不做准入 */
-    for (int r = R_DMA; r < NRES && tier == TIER1; r++)
+    for (int r = R_DMA; r <= R_CAM && tier == TIER1; r++)
         if (b[r] && t1_device_rule(who, r))
             bad |= 1 << 8;
-    for (int r = R_DMA; r < NRES && tier == TIER2; r++)
+    for (int r = R_DMA; r <= R_CAM && tier == TIER2; r++)
         if (b[r] && devs[r - R_DMA].state == DEV_DEMOTED) {
             bad |= 1 << 8;
             fault_reason(&devs[r - R_DMA]);
@@ -394,7 +404,7 @@ void decl_demo_overcommit(void)
     try_req("mem-hog", TIER2, 1000, 110000, 0, 0, 0, 1);
     try_req("dma-hog", TIER2, 1000, 1024, 8500, 0, 0, 1);
     try_req("all-hog", TIER2, 8200, 110000, 8500, 0, 0, 1);
-    try_req("fits", TIER2, 8000, 90000, 7000, 0, 0, 1);
+    try_req("fits", TIER2, 8000, 85000, 7000, 0, 0, 1);
 }
 
 /* ---------- E1 验收（qa 引导参数 e1） ---------- */
@@ -446,7 +456,7 @@ void decl_qa_e1(int unused)
         {8200, 110000, 8500, (1 << R_CPU) | (1 << R_MEM) | (1 << R_DMA)},
         {8071, 0, 0, 1 << R_CPU},       /* 350+1500+8071+80 = 10001 */
         {8070, 0, 0, 0},                /* 正好 10000 */
-        {8000, 90000, 7000, 0},
+        {8000, 85000, 7000, 0},     /* v012：90000 放不下了（着色补齐 11776 KB） */
     };
     int cases = 0, right = 0, rnamed = 0;
     for (unsigned i = 0; i < sizeof c / sizeof c[0]; i++) {
@@ -645,4 +655,24 @@ void decl_notice(void)
                 printf("    %s: now Tier 3 on %s%s\n", reg[k].who, d->name,
                        reg[k].alarm ? " (ALARM)" : "");
     }
+}
+
+/* ---------- E4：访存带宽准入 ---------- */
+
+uint64_t decl_bw_capacity(void)
+{
+    return BW_CAP;
+}
+
+int decl_try_bw(const char *who, int tier, uint64_t accesses)
+{
+    uint64_t v[NRES] = {0};
+    v[R_BW] = accesses;
+    print_req(who, tier, v);
+    int bad = admit(who, tier, v);
+    uint64_t res = reserve_of(R_BW), t1 = t1_of(R_BW), t2 = t2_of(R_BW);
+    printf("  mem-bw: reserve %lu + tier-1 %lu + tier-2 min %lu\n    + this %lu = %lu %s %u\n",
+           res, t1, t2, accesses, res + t1 + t2 + accesses, bad ? ">" : "<=", BW_CAP);
+    printf(bad ? "REFUSED: mem-bw\n" : "OK: admitted\n");
+    return bad;
 }

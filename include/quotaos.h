@@ -2,7 +2,7 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "011"
+#define QUOTAOS_VERSION     "012"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -109,6 +109,12 @@ struct task {
     /* E2：预算令牌随 IPC 走（seL4 MCS 式）。 */
     struct task *sc;            /* 服务端正在用谁的预算；0 = 自己 */
     struct task *server;        /* 调用者：在等哪个服务端 */
+    /* 服务端：排队等它的调用者（任务号，先来先服务）。v012 起代替回复时把全部任务扫一遍。 */
+    uint8_t ipc_q[64];
+    uint32_t ipc_qh, ipc_qt;
+    int ipc_q_over;             /* 队列满过：回复时退回全扫 */
+    int ipc_queued;             /* 调用者：在某个服务端的队列里 */
+    uint64_t p_own, p_run, p_kin, p_kent, p_krep;   /* 本周期：自己跑 / 驱动替它跑 / 三段内核路径 */
     struct task *caller;        /* 服务端：正在替谁干活 */
     int64_t ipc_base;           /* 调用者：发出调用时的 used_t（跨周期时减去清零的部分） */
     uint64_t call_ran_t;        /* 服务端：本次调用里内核量到的运行时间 */
@@ -119,6 +125,14 @@ struct task {
     uint64_t dev_budget_t;      /* Tier 2 调用者：每周期可用的设备时间；0 = 不限（只给 Tier 3） */
     uint64_t dev_used_t;
     int dev_wait;
+
+    /* E4：内存带宽（MemGuard 式）。访存计数是模拟的：运行 tick * 访存密度。 */
+    uint64_t bw_rate;           /* 每 1000 tick 的访存次数（任务代码的访存密度） */
+    uint64_t bw_budget;         /* 每周期最多访存次数；0 = 不限 */
+    uint64_t bw_used, bw_frac;
+    int bw_hit, bw_prev_hit;    /* 本周期 / 上周期用满并被停住 */
+    uint64_t bw_w_periods, bw_w_stalled, bw_w_over_max, bw_w_after, bw_w_restore_min;
+    uint64_t bw_w_used_max, bw_w_used_min;
 };
 
 /* 模拟设备（软件模型，不是真实硬件）。出厂描述写死；状态由系统维护。 */
@@ -251,6 +265,12 @@ struct ipc_stats {
     uint64_t calls, drop_sum, meas_sum, meas_max, diff_max, srv_used_change, self_sum;
     uint64_t run_sum, kern_sum;
     uint64_t excess_n, excess_sum, excess_max;   /* IPC 内核路径超出调用者预算、改记系统预留的部分 */
+    /* v012：kern_sum 分三段（相加正好是 kern_sum）：调用窗口里（服务端绑着调用者时）、
+     * 进入和排队（svc #1 到服务端接手之前）、回复返回（svc #2 之后回到调用者之前） */
+    uint64_t kern_in, kern_entry, kern_reply;
+    /* 整个窗口的核对（按周期结算，和预算同一口径）：调用者预算减少总量
+     * = 各任务周期用量之和 - 任务自己跑的部分；应等于驱动替它跑的 + 三段内核路径 */
+    uint64_t w_used, w_own, w_run, w_kin, w_kent, w_krep;
 };
 void sched_ipc_stats(struct ipc_stats *s, int reset);
 void e2_demo(uint32_t periods, int qa_line);
@@ -304,6 +324,15 @@ void dev_period(void);
 uint64_t sched_period_now(void);
 int sched_in_t1_window(uint64_t now);
 void gic_ppi_enable(uint32_t id, int on);
+void color_init(uint64_t ram_bytes);
+uint64_t color_padding_kb(void);
+uint32_t color_alloc_shared(uint32_t n);
+void color_free_shared(void);
+void color_report(int qa_line);
+void e4_demo_bandwidth(uint32_t periods, int qa_line);
+void e4_demo_color(int qa_line);
+int decl_try_bw(const char *who, int tier, uint64_t accesses);
+uint64_t decl_bw_capacity(void);
 void e3_demo_timeout(uint32_t periods, int qa_line);
 void e3_demo_storm(uint32_t periods, int qa_line);
 void decl_demo_device_tier1(void);

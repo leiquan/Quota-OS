@@ -99,7 +99,8 @@ uint64_t resource_ram_kb(void)
 
 uint64_t resource_app_mem_capacity_kb(void)
 {
-    uint64_t fixed = (uint64_t)KERNEL_RESERVE_KB + resource_t1_mem_kb();
+    /* v012 起再扣掉缓存着色补齐（Tier 1 颜色里别人不能用的页） */
+    uint64_t fixed = (uint64_t)KERNEL_RESERVE_KB + resource_t1_mem_kb() + color_padding_kb();
     return ram_kb > fixed ? ram_kb - fixed : 0;
 }
 
@@ -224,7 +225,7 @@ int resource_check(const struct app_manifest *m)
             radd_u(mem_cap);
             radd(" KB for apps\n  (RAM ");
             radd_u(ram_kb);
-            radd(" KB - system reserve - tier-1)\n");
+            radd(" KB - system reserve - tier-1 - color padding)\n");
         }
         if (cpu_over) {
             radd("  minimum CPU ");
