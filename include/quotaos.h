@@ -2,7 +2,7 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "014"
+#define QUOTAOS_VERSION     "015"
 /* Tier 2 应用用 IPC 时准入多留的余量：调用者预算在 IPC 内核路径里用完时超出的部分从这里出 */
 #define IPC_HEADROOM_US     120   /* 大于实测最长的一次内核停留（qa-long 6622 tick = 106 us） */
 
@@ -122,7 +122,10 @@ struct task {
     int ipc_hold;               /* 本周期用过余量：新调用扣到下个周期 */
     int ipc_held;               /* 调用者：这次调用被扣住，等下个周期 */
     struct task *caller;        /* 服务端：正在替谁干活 */
-    int64_t ipc_base;           /* 调用者：发出调用时的 used_t（跨周期时减去清零的部分） */
+    uint64_t used_total;        /* 预算主人：累计用量，不按周期清零（v015 起用来量每次调用扣了多少） */
+    uint64_t call_base;         /* 服务端：这次调用开始时预算主人的 used_total */
+    uint64_t call_sub_ran, call_sub_kern;   /* 服务端：这次调用里转发出去的调用（已回复）的运行和内核路径 */
+    int p_hr_n;                 /* 本周期用余量的次数 */
     uint64_t call_ran_t;        /* 服务端：本次调用里内核量到的运行时间 */
     uint64_t call_kern_t;       /* 服务端：本次调用里记在调用者头上的 IPC 内核路径时间 */
     uint64_t run_cap;           /* Tier 2：这次被挑中时的预算上限（最低值或最低值+建议值） */
@@ -262,6 +265,14 @@ void sched_print_kernel(void);
 void sched_print_slots(void);
 uint64_t sched_kernel_max_all(void);
 uint64_t sched_kernel_max_period(void);
+/* v015：开机以来内核用量最大那个周期的明细（按上一次进内核的原因归类） */
+enum { KC_TIMER, KC_GUARD, KC_DEVIRQ, KC_SVC_IPC, KC_SVC_OTHER, KC_N };
+struct kattr {
+    uint64_t period, total, t[KC_N], n[KC_N], boundary, spin;
+    int label;
+};
+void sched_set_label(int l);
+void sched_kernel_worst(struct kattr *a);
 uint64_t sched_irq_lat_max(void);
 uint64_t sched_periods(void);
 uint64_t sched_foreign_window(void);
@@ -287,6 +298,7 @@ struct ipc_stats {
     uint64_t hr_n, hr_sum, hr_max, hr_pp_max;
     /* v014：用过余量的调用者本周期新发的调用先扣住，下个周期再放 */
     uint64_t held_n, held_resumed, hr_both_periods, hr_periods;
+    uint64_t hr_multi_periods, fwd_calls, fwd_replies;   /* v015 */
 };
 void sched_ipc_stats(struct ipc_stats *s, int reset);
 void e2_demo(uint32_t periods, int qa_line);

@@ -33,6 +33,16 @@ static void driver_entry(uint64_t req)
 }
 
 static int drv_id;
+static int fwd_id;
+
+/* v015：转发服务端 A：把调用者的请求原样转给驱动 B，再把 B 的回复转回去。全程用调用者的预算。 */
+static void fwd_entry(uint64_t req)
+{
+    for (;;) {
+        uint64_t r = sys_call((uint64_t)drv_id, req);
+        req = sys_reply_wait(r);
+    }
+}
 
 /* 应用：不停地调驱动，请求 50..400 us（固定的伪随机序列）。 */
 static void app_entry(void)
@@ -54,27 +64,44 @@ static void app_entry_short(void)
     }
 }
 
-static void e2_run(uint32_t periods, int qa_line, int hold);
+/* v015：同样的短调用，但打给转发服务端 A */
+static void app_entry_fwd(void)
+{
+    uint32_t x = 777;
+    for (;;) {
+        x = x * 1103515245u + 12345u;
+        sys_call((uint64_t)fwd_id, 5 + (x >> 16) % 56);
+    }
+}
+
+static void e2_run(uint32_t periods, int qa_line, int hold, int fwd);
 
 void e2_demo(uint32_t periods, int qa_line)
 {
-    e2_run(periods, qa_line, 0);
+    e2_run(periods, qa_line, 0, 0);
 }
 
-static uint64_t off_both, off_pp_max;
+static uint64_t off_both, off_multi, off_pp_max;
 
 void e2_hold_demo(uint32_t periods, int qa_line)
 {
-    /* 先关掉规则跑一遍作对照（同样的负载），再按规则跑 */
-    sched_set_ipc_hold_rule(0);
-    e2_run(periods, 0, 2);
-    sched_set_ipc_hold_rule(1);
-    e2_run(periods, qa_line, 1);
+    /* 每种情况先关掉规则跑一遍作对照（同样的负载），再按规则跑。
+     * 第二种（v015）：Tier 2 调用者 -> 转发服务端 A -> 驱动 B，都记在调用者头上。 */
+    for (int fwd = 0; fwd <= 1; fwd++) {
+        sched_set_ipc_hold_rule(0);
+        e2_run(periods, 0, 2, fwd);
+        sched_set_ipc_hold_rule(1);
+        e2_run(periods, qa_line, 1, fwd);
+    }
 }
 
-static void e2_run(uint32_t periods, int qa_line, int hold)
+static void e2_run(uint32_t periods, int qa_line, int hold, int fwd)
 {
-    if (hold == 2)
+    if (hold == 2 && fwd)
+        printf("\n=== 18 对照（经转发服务端）：不扣住新调用 ===\n");
+    else if (hold && fwd)
+        printf("\n=== 18 经转发服务端：用过余量的预算本周期新调用扣到下个周期 ===\n");
+    else if (hold == 2)
         printf("\n=== 18 对照：不扣住新调用（v013 的做法）===\n");
     else if (hold)
         printf("\n=== 18 IPC 余量：用过余量的调用者本周期新调用扣到下个周期 ===\n");
@@ -85,8 +112,17 @@ static void e2_run(uint32_t periods, int qa_line, int hold)
     drv->min_t = us_to_ticks(500);      /* 驱动自己的预算（这里不用） */
     drv->bench_owned = 1;
     drv_id = drv->id;
+    struct task *fs = 0;
+    if (fwd) {
+        fs = task_create("fwd-srv", TIER_SERVER, KIND_SERVER);
+        task_set_entry(fs, (void (*)(void))fwd_entry);
+        fs->min_t = us_to_ticks(500);
+        fs->bench_owned = 1;
+        fwd_id = fs->id;
+    }
+    void (*ent)(void) = fwd ? app_entry_fwd : hold ? app_entry_short : app_entry;
     struct task *app = task_create("cam-app", TIER2, KIND_SPIN);
-    task_set_entry(app, hold ? app_entry_short : app_entry);
+    task_set_entry(app, ent);
     app->min_t = us_to_ticks(3000);
     if (hold)
         app->sugg_t = us_to_ticks(1000);    /* 有建议值：保底轮和建议轮都可能在内核路径里到头 */
@@ -103,7 +139,7 @@ static void e2_run(uint32_t periods, int qa_line, int hold)
          * 这样同一个周期里两轮都可能在内核路径里到头。 */
         decl_try_ipc_t2("hud-app", 1500, 3000 + IPC_HEADROOM_US);
         hud = task_create("hud-app", TIER2, KIND_SPIN);
-        task_set_entry(hud, app_entry_short);
+        task_set_entry(hud, ent);
         hud->min_t = us_to_ticks(1500);
         hud->sugg_t = us_to_ticks(500);
         hud->bench_owned = 1;
@@ -113,16 +149,19 @@ static void e2_run(uint32_t periods, int qa_line, int hold)
         printf("cam-app (tier 2, min 3000 us, suggested 1000 us), hud-app\n");
         printf("(tier 2, min 1500 us, suggested 500 us) and bg-caller (tier 3)\n");
         printf("call sim-dma-drv for 5..60 us of device work each.\n");
+        if (fwd)
+            printf("cam-app and hud-app call via fwd-srv (server A), which forwards\n"
+                   "each call to sim-dma-drv (server B); both run on the caller's budget.\n");
     } else {
         printf("cam-app (tier 2, min 3000 us) and bg-caller (tier 3) call\n");
         printf("sim-dma-drv (passive server) for 50..400 us of device work each.\n");
     }
     struct ipc_stats s;
     sched_ipc_stats(&s, 1);
-    uint64_t drv_used0 = drv->used_t;
+    uint64_t drv_used0 = drv->used_t + (fs ? fs->used_t : 0);
     sched_bench(periods);
     sched_ipc_stats(&s, 0);
-    uint64_t drv_change = drv->used_t - drv_used0;
+    uint64_t drv_change = drv->used_t + (fs ? fs->used_t : 0) - drv_used0;
     printf("calls %lu; measured by the kernel during the calls:\n", s.calls);
     printf("  driver running %lu ticks + IPC kernel path %lu ticks\n", s.run_sum,
            s.meas_sum - s.run_sum);
@@ -179,6 +218,9 @@ static void e2_run(uint32_t periods, int qa_line, int hold)
     printf("  and the suggested pass %lu; new calls held to the next period %lu,\n",
            s.hr_both_periods, s.held_n);
     printf("  released at the next period start %lu\n", s.held_resumed);
+    printf("  caller-periods with 2 or more draws %lu; forwarded calls %lu,\n",
+           s.hr_multi_periods, s.fwd_calls);
+    printf("  replied %lu\n", s.fwd_replies);
     printf("  driver's own budget used during the window: %lu ticks\n", drv_change);
     printf("  driver's own wall-clock timing incl. preemption (reference only):\n");
     printf("  total %lu ticks\n", s.self_sum);
@@ -188,20 +230,24 @@ static void e2_run(uint32_t periods, int qa_line, int hold)
     sched_window_misses(&ma, &mb);
     if (hold == 2) {
         off_both = s.hr_both_periods;
+        off_multi = s.hr_multi_periods;
         off_pp_max = s.hr_pp_max;
     }
     if (qa_line && hold == 1) {
-        printf("E2 headroom: most drawn in one period %lu <= %lu admitted,\n", s.hr_pp_max,
+        const char *tag = fwd ? "E2 headroom fwd" : "E2 headroom";
+        printf("%s: most drawn by one owner in one period %lu <= %lu\n", tag, s.hr_pp_max,
                us_to_ticks(IPC_HEADROOM_US));
-        printf("  caller-periods drawing in both passes %lu, held calls %lu,\n", s.hr_both_periods,
-               s.held_n);
-        printf("  tier-1 misses %lu; without the rule (same load): caller-periods\n", ma + mb);
-        printf("  drawing in both passes %lu, most in one period %lu\n", off_both, off_pp_max);
-        printf("E2 headroom %s\n",
-               s.hr_pp_max <= us_to_ticks(IPC_HEADROOM_US) && s.hr_both_periods == 0 &&
-               off_both > 0 &&
-               s.held_n > 0 && ma + mb == 0 && werr == 0 && rerr == 0 &&
-               s.diff_max <= 1 && drv_change == 0 ? "PASS" : "FAIL");
+        printf("  admitted; owner-periods with 2+ draws %lu (both passes %lu),\n",
+               s.hr_multi_periods, s.hr_both_periods);
+        printf("  held calls %lu, tier-1 misses %lu; without the rule (same load):\n",
+               s.held_n, ma + mb);
+        printf("  2+ draws %lu (both passes %lu), most in one period %lu\n", off_multi,
+               off_both, off_pp_max);
+        printf("%s %s\n", tag,
+               s.hr_pp_max <= us_to_ticks(IPC_HEADROOM_US) && s.hr_multi_periods == 0 &&
+               s.hr_both_periods == 0 && off_multi > 0 && s.held_n > 0 && ma + mb == 0 &&
+               werr == 0 && rerr == 0 && s.diff_max <= 1 && drv_change == 0 &&
+               (!fwd || s.fwd_calls > 0) ? "PASS" : "FAIL");
     }
     if (qa_line)
         printf("E2 item8 %s\n",

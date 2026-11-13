@@ -176,6 +176,21 @@ static void cmd_overview(void)
     printf("  CPU %u us/period = %lu ticks\n", SYS_RESERVE_US, us_to_ticks(SYS_RESERVE_US));
     printf("  measured since boot: max %lu ticks/period (period %lu of %lu)\n",
            sched_kernel_max_all(), sched_kernel_max_period(), sched_periods());
+    {
+        /* v015：这个最大周期是在跑哪个菜单、内核时间花在哪类进入上 */
+        struct kattr a;
+        sched_kernel_worst(&a);
+        printf("  that period ran menu %d; kernel ticks by entry (count):\n", a.label);
+        printf("    timer IRQ %lu (%lu), slot guard wait %lu (%lu),\n", a.t[KC_TIMER],
+               a.n[KC_TIMER], a.t[KC_GUARD], a.n[KC_GUARD]);
+        printf("    device IRQ %lu (%lu), svc IPC/dev %lu (%lu), svc other %lu (%lu);\n",
+               a.t[KC_DEVIRQ], a.n[KC_DEVIRQ], a.t[KC_SVC_IPC], a.n[KC_SVC_IPC],
+               a.t[KC_SVC_OTHER], a.n[KC_SVC_OTHER]);
+        printf("    of which period-boundary work %lu, waits for a deadline %lu\n",
+               a.boundary, a.spin);
+        printf("    reserve %lu, margin %ld\n", us_to_ticks(SYS_RESERVE_US),
+               (long)us_to_ticks(SYS_RESERVE_US) - (long)a.total);
+    }
     printf("  memory %u KB\n", KERNEL_RESERVE_KB);
 
     printf("\n[Tier 1] one fixed slot per task; unused time stays idle\n");
@@ -584,18 +599,19 @@ static void run_qa(int long_run)
     np = QA_PERIODS;
     if (long_run) {
         printf("\n=== QA long run ===\n");
+        sched_set_label(9);
         run_overload(QA_LONG_PERIODS);
     } else {
-        cmd_overview();
-        cmd_full();
-        cmd_old_device();
-        cmd_on_time();
-        cmd_overrun();
-        cmd_never_lent();
-        cmd_t2();
-        cmd_overload();
-        cmd_runaway();
-        cmd_overview();
+        sched_set_label(1); cmd_overview();
+        sched_set_label(3); cmd_full();
+        sched_set_label(4); cmd_old_device();
+        sched_set_label(5); cmd_on_time();
+        sched_set_label(6); cmd_overrun();
+        sched_set_label(7); cmd_never_lent();
+        sched_set_label(8); cmd_t2();
+        sched_set_label(9); cmd_overload();
+        sched_set_label(10); cmd_runaway();
+        sched_set_label(1); cmd_overview();
     }
     printf("QA DONE\n");
     for (;;)
@@ -618,31 +634,31 @@ void shell_main(void)
     }
     if (strcmp(args, "e3") == 0) {
         qa = 1;
-        e3_demo_timeout(QA_PERIODS, 1);
-        cmd_overview();
-        e3_demo_storm(QA_PERIODS, 1);
+        sched_set_label(14); e3_demo_timeout(QA_PERIODS, 1);
+        sched_set_label(1); cmd_overview();
+        sched_set_label(15); e3_demo_storm(QA_PERIODS, 1);
         printf("QA DONE\n");
         for (;;)
             asm volatile("wfi");
     }
     if (strcmp(args, "e2h") == 0) {
         qa = 1;
-        e2_hold_demo(QA_PERIODS, 1);
+        sched_set_label(18); e2_hold_demo(QA_PERIODS, 1);
         printf("QA DONE\n");
         for (;;)
             asm volatile("wfi");
     }
     if (strcmp(args, "e4") == 0) {
         qa = 1;
-        e4_demo_bandwidth(QA_PERIODS, 1);
-        e4_demo_color(1);
+        sched_set_label(16); e4_demo_bandwidth(QA_PERIODS, 1);
+        sched_set_label(17); e4_demo_color(1);
         printf("QA DONE\n");
         for (;;)
             asm volatile("wfi");
     }
     if (strcmp(args, "e2") == 0) {
         qa = 1;
-        e2_demo(QA_PERIODS, 1);
+        sched_set_label(13); e2_demo(QA_PERIODS, 1);
         printf("QA DONE\n");
         for (;;)
             asm volatile("wfi");
@@ -657,6 +673,8 @@ void shell_main(void)
         char line[32];
         readline(line, sizeof line);
         int k = parse_int(line);
+        if (k > 0)
+            sched_set_label(k);
         switch (k) {
         case 1: cmd_overview(); break;
         case 2: cmd_install(); break;

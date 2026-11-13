@@ -39,7 +39,7 @@ BIG = [
     ("13\n", P, 30),                                   # v010 (E2)
     ("14\n", P, 30), ("15\n", P, 30), ("1\n", P, 10),     # v011 (E3)
     ("16\n", P, 30), ("17\n", P, 10),                  # v012 (E4)
-    ("18\n", P, 90),                                   # v014: two runs (reference + rule)
+    ("18\n", P, 180),                                  # v014/v015: plain + forwarding, each rule off/on
     ("1\n", P, 10), ("x\n", P, 10), ("h\n", P, 10),
 ]
 SMALL = [
