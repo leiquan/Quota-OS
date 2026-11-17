@@ -84,6 +84,18 @@ def main():
         print(open(LOG, errors="replace").read())
         proc.kill()
         return 1
+    def move_to(px, py):
+        qmp(s, {"execute": "input-send-event", "arguments": {"events": [
+            {"type": "abs", "data": {"axis": "x", "value": px * 32767 // 639}},
+            {"type": "abs", "data": {"axis": "y", "value": py * 32767 // 479}},
+        ]}})
+        time.sleep(0.4)
+    move_to(560, 40)
+    qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-cursor-dark.ppm"}})
+    print("cursor dark")
+    move_to(160, 270)
+    qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-cursor-light.ppm"}})
+    print("cursor light")
     # Button center is pixel (114, 98). QMP absolute axes are 0..32767.
     x = 114 * 32767 // 639
     y = 98 * 32767 // 479

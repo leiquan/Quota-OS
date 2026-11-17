@@ -10,13 +10,13 @@ License: [Apache-2.0](LICENSE)
 
 ## 现在能直接跑的映像
 
-`prebuilt/quotaos.bin` 是 LVGL 界面。不传 `-append` 就进这个界面，不会回到 `select>`。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (e5d75c1)`。`e5d75c1` 是包含这版字节的提交的父提交。
+`prebuilt/quotaos.bin` 是白底 LVGL 界面，深色字，按钮和文本框有黑边。客户机自己画一支黑底白边的软件指针，跟 virtio 指针坐标走。不传 `-append` 就进这个界面，不会回到 `select>`。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (287aa11)`。`287aa11` 是包含这版字节的提交的父提交。
 
-sha256：`quotaos.bin` `da5cbcb7bc0c2ef90c3d98d38b73731c0b9b6238ef1aa1a7d06eb0626980d413`，`quotaos.elf` `fc8011965da33fee71364a0da515465683a80a734ebcee8ff49f53569900cbf4`。666432 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。
+sha256：`quotaos.bin` `198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988`，`quotaos.elf` `51913f17aeb9febbf2736ecca2b823acc03b218f77444f5cecf325a95497fab7`。667656 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。
 
 上一份串口内核完整留在 `prebuilt/quotaos-serial.bin`（93744 字节，sha256 `afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05`，elf `bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64`，横幅 `Version: 016 (af050b5)`）。下面历史段落里的 e4 日志对应的是那份串口内核，不是现在的默认文件。
 
-要看见按钮并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过：点 +1 后计数为 1，键盘 `a` `b` 出现在文本框里。截图 `docs/v016/lvgl/default-screen.png`，串口 `docs/v016/lvgl/default-cmdline.raw`。
+要看见按钮并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过：白底上指针可见，点 +1 后计数为 1，键盘 `a` `b` 出现在文本框里。截图 `docs/v016/lvgl/white-cursor-page.png`、`docs/v016/lvgl/white-cursor-field.png`、`docs/v016/lvgl/white-cursor-click.png`。串口 `docs/v016/lvgl/white-cursor.raw`。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
@@ -29,7 +29,7 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
 
 QEMU 会打印 `Could not open option rom 'vgabios-ramfb.bin'`。客户机仍然写了 `etc/ramfb`，`screendump` 拿到了上面的画面。
 
-不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`，然后 `[fb] etc/ramfb not in fw_cfg`。这不是 `select>`。串口菜单只要 `-append serial`。`-append e4` 仍是 e4：同一份默认映像上 item9 PASS、item10 PASS、QA DONE（`docs/v016/lvgl/e4-default.raw`）。Tier-1 仍是 13312 KB、1500 us。这一屏不是一级任务的硬件隔离。启动行仍是 EL1、MMU 关、一个内核地址空间。
+不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`，然后 `[fb] etc/ramfb not in fw_cfg`。这不是 `select>`。串口菜单只要 `-append serial`。`-append e4` 仍是 e4：同一份默认映像上 item9 PASS、item10 PASS、QA DONE（`docs/v016/lvgl/e4-white.raw`）。Tier-1 仍是 13312 KB、1500 us。这一屏不是一级任务的硬件隔离。启动行仍是 EL1、MMU 关、一个内核地址空间。
 
 文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。
 
@@ -481,7 +481,7 @@ UTM 是沙盒应用，在 QEMU 参数里手写 `-kernel /路径/quotaos.bin` 会
 
 旧版本（2259e51 及以前）只会 GICv2，在 UTM 的 GICv3 上写 GICv2 CPU 接口 0x08010000 会 `PANIC sync ec=0x25 esr=0x96000050 elr=0x400821e0`，当时必须在 QEMU Machine Properties 里填 `gic-version=2`。现在不需要了；填了也照样能跑。
 
-当前 `prebuilt/quotaos.bin` 在启动参数为空时进入 LVGL，不再进入 `select>`。上面第 6 步删掉 Display、只留 Serial 的写法仍然成立：这样启动能在串口里看到 `[boot] no bootarg, starting LVGL`，屏幕上没有像素，因为没有 ramfb。要看到并点击，QEMU 侧需要 `-device ramfb`、`-device virtio-keyboard-device`、`-device virtio-tablet-device`。这三行是在 QEMU 8.2.2 上测过的设备名。UTM 本身这次没有跑，不能从这里编一个 UTM 里添加它们的菜单。Arguments 里原来的 `-cpu cortex-a72` 保持不变，不要写 `-kernel`。想要原来的串口菜单，换 `prebuilt/quotaos-serial.bin`，或在这版上加引导参数 `serial`。
+当前 `prebuilt/quotaos.bin` 启动参数为空时进入白底 LVGL，不再进入 `select>`。董事长已用 ramfb 看到过画面。自定义参数每个 argv 单独一条，依次是 `-device`、`virtio-keyboard-device`、`-device`、`virtio-tablet-device`。四段写在同一条里不会生效。Arguments 里的 `-cpu cortex-a72` 保持不变，不要写 `-kernel`。QEMU 8.2.2 上点 +1 和输入 ab 已测过。UTM 上的按钮和文本还没有确认。串口菜单用 `prebuilt/quotaos-serial.bin`，或这版加引导参数 `serial`。
 
 UTM 和不加 icount 的 QEMU 里，客户机时钟跟着宿主机走，宿主机一卡就会出现时钟跳动，看到的时延和错过次数只作参考。
 

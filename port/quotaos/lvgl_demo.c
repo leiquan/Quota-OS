@@ -19,6 +19,76 @@ static lv_obj_t *count_label;
 static lv_obj_t *field;
 static unsigned clicks;
 
+#define CUR_W 16
+#define CUR_H 16
+static uint8_t cursor_px[CUR_W * CUR_H * 4];
+static lv_image_dsc_t cursor_dsc;
+
+static void cursor_px_set(int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+{
+    uint8_t *p = cursor_px + ((y * CUR_W) + x) * 4;
+    p[0] = b;
+    p[1] = g;
+    p[2] = r;
+    p[3] = a;
+}
+
+/* Tip at (0,0). Black arrow, one-pixel white outline. 1024 bytes, fixed. */
+static void build_cursor(void)
+{
+    static const char *core[CUR_H] = {
+        "#...............",
+        "##..............",
+        "#.#.............",
+        "#..#............",
+        "#...#...........",
+        "#....#..........",
+        "#.....#.........",
+        "#......#........",
+        "#.......#.......",
+        "#........#......",
+        "#....#####......",
+        "#.#.#...........",
+        "##..#...........",
+        "#...#...........",
+        "....#...........",
+        "....#...........",
+    };
+    int black[CUR_H][CUR_W];
+    for (int y = 0; y < CUR_H; y++) {
+        for (int x = 0; x < CUR_W; x++)
+            black[y][x] = core[y][x] == '#';
+    }
+    for (int y = 0; y < CUR_H; y++) {
+        for (int x = 0; x < CUR_W; x++) {
+            if (black[y][x]) {
+                cursor_px_set(x, y, 0, 0, 0, 255);
+                continue;
+            }
+            int edge = 0;
+            for (int dy = -1; dy <= 1 && !edge; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int yy = y + dy, xx = x + dx;
+                    if (yy >= 0 && xx >= 0 && yy < CUR_H && xx < CUR_W && black[yy][xx])
+                        edge = 1;
+                }
+            }
+            if (edge)
+                cursor_px_set(x, y, 255, 255, 255, 255);
+            else
+                cursor_px_set(x, y, 0, 0, 0, 0);
+        }
+    }
+    cursor_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+    cursor_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    cursor_dsc.header.flags = 0;
+    cursor_dsc.header.w = CUR_W;
+    cursor_dsc.header.h = CUR_H;
+    cursor_dsc.header.stride = CUR_W * 4;
+    cursor_dsc.data_size = sizeof cursor_px;
+    cursor_dsc.data = cursor_px;
+}
+
 static struct quota_input keys[32];
 static struct quota_input ptrs[32];
 static int nkeys, nptrs, key_i, ptr_i;
@@ -173,29 +243,39 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_indev_set_read_cb(keypad, keypad_read);
 
     lv_obj_t *screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(screen, lv_color_hex(0x101820), 0);
+    build_cursor();
+    lv_obj_t *cursor = lv_image_create(screen);
+    lv_image_set_src(cursor, &cursor_dsc);
+    lv_indev_set_cursor(pointer, cursor);
+    printf("[lvgl] white background, dark text\n");
+    printf("[lvgl] software cursor %dx%d black fill white outline hotspot 0,0\n", CUR_W, CUR_H);
 
     lv_obj_t *title = lv_label_create(screen);
     lv_label_set_text(title, "Quota OS");
     lv_obj_set_pos(title, 24, 16);
-    lv_obj_set_style_text_color(title, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0x101820), 0);
 
     lv_obj_t *btn = lv_button_create(screen);
     lv_obj_set_pos(btn, 24, 70);
     lv_obj_set_size(btn, 180, 56);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0x2f6fed), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(btn, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_border_width(btn, 2, 0);
+    lv_obj_set_style_text_color(btn, lv_color_hex(0x101820), 0);
     lv_obj_add_event_cb(btn, on_click, LV_EVENT_CLICKED, NULL);
     lv_obj_t *bl = lv_label_create(btn);
     lv_label_set_text(bl, "+1");
-    lv_obj_set_style_text_color(bl, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_color(bl, lv_color_hex(0x101820), 0);
     lv_obj_center(bl);
 
     count_label = lv_label_create(screen);
     lv_label_set_text(count_label, "Count: 0");
     lv_obj_set_pos(count_label, 24, 150);
-    lv_obj_set_style_text_color(count_label, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_color(count_label, lv_color_hex(0x101820), 0);
 
     field = lv_textarea_create(screen);
     lv_obj_set_pos(field, 24, 210);
@@ -203,6 +283,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_textarea_set_placeholder_text(field, "type here");
     lv_obj_set_style_bg_color(field, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(field, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(field, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_border_width(field, 2, 0);
     lv_obj_set_style_text_color(field, lv_color_hex(0x101820), 0);
 
     lv_group_t *group = lv_group_create();

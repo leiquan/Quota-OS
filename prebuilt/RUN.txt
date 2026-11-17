@@ -7,13 +7,15 @@ only when that image is the JSC file, not this one.
 
 Machine
   virt, GICv2, Cortex-A72, 128 MB. Do not change those.
-  Banner Version: 016 (e5d75c1). e5d75c1 is the parent of the commit
+  Banner Version: 016 (287aa11). 287aa11 is the parent of the commit
   that introduced these bytes.
+  The screen is white, with dark text and a black software cursor
+  that has a white outline. The guest draws that cursor.
 
 SHA-256
-  quotaos.bin da5cbcb7bc0c2ef90c3d98d38b73731c0b9b6238ef1aa1a7d06eb0626980d413
-  quotaos.elf fc8011965da33fee71364a0da515465683a80a734ebcee8ff49f53569900cbf4
-  size quotaos.bin 666432
+  quotaos.bin 198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988
+  quotaos.elf 51913f17aeb9febbf2736ecca2b823acc03b218f77444f5cecf325a95497fab7
+  size quotaos.bin 667656
   quotaos-lvgl.bin is the same bytes.
 
 Previous serial drop-in, kept under a new name
@@ -29,9 +31,12 @@ QEMU 8.2.2 command that showed the button and the text field
     -device virtio-tablet-device \
     -kernel prebuilt/quotaos.bin
 
-No -append. Click on +1, then keys a and b: Count: 1 and text ab.
-Log docs/v016/lvgl/default-cmdline.raw
-Screenshot docs/v016/lvgl/default-screen.png
+No -append. White page, black cursor, click +1, then keys a and b:
+Count: 1 and text ab.
+Log docs/v016/lvgl/white-cursor.raw
+Screenshots docs/v016/lvgl/white-cursor-page.png
+  docs/v016/lvgl/white-cursor-field.png
+  docs/v016/lvgl/white-cursor-click.png
 QEMU also prints: Could not open option rom 'vgabios-ramfb.bin'.
 The guest still programs etc/ramfb.
 
@@ -40,13 +45,17 @@ Without those three devices the serial log says
   [fb] etc/ramfb not in fw_cfg
 and does not print select>. docs/v016/lvgl/default-nodev.raw
 
-The UTM VM documented in README deletes Display and keeps Serial.
-Swapping only this file in that VM was not tested in UTM.
-Do not expect a picture until ramfb and the two virtio input devices
-are present. No UTM menu names are added here.
+The owner has shown this guest on ramfb. In UTM's custom arguments,
+each argv is its own row:
+  -device
+  virtio-keyboard-device
+  -device
+  virtio-tablet-device
+Putting those four tokens on one row does not attach the devices.
+Button and text entry on UTM are not confirmed. QEMU is the run above.
 
 Same file, icount e4
-  python3 tools/e4_bound.py prebuilt/quotaos.bin docs/v016/lvgl/e4-default.raw 40 icount
+  python3 tools/e4_bound.py prebuilt/quotaos.bin docs/v016/lvgl/e4-white.raw 40 icount
 item9 PASS, item10 PASS, QA DONE. Tier-1 stays 13312 KB and 1500 us.
 This screen is one EL1 address space with the MMU off. It is not
 a tier-1 hardware isolation claim.
