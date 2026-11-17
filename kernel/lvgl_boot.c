@@ -46,7 +46,7 @@ void lvgl_autostart(void)
 {
     printf("[lvgl] autostart on the Tier-3 shell task\n");
     printf("[lvgl] this task does not mask IRQs and it is not a tier-1 slot.\n");
-    printf("[lvgl] one kernel address space. Three-tier hardware isolation is not claimed.\n");
+    printf("[lvgl] one kernel task. It is not an EL0 process. Three-tier hardware isolation is not claimed.\n");
     if (admit_lvgl() != 0)
         return;
     uint32_t w = 0, h = 0;

@@ -325,6 +325,32 @@ void task_set_entry(struct task *t, void (*entry)(void))
     set_entry(t, entry);
 }
 
+void task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
+                  uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
+                  uint64_t a4, uint64_t a5)
+{
+    struct irq_frame *f = (struct irq_frame *)t->sp;
+    f->elr = elr;
+    f->spsr = 0x340;
+    f->pad = user_sp;
+    f->r[0] = a0;
+    f->r[1] = a1;
+    f->r[2] = a2;
+    f->r[3] = a3;
+    f->r[4] = a4;
+    f->r[5] = a5;
+}
+
+static void kill_locked(struct task *t);
+
+void task_dead(struct task *t)
+{
+    if (!t)
+        return;
+    kill_locked(t);
+    rebuild_lists();
+}
+
 /* 死循环型立刻就绪；周期作业等下一次释放。 */
 void task_start(struct task *t)
 {
@@ -1190,6 +1216,7 @@ static uint64_t schedule(uint64_t sp, int timer)
     cur = next;
     prev_entry = entry;
     prev_kind = timer == 1 ? KC_TIMER : timer == 2 ? KC_DEVIRQ : op ? KC_SVC_IPC : KC_SVC_OTHER;
+    proc_on_switch(next);
     return next->sp;
 }
 
@@ -1235,6 +1262,14 @@ uint64_t handle_sync(uint64_t frame_sp)
     uint64_t esr;
     asm volatile("mrs %0, esr_el1" : "=r"(esr));
     uint32_t ec = (uint32_t)((esr >> 26) & 0x3f);
+    if ((f->spsr & 0xfu) == 0) {
+        k_ipc_op = 0;
+        if (ec == 0x15)
+            proc_el0_svc(f);
+        else
+            proc_el0_abort(f, esr);
+        return schedule(frame_sp, 0);
+    }
     if (ec == 0x15) {
         k_ipc_op = (int)(esr & 0xffff);
         return schedule(frame_sp, 0);

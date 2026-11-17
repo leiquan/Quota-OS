@@ -30,6 +30,17 @@ static uint64_t *l3_for[64];
 static int mmu_on;
 static volatile int expect_fault;
 static volatile int fault_hit;
+static uint64_t kernel_ttbr_value;
+
+uint64_t mmu_kernel_ttbr(void)
+{
+    return kernel_ttbr_value;
+}
+
+uint64_t mmu_l2_ram_phys(void)
+{
+    return (uint64_t)l2_ram;
+}
 
 int mmu_fault_expected(void)
 {
@@ -128,7 +139,8 @@ void mmu_init(void)
     uint64_t tcr = 16ull | (1ull << 8) | (1ull << 10) | (3ull << 12) | (1ull << 23) | (1ull << 32);
     asm volatile("msr mair_el1, %0" :: "r"(mair));
     asm volatile("msr tcr_el1, %0" :: "r"(tcr));
-    asm volatile("msr ttbr0_el1, %0" :: "r"((uint64_t)l0));
+    kernel_ttbr_value = (uint64_t)l0;
+    asm volatile("msr ttbr0_el1, %0" :: "r"(kernel_ttbr_value));
     asm volatile("dsb ish; tlbi vmalle1; dsb ish; isb" ::: "memory");
     uint64_t sctlr;
     asm volatile("mrs %0, sctlr_el1" : "=r"(sctlr));
@@ -136,7 +148,7 @@ void mmu_init(void)
     asm volatile("msr sctlr_el1, %0; isb" :: "r"(sctlr) : "memory");
     mmu_on = 1;
     printf("[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000\n");
-    printf("[mmu] one kernel address space. Not separate user processes. Not completed three-tier isolation.\n");
+    printf("[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.\n");
 
     /* One aligned page inside RAM, not the last byte. Prove the PTE bits, then restore RW. */
     volatile uint32_t *page = (volatile uint32_t *)0x47ff0000ull;

@@ -24,8 +24,8 @@ vectors:
     ventry unhandled_sync     /* 0x300 FIQ */
     ventry unhandled_sync     /* 0x380 SError */
 
-    ventry unhandled_sync     /* 0x400 Lower EL, AArch64 */
-    ventry unhandled_irq
+    ventry el0_sync           /* 0x400 Lower EL, AArch64 */
+    ventry el0_irq
     ventry unhandled_sync
     ventry unhandled_sync
 
@@ -116,6 +116,24 @@ el1_sync:
     bl      handle_sync          /* SVC 主动让出时，返回值是下一个任务的栈 */
     b       k_exit
 
+el0_sync:
+    stamp_entry
+    save_regs
+    mrs     x9, sp_el0
+    str     x9, [sp, #264]
+    mov     x0, sp
+    bl      handle_sync
+    b       k_exit
+
+el0_irq:
+    stamp_entry
+    save_regs
+    mrs     x9, sp_el0
+    str     x9, [sp, #264]
+    mov     x0, sp
+    bl      handle_irq
+    b       k_exit
+
 /*
  * 出口。等待循环每圈 3 条指令（icount 下 3 tick），所以退出时比槽起点晚 0、1 或 2 tick。
  * 晚 d tick 就少执行 d 条 nop，eret 落在槽起点之后固定的指令数上。
@@ -145,7 +163,11 @@ k_exit:
 5:  ldp     x9, x10, [sp, #248]
     msr     ELR_EL1, x9
     msr     SPSR_EL1, x10
-    ldp     x4,  x5,  [sp, #32]
+    and     x9, x10, #0xf
+    cbnz    x9, 7f
+    ldr     x9, [sp, #264]
+    msr     sp_el0, x9
+7:  ldp     x4,  x5,  [sp, #32]
     ldp     x6,  x7,  [sp, #48]
     ldp     x8,  x9,  [sp, #64]
     ldp     x10, x11, [sp, #80]

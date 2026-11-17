@@ -18,9 +18,10 @@ SRC_COMMIT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
 
 SRCS := boot/startup.S boot/vectors.S \
 	kernel/main.c kernel/uart.c kernel/printf.c kernel/string.c \
-	kernel/dtb.c kernel/gic.c kernel/timer.c kernel/resource.c \
+	kernel/dtb.c kernel/gic.c kernel/timer.c kernel/resource.c kernel/mmu.c \
 	kernel/sched.c kernel/demo.c kernel/decl.c kernel/ipc.c kernel/dev.c kernel/color.c kernel/e4.c \
 	kernel/fb.c kernel/input.c kernel/lvgl_boot.c kernel/webkit.c kernel/wkalloc.c \
+	kernel/proc.c kernel/isolate.c \
 	kernel/cxxrt.cpp kernel/cxxtest.cpp
 OBJS := $(patsubst %,build/%.o,$(basename $(SRCS)))
 
@@ -46,6 +47,15 @@ build/commit.h: FORCE
 	@rm -f $@.tmp
 
 build/kernel/main.o: build/commit.h
+
+build/user/paint.elf: user/paint.S user/user.ld
+	@mkdir -p build/user
+	$(CC) -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none -T user/user.ld -o $@ user/paint.S
+
+build/user/paint.bin: build/user/paint.elf
+	$(CROSS)objcopy -O binary $< $@
+
+build/kernel/proc.o: build/user/paint.bin
 
 .PHONY: FORCE
 FORCE:

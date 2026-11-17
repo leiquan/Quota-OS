@@ -142,6 +142,8 @@ struct task {
     int bw_hit, bw_prev_hit;    /* 本周期 / 上周期用满并被停住 */
     uint64_t bw_w_periods, bw_w_stalled, bw_w_over_max, bw_w_after, bw_w_restore_min;
     uint64_t bw_w_used_max, bw_w_used_min;
+    /* 0：内核任务，用内核 TTBR0。非 0：EL0 进程的 TTBR0（含 ASID）。 */
+    uint64_t user_ttbr;
 };
 
 /* 模拟设备（软件模型，不是真实硬件）。出厂描述写死；状态由系统维护。 */
@@ -297,6 +299,12 @@ uint64_t sched_periods(void);
 uint64_t sched_foreign_window(void);
 uint64_t sched_next_guard(uint64_t now);
 void task_set_entry(struct task *t, void (*entry)(void));
+/* EL0 初始帧。user_sp 写入帧的 pad，出口时装进 SP_EL0。spsr 为 EL0t、IRQ 开。 */
+void task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
+                  uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
+                  uint64_t a4, uint64_t a5);
+/* 把任务标成 DEAD 并刷新就绪表。不改 DAIF，调用者自己管中断屏蔽。 */
+void task_dead(struct task *t);
 struct ipc_stats {
     uint64_t calls, drop_sum, meas_sum, meas_max, diff_max, srv_used_change, self_sum;
     uint64_t run_sum, kern_sum;
@@ -375,6 +383,9 @@ int sched_in_t1_window(uint64_t now);
 void gic_ppi_enable(uint32_t id, int on);
 void mmu_init(void);
 int mmu_protect(uint64_t addr, uint64_t len, int prot);
+/* 内核 TTBR0（不含后来切到用户进程的值）和共享的 RAM 二级表物理地址。 */
+uint64_t mmu_kernel_ttbr(void);
+uint64_t mmu_l2_ram_phys(void);
 uint32_t system_reserve_kb(void);
 /* webkit boot only. 0 on every other boot, including e4. */
 uint64_t webkit_structure_bytes(void);
@@ -451,6 +462,87 @@ void job_body(uint64_t start);
 
 void start_first_task(uint64_t frame_sp);
 void job_resume(void);
+
+/*
+ * EL0 进程边界。应用只通过 proc_spawn 和三条 SVC（让出、退出、提交）进来。
+ * 应用不能调用 LVGL、驱动或 resource_commit，也不能映射内核、设备、
+ * 全局 framebuffer 或其他应用的页。显示服务从已准入的绘图页拷进 framebuffer。
+ * LVGL 仍是内核侧适配，不是 EL0 应用。实时性不在这里验收。
+ */
+void proc_init(void);
+void proc_on_switch(struct task *next);
+void proc_el0_svc(struct irq_frame *f);
+void proc_el0_abort(struct irq_frame *f, uint64_t esr);
+
+struct el0_reap {
+    int valid;
+    int pid;
+    int cancelled;
+    int hold_before;
+    int hold_after;
+    int free_before;
+    int free_after;
+    int unmap_refused;
+    uint32_t draw0;
+    uint32_t submits;
+    uint32_t rej_range;
+    uint32_t rej_freq;
+    uint32_t rej_depth;
+    uint32_t gen_before;
+    uint32_t gen_after;
+    uint64_t us;
+    uint64_t ticks;
+    uint64_t periods;
+    uint16_t vx, vy, vw, vh;
+    char why[16];
+};
+
+struct el0_fault {
+    int valid;
+    int pid;
+    uint32_t ec;
+    uint64_t esr, far, elr, spsr, pte;
+    int level;
+    int ap_el0;
+    char kind[16];
+};
+
+/*
+ * 句柄 = generation << 16 | (slot+1)。generation 在内核接到终止或异常时立刻加一，
+ * 槽位重新分配后旧句柄仍然对不上。0 和负数都不是活句柄。
+ * 回收目标是 2 个调度周期（2 * PERIOD_US）。这是目标，不是事先验证过的性能。
+ */
+#define EL0_REAP_TARGET_US (2u * PERIOD_US)
+#define EL0_KILL_ROUNDS 100
+#define EL0_FAULT_ROUNDS 100
+
+int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t foreign_pa,
+                   uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,
+                   uint16_t vw, uint16_t vh);
+int proc_kill(int64_t handle);
+void proc_ledger(const char *tag);
+int proc_pages_free(void);
+int proc_pages_used(void);
+int proc_queue_depth(void);
+int proc_holds(void);
+int proc_alive(int64_t handle);
+int proc_queued_gen(uint32_t gen);
+int proc_queued_slot(int slot, uint32_t gen);
+uint32_t proc_submits(int64_t handle);
+uint32_t proc_rej_range(int64_t handle);
+uint32_t proc_rej_freq(int64_t handle);
+uint32_t proc_rej_depth(int64_t handle);
+int proc_queue_for(int64_t handle);
+uint64_t proc_draw_pa(int64_t handle);
+uint64_t proc_stack_pa(int64_t handle);
+int proc_pid(int64_t handle);
+/* 用句柄走和 SVC 相同的提交检查。旧代际返回 -1，不会作用到新占用者。 */
+int proc_submit_handle(int64_t handle);
+int disp_drain(int max);
+void proc_last_reap(struct el0_reap *o);
+void proc_last_fault(struct el0_fault *o);
+int proc_unmap_refusals(void);
+void isolate_run(void);
 
 #ifdef __cplusplus
 }

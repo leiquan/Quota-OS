@@ -1069,6 +1069,12 @@ void shell_main(void)
         for (;;)
             asm volatile("wfi");
     }
+    if (strcmp(args, "isolate") == 0) {
+        printf("[boot] el0 isolation\n");
+        isolate_run();
+        for (;;)
+            asm volatile("wfi");
+    }
     if (strcmp(args, "qa") == 0)
         run_qa(0);
     if (strcmp(args, "qa-long") == 0)

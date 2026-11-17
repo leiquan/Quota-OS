@@ -194,7 +194,7 @@ void resource_init(uint64_t ram_bytes)
     if (webkit_structure_bytes())
         printf("[boot] webkit admission: structure reservation %lu KB is inside the 128 MB budget; system reserve %u KB includes the framebuffer; tier-1 declarations unchanged (%u KB, %u us)\n",
                webkit_structure_bytes() / 1024, reserve_kb, resource_t1_mem_kb(), resource_t1_cpu_us());
-    printf("[boot] EL1 identity map, when on, is not separate-process isolation. Three-tier hardware isolation is not claimed.\n");
+    printf("[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.\n");
 }
 
 static int ranges_overlap(uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1)

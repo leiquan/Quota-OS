@@ -10,18 +10,22 @@ CC=${CC:-aarch64-linux-gnu-gcc}
 CFLAGS=(-std=gnu11 -Wall -Wextra -Werror -O2 -ffreestanding -fno-stack-protector
     -fno-builtin -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align
     -fno-asynchronous-unwind-tables -I include -I build)
-mkdir -p build
+mkdir -p build build/user
 short=$(git rev-parse --short=7 HEAD)
 printf '#define QUOTAOS_COMMIT "%s"\n' "$short" > build/commit.h
 echo "banner parent $short"
 srcs=(
     boot/startup.S boot/vectors.S
     kernel/main.c kernel/uart.c kernel/printf.c kernel/string.c
-    kernel/dtb.c kernel/gic.c kernel/timer.c kernel/resource.c
+    kernel/dtb.c kernel/gic.c kernel/timer.c kernel/resource.c kernel/mmu.c
     kernel/sched.c kernel/demo.c kernel/decl.c kernel/ipc.c kernel/dev.c
     kernel/color.c kernel/e4.c kernel/fb.c kernel/input.c kernel/lvgl_boot.c
     kernel/webkit.c kernel/wkalloc.c kernel/cxxrt.cpp kernel/cxxtest.cpp
+    kernel/proc.c kernel/isolate.c
 )
+$CC -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none \
+    -T user/user.ld -o build/user/paint.elf user/paint.S
+aarch64-linux-gnu-objcopy -O binary build/user/paint.elf build/user/paint.bin
 objs=()
 for f in "${srcs[@]}"; do
     obj="build/${f%.*}.o"
