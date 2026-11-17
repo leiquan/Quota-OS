@@ -37,6 +37,13 @@ void webkit_autostart(void)
     gap("WebCore is forced off without JavaScriptCore");
     gap("OSAllocatorPOSIX uses mmap, mprotect, guard pages");
     gap("MMU is off, so that allocator has no VM");
+    {
+        uint64_t pa = 0;
+        int ex = wk_reserve(4096, 1, 0, &pa);
+        int gd = wk_reserve(4096, 0, 1, &pa);
+        int ok = wk_reserve(4096, 0, 0, &pa);
+        printf("[webkit] OSAllocator probe exec %d guard %d plain %d\n", ex, gd, ok);
+    }
     gap("WPE needs ICU, libxml2, sqlite, harfbuzz, png, jpeg, webp");
     gap("WPE also needs glib, libsoup, epoxy, and a UI process");
     gap("virtio EV_KEY is not a PlatformKeyboardEvent");

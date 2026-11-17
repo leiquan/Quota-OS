@@ -19,7 +19,7 @@ SRCS := boot/startup.S boot/vectors.S \
 	kernel/main.c kernel/uart.c kernel/printf.c kernel/string.c \
 	kernel/dtb.c kernel/gic.c kernel/timer.c kernel/resource.c \
 	kernel/sched.c kernel/demo.c kernel/decl.c kernel/ipc.c kernel/dev.c kernel/color.c kernel/e4.c \
-	kernel/fb.c kernel/input.c kernel/webkit.c
+	kernel/fb.c kernel/input.c kernel/webkit.c kernel/wkalloc.c
 OBJS := $(patsubst %,build/%.o,$(basename $(SRCS)))
 
 .PHONY: all clean run run-small

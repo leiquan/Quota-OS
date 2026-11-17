@@ -10,18 +10,18 @@ License: [Apache-2.0](LICENSE)
 
 ## 现在能直接跑的映像
 
-不用自己编译。文件是 `prebuilt/quotaos.bin`，说明和 sha256 在 `prebuilt/RUN.txt`、`prebuilt/SHA256SUMS`。
+不用自己编译，也不用改已经能启动的 UTM。还是原来的 virt、GICv2、Cortex-A72、128 MB、无磁盘、串口。只把内核文件换成 `prebuilt/quotaos.bin`。机器属性继续填 `gic-version=2`，Arguments 继续只放 `-cpu cortex-a72`，不要加 `-kernel`。说明和 sha256 在 `prebuilt/RUN.txt`、`prebuilt/SHA256SUMS`。
 
-这不是 WebKit，也没有可点的图形界面。串口菜单，EL1h，MMU 关，没有硬件隔离。启动应看到 `Version: 016 (2bdd644)`。`2bdd644` 是引入这版字节的提交 `9ecbe3c8d60b14424d6f817f7d0e7d77d6737e46` 的父提交（`git rev-parse --short=7 9ecbe3c8^`）。横幅里的提交号是编译时的 HEAD，也就是包含这份 prebuilt 的那次提交的父提交。
+这不是 WebKit。没有可点的窗口。旧映像能进 `select>` 不能用来证明这一版有图形界面。启动应看到 `Version: 016 (d9a3dac)` 和 `[boot] EL1h, MMU off. No hardware isolation.` `d9a3dac` 是包含这版字节的提交的父提交（编译时的 HEAD）。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
   -nographic -nic none -kernel prebuilt/quotaos.bin
 ```
 
-Apple Silicon 上用 UTM：Emulate，不要 Virtualize。ARM64，1 核，128 MB，Boot from kernel image，选 `prebuilt/quotaos.bin`。initrd 和启动参数留空，不要磁盘。机器类型 `virt`。QEMU Machine Properties 填 `gic-version=2`。QEMU Arguments 只加 `-cpu cortex-a72`，不要写 `-kernel`。删掉 Display，加一个 Serial。启动后是 `select>`，不是浏览器窗口。
+sha256：`quotaos.bin` 为 `7a449d00a3155e64f80ac203e2d713fbad2ce4cab3c7f7f6a12c1ade498eb9a2`，`quotaos.elf` 为 `47defc8c81d686975368d56cbdc0097871d660c08b26d0292f1b261ac8163669`。
 
-sha256：`quotaos.bin` 为 `4fc7ce6d401c1e47765743732e5c2cebdef0f85451608eb0c25a13e07146bb9b`，`quotaos.elf` 为 `2b84a05adb13a49797cebe2ca5ad1c12797de785d79c290b7f108f172e26bc25`。
+画面：文档里的 UTM 会删掉 Display。不额外加设备时，同一条 virt 命令打出 `[fb] etc/ramfb not in fw_cfg (9 files)` 和 `[input] no virtio-input (id 18)`。要在屏幕上看到像素，就得有文档配置里删掉的显示设备。这一版不要求你加它。
 
 ## 版本号规则
 
