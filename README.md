@@ -10,15 +10,15 @@ License: [Apache-2.0](LICENSE)
 
 ## 现在能直接跑的映像
 
-`prebuilt/quotaos.bin` 是白底彩色四组菜单，软件指针仍是黑底白边。四组是绘制、三级压力、准入、有界故障。状态行写 idle、running、done、sampled、not measured，不单靠颜色。图例里的 Tier 1/2/3 数字是准入配额，不是颜色本身。不传 `-append` 就进这个界面。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (11b8eb6)`。`11b8eb6` 是包含这版字节的提交的父提交。
+`prebuilt/quotaos.bin` 是白底彩色四组菜单，软件指针仍是黑底白边。主页只放已经能跑的入口：绘制、三级压力、准入，外加覆盖范围。点击和键盘在「input page」里，不常驻。右侧是进度和数值：T1 miss、class a/b、lat max、样本数、p99、配额。不传 `-append` 就进这个界面。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (60fa448)`。`60fa448` 是包含这版字节的提交的父提交。
 
-sha256：`quotaos.bin` `dc71eb9a2ec4124d79c13b5e506d11f6614a124d35abf91fcb6278d09d2dfded`，`quotaos.elf` `56994c73c4251b2e8a18fce67758c81dfc1d5043ef0900de44fc86b9a25585ad`。682232 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。
+sha256：`quotaos.bin` `1c91348a3e0935f677ea8ccf0ecdc8e1b75c82ce313daf7fd84b0169a3332164`，`quotaos.elf` `bcbe4959de142914921930dfa91b74c28aa04784fceff44b8a772c13ee127ef9`。682896 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。
 
-白底指针里程碑仍是提交 `ac565ac`，667656 字节，sha256 `198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988`。十八项列表那一版是提交 `11b8eb6`，674264 字节，sha256 `8f7d4e077730c12a288faff06b3c7c94d8077b532e7cbd904c5f1625d270c416`。这两份都不是现在的默认文件。
+上一份分组菜单是提交 `60fa448`，682232 字节，sha256 `dc71eb9a2ec4124d79c13b5e506d11f6614a124d35abf91fcb6278d09d2dfded`。白底指针里程碑仍是提交 `ac565ac`，667656 字节，sha256 `198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988`。十八项列表那一版是提交 `11b8eb6`，674264 字节，sha256 `8f7d4e077730c12a288faff06b3c7c94d8077b532e7cbd904c5f1625d270c416`。这三份都不是现在的默认文件。
 
 上一份串口内核完整留在 `prebuilt/quotaos-serial.bin`（93744 字节，sha256 `afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05`，elf `bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64`，横幅 `Version: 016 (af050b5)`）。下面历史段落里的 e4 日志对应的是那份串口内核，不是现在的默认文件。
 
-要看见分组并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过：滚一行、跑菜单 9 的 200 周期有界负载（Tier 1 错过 2 次，shell 平均 143 us/周期），点 +1、键入 `ab`。点击、按键、滚动到 framebuffer 提交各有微秒样本。到屏幕发光未测。p99 未测。截图 `docs/v016/lvgl/groups-page.png`、`docs/v016/lvgl/groups-end.png`。串口 `docs/v016/lvgl/groups.raw`。
+要看见分组并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过。主页点 tier-3 load，跑菜单 9 的 200 周期。宿主时钟这一次 T1 miss 0、class a 0、起点抖动 12507 tick、lat max 283 us、样本 400、p99 168 us（nearest-rank，`ceil(0.99*n)=(n*99+99)/100`，n=400，未截断）、shell 平均 152 us/周期。抖动还在，这一次不是通过。同一条 GUI 压力在 `-icount shift=4,sleep=off` 下跑完：T1 miss 0、class a 0、class b 0、skipped 0、起点抖动 0 tick、lat max 80 us、p99 80 us、样本 400。这是一轮，不是 30 轮验收，也不是硬件隔离。e4 是另一条不画图的路径。点击和键盘在 input page：Count 1，文本 `ab`。到屏幕发光未测，页数未测。截图 `docs/v016/lvgl/slim-home.png`、`docs/v016/lvgl/slim-result.png`、`docs/v016/lvgl/slim-icount.png`、`docs/v016/lvgl/slim-input.png`、`docs/v016/lvgl/slim-cover.png`。串口 `docs/v016/lvgl/slim.raw`、`docs/v016/lvgl/slim-icount.raw`。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
@@ -31,7 +31,7 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
 
 QEMU 会打印 `Could not open option rom 'vgabios-ramfb.bin'`。客户机仍然写了 `etc/ramfb`，`screendump` 拿到了上面的画面。
 
-不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`，然后 `[fb] etc/ramfb not in fw_cfg`。这不是 `select>`。串口菜单只要 `-append serial`。`-append e4` 仍是 e4：同一份分组映像上 item9 PASS、item10 PASS、QA DONE（`docs/v016/lvgl/e4-groups.raw`）。串口菜单没有删，`-append serial` 仍是原来的 18 项。Tier-1 仍是 13312 KB、1500 us。这一屏不是一级任务的硬件隔离。启动行仍是 EL1、MMU 关、一个内核地址空间。
+不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`，然后 `[fb] etc/ramfb not in fw_cfg`。这不是 `select>`。串口菜单只要 `-append serial`。`-append e4` 仍是 e4：同一份精简映像上 item9 PASS、item10 PASS、QA DONE（`docs/v016/lvgl/e4-slim.raw`）。这不是上面的 GUI 压力结果。串口菜单没有删，`-append serial` 仍是原来的 18 项。未接入的 6、10、13、14、15、16、18 写在覆盖范围页，不占主屏。Tier-1 仍是 13312 KB、1500 us。这一屏不是一级任务的硬件隔离。启动行仍是 EL1、MMU 关、一个内核地址空间。
 
 文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。
 

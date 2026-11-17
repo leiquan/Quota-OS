@@ -705,8 +705,9 @@ static void menu_shell_line(void)
         printf("[menu] the serial bench blocks the shell, so it does not include this cost.\n");
     }
     printf("[menu] host clock unless boot says icount. An average is not a real-time bound.\n");
-    printf("[menu] p99 not measured. No latency histogram is collected.\n");
 }
+
+static void snap_take(void);
 
 static void menu_finish_window(void)
 {
@@ -731,6 +732,7 @@ static void menu_finish_window(void)
         }
         return;
     }
+    snap_take();
     if (menu_id == 5) {
         sched_print_window();
         sched_print_kernel();
@@ -783,6 +785,119 @@ static void menu_finish_window(void)
     menu_stop = 0;
     menu_note_set("window done");
     printf("[menu] done %d\n", menu_id);
+}
+
+static int snap_have, snap_id, snap_p99_ok, snap_capped, snap_t2_ok;
+static uint32_t snap_miss, snap_samples, snap_shell, snap_short, snap_job;
+static uint64_t snap_lat, snap_p99, snap_a, snap_b, snap_skip;
+
+static uint32_t p99_nearest(uint32_t *v, uint32_t n)
+{
+    uint32_t i, rank;
+    for (i = 1; i < n; i++) {
+        uint32_t x = v[i];
+        uint32_t j = i;
+        while (j && v[j - 1] > x) {
+            v[j] = v[j - 1];
+            j--;
+        }
+        v[j] = x;
+    }
+    /* ceil(0.99 * n) = (n * 99 + 99) / 100, then index rank-1. */
+    rank = (n * 99u + 99u) / 100u;
+    if (rank < 1)
+        rank = 1;
+    if (rank > n)
+        rank = n;
+    return v[rank - 1];
+}
+
+static uint32_t snap_lat_buf[512];
+
+static void snap_take(void)
+{
+    uint32_t *buf = snap_lat_buf;
+    uint32_t miss = 0;
+    uint64_t jitter = 0, lat = 0;
+    int capped = 0;
+    uint32_t n;
+    int i;
+    t1_summary(&miss, &jitter);
+    for (i = 0; i < MAX_TASKS; i++) {
+        struct task *t = sched_task_at(i);
+        if (!t || t->tier != TIER1 || t->kind != KIND_JOB || !t->w.jobs)
+            continue;
+        if (ticks_to_us(t->w.lat_max) > lat)
+            lat = ticks_to_us(t->w.lat_max);
+    }
+    sched_window_misses(&snap_a, &snap_b);
+    snap_skip = sched_window_skipped();
+    n = sched_lat_copy(buf, 512, &capped);
+    snap_samples = n;
+    snap_capped = capped;
+    snap_p99_ok = 0;
+    snap_p99 = 0;
+    if (n >= 20 && !capped) {
+        snap_p99 = p99_nearest(buf, n);
+        snap_p99_ok = 1;
+    }
+    snap_miss = miss;
+    snap_lat = lat;
+    snap_have = 1;
+    snap_id = menu_id;
+    snap_t2_ok = 0;
+    if (menu_id == 9 && menu_a && menu_a->task && menu_b && menu_b->task) {
+        snap_t2_ok = 1;
+        snap_short = menu_a->task->w.short_periods;
+        snap_job = menu_b->task->w.misses;
+    }
+    {
+        struct task *sh = sched_find("shell");
+        snap_shell = (sh && sh->w.periods) ? (uint32_t)ticks_to_us(sh->w.used_sum / sh->w.periods) : 0;
+    }
+    printf("[menu] T1 miss %u class a %lu class b %lu skipped %lu. Class a counts. Not a pass line.\n",
+           miss, snap_a, snap_b, snap_skip);
+    printf("[menu] lat max %lu us samples %u capped %d\n", lat, n, capped);
+    if (snap_p99_ok)
+        printf("[menu] p99 %lu us nearest-rank ceil(0.99*n) n=%u\n", snap_p99, n);
+    else
+        printf("[menu] p99 not measured. Need 20 stored samples and no cap. n=%u capped %d\n", n, capped);
+}
+
+void demo_menu_detail(struct menu_detail *d)
+{
+    if (!d)
+        return;
+    memset(d, 0, sizeof *d);
+    if (menu_phase && !sched_bench_busy())
+        menu_finish_window();
+    d->running = menu_phase || sched_bench_busy();
+    d->id = d->running ? menu_id : snap_id;
+    d->total = np;
+    if (d->running) {
+        uint32_t left = sched_bench_left();
+        d->progress = np > left ? np - left : 0;
+    } else if (snap_have) {
+        d->progress = np;
+    }
+    d->have_window = snap_have && !d->running;
+    d->t1_miss = snap_miss;
+    d->class_a = snap_a;
+    d->class_b = snap_b;
+    d->skipped = snap_skip;
+    d->lat_max_us = snap_lat;
+    d->samples = snap_samples;
+    d->p99_ok = snap_p99_ok;
+    d->p99_us = snap_p99;
+    d->capped = snap_capped;
+    d->shell_us = snap_shell;
+    d->t2_ok = snap_t2_ok;
+    d->t2_short = snap_short;
+    d->job_miss = snap_job;
+    if (menu_note[0])
+        menu_copy(d->note, (int)sizeof d->note, menu_note);
+    else
+        menu_copy(d->note, (int)sizeof d->note, "idle");
 }
 
 void demo_menu_stop(void)

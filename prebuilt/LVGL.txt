@@ -1,9 +1,11 @@
 Same bytes as prebuilt/quotaos.bin. Kept so the lvgl name still exists.
 
-Banner Version: 016 (11b8eb6). 682232 bytes. Four colored groups.
-sha256 dc71eb9a2ec4124d79c13b5e506d11f6614a124d35abf91fcb6278d09d2dfded
+Banner Version: 016 (60fa448). 682896 bytes. Slim home, numeric result.
+sha256 1c91348a3e0935f677ea8ccf0ecdc8e1b75c82ce313daf7fd84b0169a3332164
 
 Earlier files, not this one:
+60fa448 crowded groups, 682232 bytes,
+sha256 dc71eb9a2ec4124d79c13b5e506d11f6614a124d35abf91fcb6278d09d2dfded
 ac565ac white cursor, 667656 bytes,
 sha256 198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988
 11b8eb6 row menu, 674264 bytes,

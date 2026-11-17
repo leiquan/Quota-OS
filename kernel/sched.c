@@ -29,6 +29,8 @@ extern volatile uint64_t k_arm_abs, k_arm_rel, k_cval;
 
 static struct task tasks[MAX_TASKS];
 static uint8_t stacks[MAX_TASKS][STACK_SIZE] __attribute__((aligned(16)));
+/* LVGL layout runs on the shell. The other tasks stay on the 8 KB stack. */
+static uint8_t shell_stack[32 * 1024] __attribute__((aligned(16)));
 static struct task *cur;
 static struct task *idle_task;
 static struct task *shell_task;
@@ -292,14 +294,19 @@ struct task *task_create(const char *name, int tier, int kind)
         if (tasks[i].state != TASK_EMPTY && tasks[i].state != TASK_DEAD)
             continue;
         struct task *t = &tasks[i];
+        uint32_t stack_bytes = STACK_SIZE;
         memset(t, 0, sizeof *t);
         t->id = i;
         t->stack = stacks[i];
+        if (kind == KIND_SHELL) {
+            t->stack = shell_stack;
+            stack_bytes = (uint32_t)sizeof shell_stack;
+        }
         t->tier = tier;
         t->kind = kind;
         t->slot = -1;
         str_copy(t->name, name, NAME_LEN);
-        uintptr_t top = ((uintptr_t)t->stack + STACK_SIZE) & ~(uintptr_t)15u;
+        uintptr_t top = ((uintptr_t)t->stack + stack_bytes) & ~(uintptr_t)15u;
         struct irq_frame *f = (struct irq_frame *)(top - sizeof(struct irq_frame));
         memset(f, 0, sizeof *f);
         f->elr = kind == KIND_JOB ? (uint64_t)job_resume :
@@ -530,6 +537,32 @@ static void kernel_stint(uint64_t a, uint64_t b, int guard)
 
 /* ---------- 周期边界 ---------- */
 
+#define LAT_CAP 512u
+static uint32_t lat_buf[LAT_CAP];
+static uint32_t lat_n;
+static int lat_capped;
+
+static void lat_reset(void)
+{
+    lat_n = 0;
+    lat_capped = 0;
+}
+
+static void lat_add(struct task *t, uint64_t at)
+{
+    uint64_t us;
+    if (!rec || !t || t->tier != TIER1 || t->kind != KIND_JOB)
+        return;
+    if (at < t->release_ts)
+        return;
+    if (lat_n >= LAT_CAP) {
+        lat_capped = 1;
+        return;
+    }
+    us = ticks_to_us(at - t->release_ts);
+    lat_buf[lat_n++] = us > 0xffffffffull ? 0xffffffffu : (uint32_t)us;
+}
+
 static void job_done(struct task *t, uint64_t at)
 {
     if (!t->job_open)
@@ -540,6 +573,7 @@ static void job_done(struct task *t, uint64_t at)
     uint64_t lat = at - t->release_ts;
     if (rec && lat > t->w.lat_max)
         t->w.lat_max = lat;
+    lat_add(t, at);
     if (lat > t->deadline_t)
         miss(t, 0, at);
 }
@@ -555,6 +589,7 @@ static void check_slot_ends(uint64_t seen, uint64_t now)
             continue;
         o->jobs++;
         o->w.jobs += rec;
+        lat_add(o, seen);
         miss(o, o->job_started ? 1 : 2, seen);
         o->job_open = 0;
     }
@@ -569,6 +604,7 @@ static void end_period(uint64_t now, int skipped)
         if (t->kind == KIND_JOB && t->job_open) {
             t->jobs++;
             t->w.jobs += rec;
+            lat_add(t, now);
             int reason = skipped ? 3 : t->job_started ? 1 : 2;
             if (skipped) {
                 ks[0].skipped++;
@@ -695,6 +731,7 @@ static void begin_period(void)
             if (tasks[i].state != TASK_EMPTY && tasks[i].state != TASK_DEAD)
                 win_reset(&tasks[i]);
         bench_state = 2;
+        lat_reset();
         ipc_snap(ipc.snap0);
         ipc.t_w0 = pstart;
         ipc.p_w0 = pk;
@@ -1511,4 +1548,19 @@ void sched_window_misses(uint64_t *a, uint64_t *b)
 {
     *a = ks[1].miss_a;
     *b = ks[1].miss_b;
+}
+
+uint64_t sched_window_skipped(void)
+{
+    return ks[1].skipped;
+}
+
+uint32_t sched_lat_copy(uint32_t *dst, uint32_t cap, int *capped)
+{
+    uint32_t n = lat_n < cap ? lat_n : cap;
+    for (uint32_t i = 0; i < n; i++)
+        dst[i] = lat_buf[i];
+    if (capped)
+        *capped = lat_capped || lat_n > cap;
+    return n;
 }
