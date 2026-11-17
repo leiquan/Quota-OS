@@ -1296,6 +1296,14 @@ int sched_bench_busy(void)
     return bench_state != 0;
 }
 
+void sched_bench_stop(void)
+{
+    asm volatile("msr daifset, #2" ::: "memory");
+    if (bench_state == 2 && bench_left > 1)
+        bench_left = 1;
+    asm volatile("msr daifclr, #2" ::: "memory");
+}
+
 uint32_t sched_bench_left(void)
 {
     return bench_left;

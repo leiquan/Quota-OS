@@ -18,6 +18,8 @@ static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *count_label;
 static lv_obj_t *field;
 static lv_obj_t *result;
+static lv_obj_t *menu_list;
+static lv_obj_t *legend;
 static unsigned clicks;
 
 #define CUR_W 16
@@ -106,15 +108,42 @@ static uint32_t lvgl_tick_ms(void)
     return (uint32_t)(now_us() / 1000ull);
 }
 
+enum { SAMP_N = 16 };
+static uint64_t click_stamp, key_stamp, scroll_stamp;
+static uint64_t click_dt[SAMP_N], key_dt[SAMP_N], scroll_dt[SAMP_N];
+static int n_click, n_key, n_scroll;
+static uint32_t flush_n, flush_max_bytes;
+
+static void take_dt(uint64_t *stamp, uint64_t *arr, int *n, const char *kind)
+{
+    uint64_t d;
+    if (!*stamp)
+        return;
+    d = now_us() - *stamp;
+    *stamp = 0;
+    if (*n < SAMP_N)
+        arr[(*n)++] = d;
+    printf("[lvgl] fb commit %s %lu us n=%d (not panel light)\n", kind, (unsigned long)d, *n);
+}
+
 static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
 {
     int32_t w = lv_area_get_width(area);
+    int32_t h = lv_area_get_height(area);
     uint32_t stride_px = fb_stride / 4u;
+    uint32_t bytes;
     for (int32_t y = area->y1; y <= area->y2; y++) {
         uint32_t *dst = fb_px + (uint32_t)y * stride_px + (uint32_t)area->x1;
         memcpy(dst, px, (size_t)w * 4u);
         px += w * 4;
     }
+    bytes = (uint32_t)w * (uint32_t)h * 4u;
+    flush_n++;
+    if (bytes > flush_max_bytes)
+        flush_max_bytes = bytes;
+    take_dt(&click_stamp, click_dt, &n_click, "click");
+    take_dt(&key_stamp, key_dt, &n_key, "key");
+    take_dt(&scroll_stamp, scroll_dt, &n_scroll, "scroll");
     lv_display_flush_ready(disp);
 }
 
@@ -179,6 +208,8 @@ static void pointer_read(lv_indev_t *indev, lv_indev_data_t *data)
         x = ev.x;
         y = ev.y;
         pressed = ev.value != 0;
+        if (pressed)
+            click_stamp = now_us();
         printf("[lvgl] pointer %d,%d down %d\n", x, y, pressed);
         if (ptr_i < nptrs)
             data->continue_reading = true;
@@ -200,6 +231,8 @@ static void keypad_read(lv_indev_t *indev, lv_indev_data_t *data)
         struct quota_input ev = keys[key_i++];
         uint32_t mapped = map_key(ev.code);
         printf("[lvgl] key code %u value %u char %u\n", ev.code, ev.value, mapped);
+        if (ev.value)
+            key_stamp = now_us();
         if (!mapped)
             continue;
         last = mapped;
@@ -219,11 +252,63 @@ static void on_click(lv_event_t *e)
     printf("[lvgl] click count %u\n", clicks);
 }
 
-static void on_menu(lv_event_t *e)
+static void on_group(lv_event_t *e)
 {
     int id = (int)(uintptr_t)lv_event_get_user_data(e);
     printf("[menu] button %d\n", id);
+    if (id == 100) {
+        scroll_stamp = now_us();
+        if (menu_list)
+            lv_obj_scroll_by(menu_list, 0, -36, LV_ANIM_OFF);
+        printf("[lvgl] scroll once, one row, animation off\n");
+        return;
+    }
+    if (id == 101) {
+        printf("[lvgl] runaway not available: no protected process. An unbounded loop is not started.\n");
+        return;
+    }
+    if (id == 102) {
+        printf("[lvgl] ram crash not available. Menu 4 refuses an oversize quota. It does not exhaust RAM.\n");
+        return;
+    }
+    if (id == 103) {
+        demo_menu_stop();
+        return;
+    }
+    if (id == 104) {
+        printf("[lvgl] click and key samples are taken from real events. Panel light is not measured.\n");
+        return;
+    }
     demo_menu_start(id);
+}
+
+static lv_obj_t *add_row(lv_obj_t *parent, int y, uint32_t bg, uint32_t edge, const char *text, int id)
+{
+    lv_obj_t *item = lv_button_create(parent);
+    lv_obj_set_pos(item, 0, y);
+    lv_obj_set_size(item, 590, 32);
+    lv_obj_set_style_bg_color(item, lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(item, lv_color_hex(edge), 0);
+    lv_obj_set_style_border_width(item, 2, 0);
+    lv_obj_set_style_text_color(item, lv_color_hex(0x101820), 0);
+    lv_obj_add_event_cb(item, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)id);
+    lv_obj_t *il = lv_label_create(item);
+    lv_label_set_text(il, text);
+    lv_obj_set_style_text_color(il, lv_color_hex(0x101820), 0);
+    lv_obj_center(il);
+    return item;
+}
+
+static lv_obj_t *add_head(lv_obj_t *parent, int y, uint32_t bg, const char *text)
+{
+    lv_obj_t *lab = lv_label_create(parent);
+    lv_obj_set_pos(lab, 0, y);
+    lv_obj_set_style_bg_color(lab, lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_opa(lab, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(lab, lv_color_hex(0x101820), 0);
+    lv_label_set_text(lab, text);
+    return lab;
 }
 
 int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
@@ -266,31 +351,41 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_pos(title, 8, 2);
     lv_obj_set_style_text_color(title, lv_color_hex(0x101820), 0);
 
-    lv_obj_t *list = lv_obj_create(screen);
-    lv_obj_set_pos(list, 8, 24);
-    lv_obj_set_size(list, 624, 250);
-    lv_obj_set_style_bg_color(list, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_bg_opa(list, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(list, lv_color_hex(0x101820), 0);
-    lv_obj_set_style_border_width(list, 1, 0);
-    lv_obj_set_style_pad_all(list, 2, 0);
-    for (int i = 0; i < demo_menu_count(); i++) {
-        char line[80];
-        demo_menu_line(i, line, (int)sizeof line);
-        lv_obj_t *item = lv_button_create(list);
-        lv_obj_set_pos(item, 0, i * 40);
-        lv_obj_set_size(item, 600, 36);
-        lv_obj_set_style_bg_color(item, lv_color_hex(0xffffff), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_color(item, lv_color_hex(0x101820), 0);
-        lv_obj_set_style_border_width(item, 1, 0);
-        lv_obj_set_style_text_color(item, lv_color_hex(0x101820), 0);
-        lv_obj_add_event_cb(item, on_menu, LV_EVENT_CLICKED, (void *)(uintptr_t)(i + 1));
-        lv_obj_t *il = lv_label_create(item);
-        lv_label_set_text(il, line);
-        lv_obj_set_style_text_color(il, lv_color_hex(0x101820), 0);
-        lv_obj_center(il);
+    legend = lv_label_create(screen);
+    lv_obj_set_pos(legend, 8, 20);
+    lv_obj_set_width(legend, 620);
+    lv_obj_set_style_text_color(legend, lv_color_hex(0x101820), 0);
+    {
+        char leg[160];
+        demo_menu_legend(leg, (int)sizeof leg);
+        lv_label_set_text(legend, leg);
     }
+
+    menu_list = lv_obj_create(screen);
+    lv_obj_set_pos(menu_list, 8, 40);
+    lv_obj_set_size(menu_list, 624, 230);
+    lv_obj_set_style_bg_color(menu_list, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_bg_opa(menu_list, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(menu_list, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_border_width(menu_list, 1, 0);
+    lv_obj_set_style_pad_all(menu_list, 2, 0);
+    /* Blue draw, green stress, orange admission, red fault. Text states stay on the row. */
+    add_head(menu_list, 0, 0xdbeafe, "1 Draw  blue  status in the line below");
+    add_row(menu_list, 22, 0xdbeafe, 0x1d4ed8, "scroll once | idle | to framebuffer", 100);
+    add_row(menu_list, 56, 0xdbeafe, 0x1d4ed8, "click +1 or type | fb timer below", 104);
+    add_head(menu_list, 96, 0xdcfce7, "2 Stress  green  Tier1 miss and lat_max");
+    add_row(menu_list, 118, 0xdcfce7, 0x166534, "tier-1 window  menu 5 | idle", 5);
+    add_row(menu_list, 152, 0xdcfce7, 0x166534, "tier-3 load  menu 9 | idle", 9);
+    add_row(menu_list, 186, 0xdcfce7, 0x166534, "stop | ends next period", 103);
+    add_head(menu_list, 226, 0xffedd5, "3 Admit  orange  quota is not pages");
+    add_row(menu_list, 248, 0xffedd5, 0xc2410c, "install or release Pixel Racer", 2);
+    add_row(menu_list, 282, 0xffedd5, 0xc2410c, "admit until refused  menu 3", 3);
+    add_row(menu_list, 316, 0xffedd5, 0xc2410c, "reject too big  menu 4", 4);
+    add_head(menu_list, 356, 0xfee2e2, "4 Fault  red  bounded only");
+    add_row(menu_list, 378, 0xfee2e2, 0xb91c1c, "repeat tier-1 window  menu 5", 5);
+    add_row(menu_list, 412, 0xfee2e2, 0xb91c1c, "bounded hogs 200 periods  menu 9", 9);
+    add_row(menu_list, 446, 0xfee2e2, 0xb91c1c, "runaway | not available", 101);
+    add_row(menu_list, 480, 0xfee2e2, 0xb91c1c, "ram crash | not available", 102);
 
     result = lv_label_create(screen);
     lv_obj_set_pos(result, 8, 278);
@@ -330,8 +425,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_group_add_obj(group, field);
     lv_indev_set_group(keypad, group);
 
-    printf("[lvgl] menu4 box %d,%d 600x36\n", 8 + 2, 24 + 2 + 3 * 40);
+    printf("[lvgl] stress5 box 10,%d 590x32\n", 40 + 2 + 118);
     printf("[lvgl] button box 8,300 120x36\n");
+    printf("[menu] serial 6 10 13 14 15 16 18 stay not connected\n");
+    printf("[menu] runaway and ram crash are not started\n");
     printf("[lvgl] ready\n");
 
     uint64_t t0 = now_us();
@@ -343,6 +440,15 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         take_inputs();
         lv_timer_handler();
         demo_menu_status(st, (int)sizeof st);
+        {
+            char both[200];
+            const char *click = n_click ? "sampled" : "not measured";
+            const char *key = n_key ? "sampled" : "not measured";
+            const char *scroll = n_scroll ? "sampled" : "not measured";
+            lv_snprintf(both, sizeof both, "%s | click %s | key %s | scroll %s | light not measured",
+                        st, click, key, scroll);
+            lv_snprintf(st, sizeof st, "%s", both);
+        }
         if (strcmp(st, shown) != 0) {
             lv_label_set_text(result, st);
             int n = 0;
@@ -353,6 +459,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             shown[n] = 0;
         }
         if (now_us() >= next) {
+            char leg[160];
+            demo_menu_legend(leg, (int)sizeof leg);
+            lv_label_set_text(legend, leg);
+            printf("[lvgl] legend %s\n", leg);
             printf("[lvgl] alive count %u text [%s] status [%s]\n", clicks,
                    lv_textarea_get_text(field), st);
             next = now_us() + 1000000ull;

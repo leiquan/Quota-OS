@@ -123,12 +123,10 @@ def main():
         return text
     print("mice", qmp(s, {"execute": "human-monitor-command",
                            "arguments": {"command-line": "info mice"}}).strip()[:300])
-    click(310, 164)
-    print("clicked menu 4", "[menu] done 4" in wait_for("[menu] done 4", 5))
-    click(310, 244)
-    print("clicked menu 6", "not connected" in wait_for("not connected", 4))
-    click(310, 204)
-    print("clicked menu 5", "[menu] done 5" in wait_for("[menu] done 5", 8))
+    click(305, 80)
+    print("scrolled", "scroll once" in wait_for("scroll once", 3))
+    click(305, 176)
+    print("clicked stress", "[menu] done 5" in wait_for("[menu] done 5", 8))
     click(68, 318)
     for key in ("a", "b"):
         print(key, qmp(s, {"execute": "human-monitor-command",

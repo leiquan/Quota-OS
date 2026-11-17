@@ -662,6 +662,7 @@ static const char *menu_block(int id)
 static char menu_note[120];
 static int menu_id;
 static int menu_phase;
+static int menu_stop;
 static struct running_app *menu_a;
 static struct running_app *menu_b;
 static uint64_t menu_a1, menu_b1;
@@ -709,7 +710,7 @@ static void menu_shell_line(void)
 
 static void menu_finish_window(void)
 {
-    if (menu_id == 8 && menu_phase == 1) {
+    if (menu_id == 8 && menu_phase == 1 && !menu_stop) {
         menu_a1 = menu_a && menu_a->task ? menu_a->task->w.used_min : 0;
         menu_b1 = menu_b && menu_b->task ? menu_b->task->w.used_min : 0;
         print_t2_head();
@@ -774,9 +775,74 @@ static void menu_finish_window(void)
         menu_release();
     }
     menu_shell_line();
+    if (menu_id == 8 && menu_stop) {
+        resource_set_pressure(0);
+        menu_release();
+    }
     menu_phase = 0;
+    menu_stop = 0;
     menu_note_set("window done");
     printf("[menu] done %d\n", menu_id);
+}
+
+void demo_menu_stop(void)
+{
+    if (!menu_phase && !sched_bench_busy()) {
+        menu_note_set("idle");
+        printf("[menu] stop ignored, idle\n");
+        return;
+    }
+    menu_stop = 1;
+    sched_bench_stop();
+    printf("[menu] stop: bounded window ends next period\n");
+}
+
+void demo_menu_legend(char *buf, int cap)
+{
+    char tmp[160];
+    uint32_t t2 = resource_cpu_min_sum_us();
+    uint32_t capu = resource_app_cpu_capacity_us();
+    uint32_t left = capu > t2 ? capu - t2 : 0;
+    /* Quotas are the admission numbers. Color is only a legend. */
+    int n = 0;
+    const char *s;
+    tmp[0] = 0;
+    s = "T1 quota ";
+    while (*s && n < (int)sizeof tmp - 1)
+        tmp[n++] = *s++;
+    /* decimal helpers inline */
+    {
+        char num[16];
+        uint32_t v;
+        int k;
+        const uint32_t vals[4] = {resource_t1_cpu_us(), resource_t1_mem_kb(), t2, left};
+        const char *mid[4] = {"us ", "KB  T2 min ", "us  T3 left ", "us"};
+        for (k = 0; k < 4; k++) {
+            int ni = 0;
+            v = vals[k];
+            if (!v)
+                num[ni++] = '0';
+            else {
+                char rev[16];
+                int r = 0;
+                while (v && r < 15) {
+                    rev[r++] = (char)('0' + v % 10);
+                    v /= 10;
+                }
+                while (r)
+                    num[ni++] = rev[--r];
+            }
+            num[ni] = 0;
+            s = num;
+            while (*s && n < (int)sizeof tmp - 1)
+                tmp[n++] = *s++;
+            s = mid[k];
+            while (*s && n < (int)sizeof tmp - 1)
+                tmp[n++] = *s++;
+        }
+    }
+    tmp[n] = 0;
+    menu_copy(buf, cap, tmp);
 }
 
 static int menu_arm(int id)
