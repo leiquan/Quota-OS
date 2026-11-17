@@ -1,0 +1,55 @@
+Quota OS prebuilt image. Ready to run. Not a WebKit GUI.
+
+Function now
+  Serial menu on QEMU virt. Three-tier admission. EL1h, MMU off.
+  No hardware isolation. Not for production.
+  WebKit is not linked. There is no HTML, CSS, or JavaScript.
+
+Known issues
+  icount device-verify used to hang in idle WFI on QEMU 8.2.2.
+  This image spins while idle only when the boot clock is icount.
+  Host-clock e4 item9 is not a pass (over max 68780 > 81 on the
+  developer run). icount e4 printed item9 PASS, item10 PASS, QA DONE
+  on that same developer run. That is not independent QA.
+  A ramfb color-band picture exists only if you add the device
+  yourself. It is a display self-test, not a rendered page.
+
+Banner convention
+  Boot line: Version: 016 (2bdd644)
+  2bdd644 is git rev-parse --short=7 of the parent of the commit that
+  introduced these bytes:
+    9ecbe3c8d60b14424d6f817f7d0e7d77d6737e46
+  Check: git rev-parse --short=7 9ecbe3c8d60b14424d6f817f7d0e7d77d6737e46^
+  The seven characters are compiled in. They are not the commit that
+  contains this file; they are that commit's parent.
+
+SHA-256
+  See SHA256SUMS next to this file.
+  quotaos.bin 4fc7ce6d401c1e47765743732e5c2cebdef0f85451608eb0c25a13e07146bb9b
+  quotaos.elf 2b84a05adb13a49797cebe2ca5ad1c12797de785d79c290b7f108f172e26bc25
+
+QEMU, no build required
+  qemu-system-aarch64 \
+    -machine virt,gic-version=2 \
+    -cpu cortex-a72 \
+    -m 128M \
+    -nographic \
+    -nic none \
+    -kernel prebuilt/quotaos.bin
+  Wait for select>. Type a menu number and press Return.
+  Quit: Ctrl-A, then X.
+  64M old-device case: same command with -m 64M.
+  Expect [boot] EL1h, MMU off. No hardware isolation.
+
+Apple Silicon UTM
+  Emulate, not Virtualize. Architecture ARM64. One CPU. 128 MB.
+  Boot from kernel image. Choose prebuilt/quotaos.bin in UTM's file
+  picker. Leave initrd and boot arguments empty. No disk.
+  Machine type virt.
+  QEMU Machine Properties: gic-version=2
+  QEMU Arguments: -cpu cortex-a72
+  Do not put -kernel in Arguments. UTM adds the kernel itself.
+  Remove Display. Add a Serial device (Built-in Terminal).
+  Start. The serial window should show Version: 016 (2bdd644)
+  and then select>.
+  This UTM setup has no WebKit window. There is nothing to click.
