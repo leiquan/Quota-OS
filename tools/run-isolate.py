@@ -48,22 +48,24 @@ def fb_addr(text):
             return int(line.split(" at 0x", 1)[1].split()[0], 16)
     return None
 
-def save_frame(s, addr, raw_path, ppm_path):
-    qmp(s, {"execute": "human-monitor-command",
-            "arguments": {"command-line": "pmemsave 0x%x 1228800 %s" % (addr, raw_path)}})
-    data = open(raw_path, "rb").read()
-    with open(ppm_path, "w") as out:
-        out.write("P3\n640 480\n255\n")
-        for i in range(0, min(len(data), 640 * 480 * 4), 4):
-            b, g, r = data[i], data[i + 1], data[i + 2]
-            out.write("%d %d %d\n" % (r, g, b))
+def save_frame(s, ppm_path):
+    reply = qmp(s, {"execute": "screendump", "arguments": {"filename": ppm_path}})
+    if "error" in reply:
+        print("screendump", reply.strip()[:300])
+        return b""
+    data = open(ppm_path, "rb").read()
     return data
 
 def sample(data, x, y):
-    i = (y * 640 + x) * 4
+    # QEMU screendump is binary P6, 15-byte header for 640x480.
+    hdr = len(data) - 640 * 480 * 3
+    if hdr < 3:
+        return None
+    i = hdr + (y * 640 + x) * 3
     if i + 3 > len(data):
         return None
-    return data[i] | (data[i + 1] << 8) | (data[i + 2] << 16)
+    r, g, b = data[i], data[i + 1], data[i + 2]
+    return (r << 16) | (g << 8) | b
 
 def main():
     if os.path.exists(QMP):
@@ -96,12 +98,12 @@ def main():
         text = open(LOG, "r", errors="replace").read()
         if fb is None:
             fb = fb_addr(text)
-        if fb and "shot both" in text and not got["both"]:
-            save_frame(s, fb, RAW1, os.path.join(OUT, "both.ppm"))
+        if "shot both" in text and not got["both"]:
+            save_frame(s, os.path.join(OUT, "both.ppm"))
             got["both"] = True
-            print("captured both", hex(fb))
-        if fb and "shot after" in text and not got["after"]:
-            save_frame(s, fb, RAW2, os.path.join(OUT, "after.ppm"))
+            print("captured both", hex(fb) if fb else None)
+        if "shot after" in text and not got["after"]:
+            save_frame(s, os.path.join(OUT, "after.ppm"))
             got["after"] = True
             print("captured after")
         if "[isolate] DONE" in text and got["both"] and got["after"]:
@@ -111,7 +113,8 @@ def main():
     proc.wait(timeout=5)
     text = open(LOG, "r", errors="replace").read()
     print("done", "[isolate] DONE" in text, "frames", got)
-    for name, raw in (("both", RAW1), ("after", RAW2)):
+    for name in ("both", "after"):
+        raw = os.path.join(OUT, name + ".ppm")
         if not os.path.exists(raw):
             print(name, "missing")
             continue

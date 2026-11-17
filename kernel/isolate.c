@@ -344,9 +344,17 @@ void isolate_run(void)
         uint32_t s0, f0, d0, s1, f1, d1;
         int y;
         struct el0_reap r;
+        uint64_t flag;
+        if (h <= 0 || !proc_alive(h)) {
+            printf("[isolate] scripted spawn failed\n");
+        } else {
         disp_drain(8);
         s0 = proc_submits(h);
-        *(volatile uint32_t *)(uintptr_t)proc_stack_pa(h) = 3;
+        flag = proc_stack_pa(h);
+        if (!flag) {
+            printf("[isolate] scripted flag page missing\n");
+        } else {
+        *(volatile uint32_t *)(uintptr_t)flag = 3;
         y = 0;
         while (y < WAIT_MAX && proc_submits(h) + proc_rej_freq(h) + proc_rej_depth(h) < s0 + 3) {
             yld();
@@ -391,6 +399,8 @@ void isolate_run(void)
         printf("[isolate] scripted exit yields=%d us=%lu hold_before=%d cancel=%d\n",
                y, r.us, r.hold_before, r.cancelled);
         disp_drain(8);
+        }
+        }
     }
 
     {

@@ -377,10 +377,16 @@ static int submit_checked(struct proc *p, uint64_t va, uint64_t bytes,
 
 int proc_submit_handle(int64_t handle)
 {
-    struct proc *p = live(handle);
-    if (!p)
-        return -1;
-    return submit_checked(p, DRAW_VA, EL0_DRAW, p->vx, p->vy, p->vw, p->vh);
+    struct proc *p;
+    uint64_t daif;
+    int rc;
+    asm volatile("mrs %0, daif" : "=r"(daif));
+    asm volatile("msr daifset, #2" ::: "memory");
+    p = live(handle);
+    rc = p ? submit_checked(p, DRAW_VA, EL0_DRAW, p->vx, p->vy, p->vw, p->vh) : -1;
+    if ((daif & 0x80ull) == 0)
+        asm volatile("msr daifclr, #2" ::: "memory");
+    return rc;
 }
 
 static void blit(uint64_t pa, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
@@ -404,8 +410,11 @@ static void blit(uint64_t pa, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 int disp_drain(int max)
 {
     int n = 0;
+    uint64_t daif;
     if (max < 0)
         return 0;
+    asm volatile("mrs %0, daif" : "=r"(daif));
+    asm volatile("msr daifset, #2" ::: "memory");
     for (int i = 0; i < EL0_Q_GLOBAL && n < max; i++) {
         struct proc *p;
         if (!qq[i].used)
@@ -421,6 +430,17 @@ int disp_drain(int max)
             p->hold--;
         n++;
     }
+    if ((daif & 0x80ull) == 0)
+        asm volatile("msr daifclr, #2" ::: "memory");
+    return n;
+}
+
+static int slot_entries(int slot)
+{
+    int n = 0;
+    for (int i = 0; i < EL0_Q_GLOBAL; i++)
+        if (qq[i].used && qq[i].slot == slot)
+            n++;
     return n;
 }
 
@@ -435,6 +455,10 @@ static int cancel_gen(struct proc *p, uint32_t gen)
             p->hold--;
         n++;
     }
+    /* A hold with no queue entry is not a reference. An IRQ could split
+     * drain's clear from its hold update. Do not keep the page for that. */
+    if (slot_entries(p->slot) == 0)
+        p->hold = 0;
     return n;
 }
 
