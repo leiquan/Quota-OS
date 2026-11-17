@@ -12,14 +12,16 @@ License: [Apache-2.0](LICENSE)
 
 不用自己编译，也不用改已经能启动的 UTM。还是原来的 virt、GICv2、Cortex-A72、128 MB、无磁盘、串口。只把内核文件换成 `prebuilt/quotaos.bin`。机器属性继续填 `gic-version=2`，Arguments 继续只放 `-cpu cortex-a72`，不要加 `-kernel`。说明和 sha256 在 `prebuilt/RUN.txt`、`prebuilt/SHA256SUMS`。
 
-这不是 WebKit。没有可点的窗口。旧映像能进 `select>` 不能用来证明这一版有图形界面。启动应看到 `Version: 016 (e964b92)` 和 `[boot] EL1h, MMU off. No hardware isolation.` `e964b92` 是包含这版字节的提交的父提交（编译时的 HEAD）。
+这不是 WebKit。没有可点的窗口。旧映像能进 `select>` 不能用来证明这一版有图形界面。启动应看到 `Version: 016 (af050b5)` 和 `[boot] EL1h, MMU off. No hardware isolation.` `af050b5` 是包含这版字节的提交的父提交（编译时的 HEAD）。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
   -nographic -nic none -kernel prebuilt/quotaos.bin
 ```
 
-sha256：`quotaos.bin` 为 `4dc560c3daf6266252f44d96919a76f00870f6dd849c35e9d0d24d79840522a6`，`quotaos.elf` 为 `2e5b7f235f750e74b2e90ca46a83671a8fffa4a1bc324afc50070c93ce97bb34`。
+sha256：`quotaos.bin` 为 `afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05`，`quotaos.elf` 为 `bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64`。
+
+icount 下 e4 在这版映像上跑完：设备验证打出三行实测，然后 `E4 item9 PASS`、`E4 item10 PASS`、`QA DONE`（`docs/v016/cxx/e4-icount.raw`）。普通串口启动走的是宿主机时钟，不会碰到 WFI 卡住那条路径。原因写在 `docs/v016/cxx/ROOTCAUSE.txt`。Cortex-A72 能执行内存里的指令；缺的是我们还没建页表，不是 CPU 没有执行权限。WebKit `PlatformEnable.h` 在 `ENABLE_JIT=0` 且 `ENABLE_C_LOOP=1` 时不会把汇编器打开，`ExecutableAllocator.cpp` 的可执行池只在 `ENABLE(JIT)` 里编译。`-append webkit` 里 `cxx 42` 表示 `operator new`、虚调用、以及 `delete` 后再 `new` 拿回同一块。这仍不是浏览器。
 
 画面：文档里的 UTM 会删掉 Display。不额外加设备时，同一条 virt 命令打出 `[fb] etc/ramfb not in fw_cfg (9 files)` 和 `[input] no virtio-input (id 18)`。要在屏幕上看到像素，就得有文档配置里删掉的显示设备。这一版不要求你加它。
 

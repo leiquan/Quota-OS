@@ -33,7 +33,7 @@ CXXFLAGS := -std=c++20 -Wall -Wextra -Werror -O2 \
 # WebKit tag WebKit-7625.2.8.18.3, commit 4d967f4ca7bd. Not part of `make`.
 WEBKIT_SRC ?= /tmp/WebKit
 
-.PHONY: all clean run run-small webkit-osalloc-check
+.PHONY: all clean run run-small webkit-osalloc-check webkit-jsc-flags-check
 
 all: build/quotaos.elf build/quotaos.bin prebuilt/quotaos.elf prebuilt/quotaos.bin
 
@@ -70,6 +70,11 @@ webkit-osalloc-check:
 		-DBASSERT_ENABLED=0 -DNDEBUG \
 		-I $(WEBKIT_SRC)/Source/WTF -I $(WEBKIT_SRC)/Source/bmalloc \
 		-c port/quotaos/OSAllocatorQuotaOS.cpp -o build/OSAllocatorQuotaOS.o
+
+webkit-jsc-flags-check:
+	$(CXX) -std=c++20 -O2 -Wall -Wextra -Werror -Wno-expansion-to-defined \
+		-I $(WEBKIT_SRC)/Source/WTF \
+		-c port/quotaos/jsc_interpreter_only.cpp -o build/jsc_interpreter_only.o
 
 build/quotaos.elf: $(OBJS) boot/linker.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) -T boot/linker.ld -o $@ $(OBJS) -lgcc

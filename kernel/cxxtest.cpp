@@ -13,5 +13,13 @@ extern "C" int cxx_runtime_test(void)
         return -1;
     int n = p->bump();
     delete p;
+    void *a = operator new(32);
+    void *b = operator new(32);
+    operator delete(a);
+    void *c = operator new(32);
+    if (c != a || c == b)
+        return -2;
+    operator delete(b);
+    operator delete(c);
     return n;
 }
