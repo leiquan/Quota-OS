@@ -629,6 +629,11 @@ void shell_main(void)
         for (;;)
             asm volatile("wfi");
     }
+    if (strcmp(args, "lvgl") == 0) {
+        lvgl_autostart();
+        for (;;)
+            asm volatile("wfi");
+    }
     if (strcmp(args, "e1") == 0) {
         decl_demo_device_tier1();
         decl_demo_overcommit();

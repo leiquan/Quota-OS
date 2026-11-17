@@ -410,8 +410,32 @@ int fb_device_self_test(uint32_t **pixels, uint32_t *w, uint32_t *h, uint32_t *s
 /* 0 when the surface was reserved. Bytes are inside the 16 MB system reserve. */
 int fb_reserve(void);
 int fb_reserved_range(uint64_t *start, uint64_t *bytes);
+/* Publish the reserved surface through ramfb. Does not draw a demo. */
+int fb_present(void);
+void fb_geometry(uint32_t *w, uint32_t *h);
+
+/* Fixed budgets for the LVGL demo. The heap is LVGL's pool (no expand).
+ * The draw buffer and framebuffer are separate and do not grow. */
+#define LVGL_HEAP_BYTES (256u * 1024u)
+#define LVGL_DRAW_BYTES (640u * 48u * 4u)
+#define LVGL_FB_BYTES (640u * 480u * 4u)
+
+#define QUOTA_INPUT_KEY 1u
+#define QUOTA_INPUT_POINTER 2u
+struct quota_input {
+    uint8_t kind;
+    uint16_t code;
+    uint16_t value;
+    int16_t x, y;
+};
 int input_init(void);
 int input_poll(uint16_t *code, uint16_t *value);
+void input_set_span(uint32_t w, uint32_t h);
+int input_service_poll(void);
+int input_pop(struct quota_input *ev);
+uint32_t input_drop_count(void);
+void lvgl_autostart(void);
+int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride);
 void services_start(void);
 void job_body(uint64_t start);
 

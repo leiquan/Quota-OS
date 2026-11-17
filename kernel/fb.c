@@ -141,6 +141,33 @@ int fb_reserve(void)
     return 0;
 }
 
+void fb_geometry(uint32_t *w, uint32_t *h)
+{
+    if (w)
+        *w = FB_W;
+    if (h)
+        *h = FB_H;
+}
+
+int fb_present(void)
+{
+    uint64_t fwreg[4];
+    if (fb_reserve() != 0)
+        return -1;
+    for (uint32_t i = 0; i < fb_bytes / 4; i++)
+        fb_pixels[i] = 0x00101820u;
+    int n = dtb_find_bases("qemu,fw-cfg-mmio", fwreg, 1);
+    if (n < 1) {
+        printf("[fb] no qemu,fw-cfg-mmio in DTB\n");
+        return -1;
+    }
+    if (ramfb_publish(fwreg[0], (uint64_t)fb_pixels, FB_W, FB_H, FB_W * FB_BPP) != 0)
+        return -1;
+    printf("[fb] ramfb published %ux%u stride %u at 0x%lx from fw_cfg 0x%lx\n",
+           FB_W, FB_H, FB_W * FB_BPP, (uint64_t)fb_pixels, fwreg[0]);
+    return 0;
+}
+
 int fb_reserved_range(uint64_t *start, uint64_t *bytes)
 {
     if (!fb_pixels)
