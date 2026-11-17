@@ -1,4 +1,4 @@
-# Quota OS（版本 015）
+# Quota OS（版本 016）
 
 基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
 
@@ -370,6 +370,27 @@ GICv3 的行数见各比较文件开头（e3 29 / 34，菜单回归 339 / 527 �
 e3 超时演示的数字和 v014 差得多：v014 提交作业 1783、完成 1108、超时 675，v015 是 7221、4501、2720（判据照样 PASS）。查了一下（`docs/accept-v015/diag/e3-bisect/`）：在 v014 的源码上只加这一版的归因计数（不改调度逻辑），就变成 5163 / 3236 / 1927；只把调用链挑选换回 v014 的写法，是 6001。所以这个演示的作业数对内核路径长短很敏感（`bg-caller` 是 Tier 3，作业能不能在下一个保护区之前做完，看它拿到时间的位置），不是规则变了。这个敏感的原因没有再往下查。
 
 菜单回归（普通模式，`docs/regress-v015/menus-v015-gicv{2,3}.txt`）两个内存配置都跑完，class b 错过 0。菜单 18 现在跑四段，脚本给它的等待时间从 90 s 改为 180 s。GICv2 那次菜单 14 里 `sim-dma` 中止用了 46 us（声明 20 us），日志标「非 icount，仅供参考」。
+
+## v016：DTB 快照、显示和键盘接线。WebKit 引擎没有链进来
+
+这一版不是图形 WebKit。`-append webkit` 的串口写着 `engine linked: no` 和 `HTML/CSS/JS is not running`。ramfb 画的是四条色带（设备自测，checksum `0xfffda800`），不是网页。virtio 键盘收到的是 `EV_KEY code 30`，日志写明它不是 `PlatformKeyboardEvent`。启动行是 `[boot] EL1h, MMU off. No hardware isolation.` MMU 关着，没有硬件隔离。
+
+源码对照过的 WebKit 是 tag `WebKit-7625.2.8.18.3`，提交 `4d967f4ca7bdd75319e732247e714c2bc634555e`（那棵树里的 WPE 版本号 2.53.3）。没有把源码树放进仓库。用 `aarch64-linux-gnu-g++ -std=c++20 -ffreestanding` 编译 `Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp` 失败，第一条错误是 `bmalloc/BPlatform.h` 不存在（`docs/v016/compile-OSAllocatorPOSIX.txt`）。`WebKitCommon.cmake` 里没有 JavaScriptCore 就把 WebCore 关掉，没有 WebCore 就把 WebKit 关掉。`ALL_PORTS` 里没有 Quota OS。
+
+下一件能在这个内核里写的移植依赖是 `WTF::OSAllocator`（`reserve` / `commit` / `decommit`、保护区、可执行页）。POSIX 实现走 `mmap` 和 `mprotect`。MMU 关着，可执行页和保护区做不了，只能拒绝。内存必须在 Tier 1 着色之前从连续区域划出来，而且只在 `-append webkit` 时划，这样 128M 上的准入数字保持现在测到的：CPU 容量 8070 us，应用内存 89600 KB，着色补齐 11776 KB。这个分配器本版没有做。没有它，JavaScriptCore 和 WebCore 链不进来。后面还缺独立的 C++ 运行时、bmalloc、ICU、libxml2、sqlite、harfbuzz、png、jpeg、webp，以及把 `GraphicsContext` 画到已经有的 XRGB8888 表面、把 `EV_KEY` 做成 `PlatformKeyboardEvent`。WPE 2.53.3 还要 glib、libsoup、epoxy。
+
+64M：交付的 v015 映像在本机 QEMU 8.2.2 上停在「没有 GIC」（`docs/baseline-4c2a559/boot-64m-serial.raw`）。原因是着色去写 Tier 1 页，写进了放在页池里的 DTB。v016 在着色前把 DTB 拷进内核 BSS。64M 现在能到 `select>`，补齐仍是 3584 KB，菜单 1 的应用内存容量 32256 KB（`docs/v016/final-64-serial.raw`）。128M 菜单 1 的准入式子仍是 `reserve 350 + tier-1 1500 + tier-2 min 0`（`docs/v016/final-128-serial.raw`）。
+
+e4 的 icount **没有 PASS**。`tools/acceptance.py` 要等到 `QA DONE` 才落盘，所以卡住时看起来像没输出。修改后的映像有一次跑了约 14 分钟后被 SIGKILL，串口停在设备验证那一行（`docs/v016/e4-sigterm-ignored-serial.raw`；当时用的 `timeout 20` 只发了 SIGTERM，QEMU 没退出，所以那份不是 20 秒的记录）。随后用同一条命令、外部 75 秒、到点 SIGKILL、边跑边写串口。对照三份映像：v014 提交 `559daede18af8e201a41e41ab5e046ba7c8b66ec` 里的原 prebuilt（sha256 `cbca322f60f042c317c2cf02657c733df3010a2258e7a3f929720d86ddafcba0`，没有重编），交付的 v015（sha256 `99ec3fa2ea6ab795a3297feeda020a175afae126b894323267b22614e7078bb6`），和本版（sha256 `8dbd8a40329c16a2c7c5de704cb1ea5c5ffc9abb9867977818b69f81aa18c95a`）：
+
+```bash
+qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
+  -nographic -nic none -kernel <image> -append e4 -icount shift=4,sleep=off
+```
+
+三份都停在 `verifying` / `IRQs masked, before the next guard`，字节数从第一秒到杀掉都没增加（v014 1145，v015 1145，v016 1245；v016 多出来的是 EL1h 和 DTB 快照两行）。没有 `sim-dma` 的实测行，没有 `E4 item9`，没有 `QA DONE`。三份都不是 PASS。v015 和本版一起停，排除不了这两份共有的缺陷。v014 的原映像在同一条命令下停在同一行，所以这次没有看到从 v015 才开始的停住；这也没有指出原因。仓库里旧的 e4 PASS 不能算成这次的结果。原始记录在 `docs/v016/e4-bounded/`（含 `v014-559daed-*`、`sha256.txt`、`source.txt`）。本机 QEMU 是 8.2.2（Debian `1:8.2.2+ds-0ubuntu1.18`），不是 README 里旧记录用的 QEMU 10.0。
+
+工具链：`aarch64-linux-gnu-gcc` 13.3.0。在 `4c2a559` 上 `make SRC_COMMIT=559daed` 得不到交付映像的 sha256（交付的 bin 是 `99ec3fa2…`，这次编译器得到 `a250441e…`）。记录在 `docs/baseline-4c2a559/`。本版映像 sha256：`8dbd8a40329c16a2c7c5de704cb1ea5c5ffc9abb9867977818b69f81aa18c95a`（`docs/v016/sha256-final.txt`）。上面这些都是开发自测，不是独立 QA。
 
 ## 编译
 

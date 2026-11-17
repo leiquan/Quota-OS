@@ -624,6 +624,11 @@ void shell_main(void)
     decl_init();
     decl_verify_devices();
     const char *args = dtb_bootargs();
+    if (strcmp(args, "webkit") == 0) {
+        webkit_autostart();
+        for (;;)
+            asm volatile("wfi");
+    }
     if (strcmp(args, "e1") == 0) {
         decl_demo_device_tier1();
         decl_demo_overcommit();

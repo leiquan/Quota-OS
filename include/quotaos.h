@@ -2,7 +2,7 @@
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
-#define QUOTAOS_VERSION     "015"
+#define QUOTAOS_VERSION     "016"
 /* Tier 2 应用用 IPC 时准入多留的余量：调用者预算在 IPC 内核路径里用完时超出的部分从这里出 */
 #define IPC_HEADROOM_US     120   /* 大于实测最长的一次内核停留（qa-long 6622 tick = 106 us） */
 
@@ -207,11 +207,14 @@ void readline(char *buf, int cap);
 void put_padded(const char *s, int cols);
 
 void *memset(void *dst, int c, size_t n);
+void *memcpy(void *dst, const void *src, size_t n);
 int strcmp(const char *a, const char *b);
 void str_copy(char *dst, const char *src, int cap);
 
 uint64_t dtb_ram_bytes(uint64_t hinted);
 int dtb_find_compatible(const char *compat, uint64_t *out, int max);
+/* 每个匹配节点的第一段 reg 基址。返回个数。 */
+int dtb_find_bases(const char *compat, uint64_t *bases, int max);
 const char *dtb_bootargs(void);
 
 void gic_init(void);
@@ -376,6 +379,11 @@ void handle_unhandled(uint64_t frame_sp, uint64_t kind);
 
 void kmain(uint64_t dtb);
 void shell_main(void);
+void webkit_autostart(void);
+int kernel_reserve_alloc(uint64_t bytes, uint64_t align, uint64_t *pa);
+int fb_device_self_test(uint32_t **pixels, uint32_t *w, uint32_t *h, uint32_t *stride);
+int input_init(void);
+int input_poll(uint16_t *code, uint16_t *value);
 void services_start(void);
 void job_body(uint64_t start);
 
