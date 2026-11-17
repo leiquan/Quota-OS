@@ -43,6 +43,12 @@ void webkit_autostart(void)
         int gd = wk_reserve(4096, 0, 1, &pa);
         int ok = wk_reserve(4096, 0, 0, &pa);
         printf("[webkit] OSAllocator probe exec %d guard %d plain %d\n", ex, gd, ok);
+        void *mem = wk_os_reserve(4096, 4096, 0, 0);
+        int committed = mem ? wk_os_commit(mem, 4096, 0) : -1;
+        int ro = wk_os_protect(mem, 4096, 1, 0);
+        printf("[webkit] commit %d protect-ro %d cxx %d\n", committed, ro, cxx_runtime_test());
+        if (mem)
+            wk_os_release(mem, 4096);
     }
     gap("WPE needs ICU, libxml2, sqlite, harfbuzz, png, jpeg, webp");
     gap("WPE also needs glib, libsoup, epoxy, and a UI process");

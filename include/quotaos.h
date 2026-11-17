@@ -200,6 +200,10 @@ static inline uint32_t mmio_rd(uint64_t a)
     return *(volatile uint32_t *)a;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void uart_init(void);
 void uart_putc(char c);
 void printf(const char *fmt, ...);
@@ -382,6 +386,13 @@ void shell_main(void);
 void webkit_autostart(void);
 int kernel_reserve_alloc(uint64_t bytes, uint64_t align, uint64_t *pa);
 int wk_reserve(uint64_t bytes, int executable, unsigned guard_pages, uint64_t *pa);
+void *wk_os_reserve(uint64_t bytes, uint64_t align, int executable, unsigned guard_pages);
+void wk_os_release(void *p, uint64_t bytes);
+int wk_os_commit(void *p, uint64_t bytes, int executable);
+void wk_os_decommit(void *p, uint64_t bytes);
+int wk_os_protect(void *p, uint64_t bytes, int readable, int writable);
+void wk_os_zero(void *p, uint64_t bytes);
+int cxx_runtime_test(void);
 int fb_device_self_test(uint32_t **pixels, uint32_t *w, uint32_t *h, uint32_t *stride);
 int input_init(void);
 int input_poll(uint16_t *code, uint16_t *value);
@@ -390,3 +401,7 @@ void job_body(uint64_t start);
 
 void start_first_task(uint64_t frame_sp);
 void job_resume(void);
+
+#ifdef __cplusplus
+}
+#endif

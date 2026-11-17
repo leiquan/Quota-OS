@@ -11,7 +11,7 @@ What you do
   Point that same kernel picker at this quotaos.bin and start.
 
 What you should see
-  Version: 016 (d9a3dac)
+  Version: 016 (e964b92)
   [boot] EL1h, MMU off. No hardware isolation.
   [boot] GICv2 from DTB
   select>
@@ -20,13 +20,12 @@ What you should see
   This image has no HTML, CSS, or JavaScript. engine is not linked.
 
 Banner convention
-  d9a3dac is git rev-parse --short=7 of the parent of the commit
-  that introduced these bytes. The check is against that parent,
-  not against a later docs-only commit.
+  e964b92 is git rev-parse --short=7 of the parent of the commit
+  that introduced these bytes.
 
 SHA-256
-  quotaos.bin 7a449d00a3155e64f80ac203e2d713fbad2ce4cab3c7f7f6a12c1ade498eb9a2
-  quotaos.elf 47defc8c81d686975368d56cbdc0097871d660c08b26d0292f1b261ac8163669
+  quotaos.bin 4dc560c3daf6266252f44d96919a76f00870f6dd849c35e9d0d24d79840522a6
+  quotaos.elf 2e5b7f235f750e74b2e90ca46a83671a8fffa4a1bc324afc50070c93ce97bb34
   Also in SHA256SUMS.
 
 Same guest on the command line, no extra devices

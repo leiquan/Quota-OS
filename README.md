@@ -12,14 +12,14 @@ License: [Apache-2.0](LICENSE)
 
 不用自己编译，也不用改已经能启动的 UTM。还是原来的 virt、GICv2、Cortex-A72、128 MB、无磁盘、串口。只把内核文件换成 `prebuilt/quotaos.bin`。机器属性继续填 `gic-version=2`，Arguments 继续只放 `-cpu cortex-a72`，不要加 `-kernel`。说明和 sha256 在 `prebuilt/RUN.txt`、`prebuilt/SHA256SUMS`。
 
-这不是 WebKit。没有可点的窗口。旧映像能进 `select>` 不能用来证明这一版有图形界面。启动应看到 `Version: 016 (d9a3dac)` 和 `[boot] EL1h, MMU off. No hardware isolation.` `d9a3dac` 是包含这版字节的提交的父提交（编译时的 HEAD）。
+这不是 WebKit。没有可点的窗口。旧映像能进 `select>` 不能用来证明这一版有图形界面。启动应看到 `Version: 016 (e964b92)` 和 `[boot] EL1h, MMU off. No hardware isolation.` `e964b92` 是包含这版字节的提交的父提交（编译时的 HEAD）。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
   -nographic -nic none -kernel prebuilt/quotaos.bin
 ```
 
-sha256：`quotaos.bin` 为 `7a449d00a3155e64f80ac203e2d713fbad2ce4cab3c7f7f6a12c1ade498eb9a2`，`quotaos.elf` 为 `47defc8c81d686975368d56cbdc0097871d660c08b26d0292f1b261ac8163669`。
+sha256：`quotaos.bin` 为 `4dc560c3daf6266252f44d96919a76f00870f6dd849c35e9d0d24d79840522a6`，`quotaos.elf` 为 `2e5b7f235f750e74b2e90ca46a83671a8fffa4a1bc324afc50070c93ce97bb34`。
 
 画面：文档里的 UTM 会删掉 Display。不额外加设备时，同一条 virt 命令打出 `[fb] etc/ramfb not in fw_cfg (9 files)` 和 `[input] no virtio-input (id 18)`。要在屏幕上看到像素，就得有文档配置里删掉的显示设备。这一版不要求你加它。
 
