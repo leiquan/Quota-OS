@@ -369,10 +369,12 @@ uint32_t system_reserve_kb(void);
 /* webkit boot only. 0 on every other boot, including e4. */
 uint64_t webkit_structure_bytes(void);
 uint64_t webkit_structure_base(void);
+void boot_check_reservations(uint64_t structure, uint64_t window, uint64_t arena, uint64_t arena_end);
 /* End of the JSC arena. The weak default is the image end, so a kernel
  * without the engine keeps the old framebuffer floor. */
 uint64_t jsc_arena_end(void);
 void color_init(uint64_t ram_bytes);
+void color_pool_range(uint64_t *start, uint64_t *end);
 uint64_t color_padding_kb(void);
 uint32_t color_alloc_shared(uint32_t n);
 void color_free_shared(void);
@@ -405,6 +407,9 @@ int wk_os_protect(void *p, uint64_t bytes, int readable, int writable);
 void wk_os_zero(void *p, uint64_t bytes);
 int cxx_runtime_test(void);
 int fb_device_self_test(uint32_t **pixels, uint32_t *w, uint32_t *h, uint32_t *stride);
+/* 0 when the surface was reserved. Bytes are inside the 16 MB system reserve. */
+int fb_reserve(void);
+int fb_reserved_range(uint64_t *start, uint64_t *bytes);
 int input_init(void);
 int input_poll(uint16_t *code, uint16_t *value);
 void services_start(void);

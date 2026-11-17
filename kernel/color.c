@@ -43,6 +43,14 @@ static uint64_t nth_page(uint32_t c, uint64_t k)
     return first + k * NCOLORS;
 }
 
+void color_pool_range(uint64_t *start, uint64_t *end)
+{
+    if (start)
+        *start = pool_base;
+    if (end)
+        *end = pool_base + pool_pages * 4096;
+}
+
 void color_init(uint64_t ram_bytes)
 {
     uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);

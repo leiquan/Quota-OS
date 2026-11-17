@@ -125,16 +125,47 @@ static int ramfb_publish(uint64_t fw, uint64_t pixels, uint32_t w, uint32_t h, u
     return 0;
 }
 
-int fb_device_self_test(uint32_t **pixels_out, uint32_t *w, uint32_t *h, uint32_t *stride)
+int fb_reserve(void)
 {
-    uint64_t pa, fwreg[4];
+    uint64_t pa;
     uint32_t bytes = FB_W * FB_H * FB_BPP;
+    if (fb_pixels)
+        return 0;
     if (kernel_reserve_alloc(bytes, 4096, &pa) != 0) {
         printf("[fb] system reserve has no room for %u bytes\n", bytes);
         return -1;
     }
     fb_pixels = (uint32_t *)pa;
     fb_bytes = bytes;
+    printf("[fb] reserved %u bytes at 0x%lx inside the system reserve\n", bytes, pa);
+    return 0;
+}
+
+int fb_reserved_range(uint64_t *start, uint64_t *bytes)
+{
+    if (!fb_pixels)
+        return -1;
+    if (start)
+        *start = (uint64_t)fb_pixels;
+    if (bytes)
+        *bytes = fb_bytes;
+    return 0;
+}
+
+int fb_device_self_test(uint32_t **pixels_out, uint32_t *w, uint32_t *h, uint32_t *stride)
+{
+    uint64_t pa, fwreg[4];
+    uint32_t bytes = FB_W * FB_H * FB_BPP;
+    if (!fb_pixels) {
+        if (kernel_reserve_alloc(bytes, 4096, &pa) != 0) {
+            printf("[fb] system reserve has no room for %u bytes\n", bytes);
+            return -1;
+        }
+        fb_pixels = (uint32_t *)pa;
+        fb_bytes = bytes;
+    }
+    pa = (uint64_t)fb_pixels;
+    bytes = fb_bytes;
     for (uint32_t y = 0; y < FB_H; y++) {
         uint32_t color = 0x000000ffu;
         if (y >= 120)

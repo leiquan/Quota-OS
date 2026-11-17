@@ -36,6 +36,7 @@ static void gap(const char *s)
 
 void webkit_autostart(void)
 {
+    fb_reserve();
     printf("[webkit] autostart on the Tier-3 shell task\n");
     printf("[webkit] app mem capacity %lu KB\n", resource_app_mem_capacity_kb());
     printf("[webkit] inspected 4d967f4ca7bd tag WebKit-7625.2.8.18.3\n");

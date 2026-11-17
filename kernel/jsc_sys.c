@@ -101,6 +101,7 @@ void jsc_arena_init(void)
         printf("[jsc] arena 0x%lx %lu bytes\n", start, (uint64_t)arena_size);
         printf("[jsc] layout pool 0x%lx <= structure 0x%lx < arena 0x%lx-0x%lx\n",
                pool, structure, start, arena_limit);
+        boot_check_reservations(structure, window, start, arena_limit);
         return;
     }
     printf("[jsc] arena refused pool 0x%lx structure 0x%lx\n", pool, structure);

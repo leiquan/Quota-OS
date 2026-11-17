@@ -1,7 +1,11 @@
 /*
- * Identity map for the JSC guest. RAM pages can change between
- * read-write, read-only, and not-present. Device pages stay device memory.
- * This is the first time the kernel turns the MMU on.
+ * EL1 identity map. One kernel address space. Page permissions can change.
+ * This is not a set of protected user processes, and it is not completed
+ * three-tier isolation. Device pages stay device memory.
+ *
+ * 4 KB pages cover the kernel data, the system-reserve tail (framebuffer),
+ * and the WebKit structure/arena window. Everything else in RAM is a 2 MB
+ * block, so the page tables leave room for the framebuffer.
  */
 #include "quotaos.h"
 
@@ -20,7 +24,9 @@ static uint64_t l0[512] __attribute__((aligned(4096)));
 static uint64_t l1[512] __attribute__((aligned(4096)));
 static uint64_t l2_lo[512] __attribute__((aligned(4096)));
 static uint64_t l2_ram[512] __attribute__((aligned(4096)));
-static uint64_t l3_ram[64][512] __attribute__((aligned(4096)));
+/* Blocks 6-7 and 32-63. 34 tables, not 64. */
+static uint64_t l3_storage[34][512] __attribute__((aligned(4096)));
+static uint64_t *l3_for[64];
 static int mmu_on;
 static volatile int expect_fault;
 static volatile int fault_hit;
@@ -64,12 +70,11 @@ int mmu_protect(uint64_t addr, uint64_t len, int prot)
     int ro = (prot & 2) == 0;
     int present = prot != 0;
     for (uint64_t va = addr & ~4095ull; va < end; va += 4096) {
-        uint64_t off = va - 0x40000000ull;
-        uint64_t blk = off >> 21;
+        uint64_t blk = (va - 0x40000000ull) >> 21;
         uint64_t l3i = (va >> 12) & 511ull;
-        if (blk >= 64)
+        if (blk >= 64 || !l3_for[blk])
             return -1;
-        uint64_t *pte = &l3_ram[blk][l3i];
+        uint64_t *pte = &l3_for[blk][l3i];
         *pte = (va & ~4095ull) | ram_pte(ro, present);
         asm volatile("dc civac, %0" :: "r"(pte) : "memory");
         asm volatile("dsb ish" ::: "memory");
@@ -93,14 +98,27 @@ void mmu_init(void)
         l2_lo[l2i] = va | PTE_VALID | PTE_AF | ATTR_DEVICE | PTE_PXN | PTE_UXN;
     }
     l1[0] = (uint64_t)l2_lo | PTE_VALID | PTE_TABLE;
-    /* Second GiB: 4 KB pages for the 128 MB RAM so mprotect can split them. */
+    int tables = 0;
     for (int blk = 0; blk < 64; blk++) {
-        for (int p = 0; p < 512; p++) {
-            uint64_t va = 0x40000000ull + ((uint64_t)blk << 21) + ((uint64_t)p << 12);
-            l3_ram[blk][p] = va | ram_pte(0, 1);
+        uint64_t va = 0x40000000ull + ((uint64_t)blk << 21);
+        uint64_t l2i = (va >> 21) & 511ull;
+        /* Data, reserve tail, structure heap, and malloc arena. */
+        int pages = (blk >= 6 && blk <= 7) || blk >= 32;
+        if (!pages) {
+            l2_ram[l2i] = va | PTE_VALID | PTE_AF | ATTR_NORMAL | SH_INNER | PTE_UXN;
+            l3_for[blk] = 0;
+            continue;
         }
-        uint64_t l2i = ((0x40000000ull + ((uint64_t)blk << 21)) >> 21) & 511ull;
-        l2_ram[l2i] = (uint64_t)l3_ram[blk] | PTE_VALID | PTE_TABLE;
+        if (tables >= 34) {
+            printf("[mmu] page-table pool exhausted\n");
+            for (;;)
+                asm volatile("wfi");
+        }
+        uint64_t *table = l3_storage[tables++];
+        for (int p = 0; p < 512; p++)
+            table[p] = (va + ((uint64_t)p << 12)) | ram_pte(0, 1);
+        l2_ram[l2i] = (uint64_t)table | PTE_VALID | PTE_TABLE;
+        l3_for[blk] = table;
     }
     l1[1] = (uint64_t)l2_ram | PTE_VALID | PTE_TABLE;
     l0[0] = (uint64_t)l1 | PTE_VALID | PTE_TABLE;
@@ -118,6 +136,7 @@ void mmu_init(void)
     asm volatile("msr sctlr_el1, %0; isb" :: "r"(sctlr) : "memory");
     mmu_on = 1;
     printf("[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000\n");
+    printf("[mmu] one kernel address space. Not separate user processes. Not completed three-tier isolation.\n");
 
     /* One aligned page inside RAM, not the last byte. Prove the PTE bits, then restore RW. */
     volatile uint32_t *page = (volatile uint32_t *)0x47ff0000ull;

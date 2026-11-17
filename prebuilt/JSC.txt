@@ -1,0 +1,30 @@
+JSC-only kernel. Not a GUI. Not the serial drop-in.
+
+Do not point the UTM kernel picker at this file. The machine that already
+boots Quota OS still uses prebuilt/quotaos.bin (93744 bytes, sha256
+afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05).
+That file is unchanged.
+
+This image is quotaos-jsc.bin. Banner Version: 016 (f6d58fd). f6d58fd is
+git rev-parse --short=7 of the parent of the commit that introduced these
+bytes. It evaluates two JavaScriptCore CLoop scripts. It does not paint
+HTML or CSS, and it does not take keyboard or mouse input into WebKit.
+
+Boot (developer self-test, not independent QA):
+
+  qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
+    -nographic -nic none -kernel prebuilt/quotaos-jsc.bin -append webkit
+
+Expect:
+  [jsc] 1+2 -> number 3000/1000 icu 0
+  [jsc] 'ab'+'c' -> string [abc] icu 0
+  [jsc] guest PASS
+  [boot] reservation overlap 0
+  [mmu] one kernel address space. Not separate user processes. Not completed three-tier isolation.
+
+Stock virt has no ramfb, so the log also says etc/ramfb is not in fw_cfg.
+That is not a WebKit paint. No display device is added here.
+
+sha256 quotaos-jsc.bin 86177f32237d66a128c29806a5dca67c2b663d3a23243848278db450e56e20d5
+sha256 quotaos-jsc.elf 3766bd5108c0395304bbd21e6a89d3a76f4bfdb335dbe4dec26cbf12931d4b57
+size quotaos-jsc.bin 13059840

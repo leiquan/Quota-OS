@@ -9,7 +9,10 @@ CC=aarch64-linux-gnu-gcc
 KFLAGS=(-std=gnu11 -Wall -Wextra -Werror -O2 -ffreestanding -fno-stack-protector
     -fno-builtin -fno-pic -fno-pie -ftls-model=local-exec -mgeneral-regs-only -mstrict-align
     -fno-asynchronous-unwind-tables -I include -I build)
-mkdir -p build/kernel
+mkdir -p build/kernel build
+short=$(git rev-parse --short=7 HEAD)
+printf '#define QUOTAOS_COMMIT "%s"\n' "$short" > build/commit.h
+echo "banner parent $short"
 for f in kernel/main.c kernel/resource.c kernel/color.c kernel/fb.c kernel/webkit.c kernel/wkalloc.c kernel/sched.c kernel/uart.c kernel/jsc_sys.c kernel/jsc_icu_stubs.c kernel/mmu.c; do
     $CC "${KFLAGS[@]}" -c -o "build/${f%.c}.o" "$f"
 done
