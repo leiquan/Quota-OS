@@ -15,10 +15,22 @@ Three different kernels. Do not treat them as one image.
    This is a baseline serial kernel. It is not JavaScriptCore and it is
    not the current drop-in.
 
-3. JSC-only image, prebuilt/quotaos-jsc.bin
+3. Earlier JSC image, no longer the file in prebuilt/
    13059840 bytes
    sha256 86177f32237d66a128c29806a5dca67c2b663d3a23243848278db450e56e20d5
    Banner Version: 016 (f6d58fd). CLoop guest, not a GUI.
    Raw log: docs/v016/jsc/webkit-fb-reserve.raw
    icount e4 on this same binary: docs/v016/jsc/e4-fb-reserve.raw
+   Developer self-test, not independent QA.
+
+4. Current prebuilt/quotaos-jsc.bin
+   13063200 bytes
+   sha256 e12747256945585006d43211fb59ed95ec05da14b9ca57f3b7390a05b62769ed
+   Banner Version: 016 (641dc8c). JSC plus CSSParserFastPaths hex color.
+   Not HTML layout and not a GUI.
+   Raw log: docs/v016/jsc/webkit-color.raw
+   icount e4 on this same binary: docs/v016/jsc/e4-color.raw
+   The dde2a8e image (13061280 bytes, sha256
+   c10dff5acdf433d266ff8a0417465298f02fedd346564ba247eb04ea7a7328d1)
+   remains at /opt/cursor/artifacts/quotaos-jsc-dde2a8e/.
    Developer self-test, not independent QA.

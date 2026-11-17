@@ -1,6 +1,8 @@
 #include <JavaScriptCore/JavaScript.h>
 
 extern "C" {
+int quotaos_webcore_paint_hex(const char *hex, unsigned hex_len,
+    unsigned *rgba, unsigned *painted, unsigned *total);
 void jsc_arena_init(void);
 void jsc_enable_fp_and_tls(void);
 void jsc_run_constructors(void);
@@ -95,5 +97,12 @@ extern "C" int quotaos_jsc_guest(void)
     int pass = number_ok && near(number, 3.0) && string_ok && buf[0] == 'a' && buf[1] == 'b' &&
                buf[2] == 'c' && buf[3] == 0 && jsc_icu_call_count() == 0;
     printf("[jsc] guest %s\n", pass ? "PASS" : "FAIL");
+
+    unsigned rgba = 0, painted = 0, total = 0;
+    int painted_ok = quotaos_webcore_paint_hex("c80000", 6, &rgba, &painted, &total);
+    unsigned ignored = 0, ignored_n = 0, ignored_t = 0;
+    int rejected = quotaos_webcore_paint_hex("zz", 2, &ignored, &ignored_n, &ignored_t);
+    printf("[webcore] CSSParserFastPaths hex c80000 rgba 0x%x painted %u/%u ok %d reject_zz %d\n",
+           rgba, painted, total, painted_ok, rejected);
     return pass ? 0 : 1;
 }

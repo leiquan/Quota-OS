@@ -40,6 +40,7 @@ open("/tmp/jsc-build/objs-guest.rsp","w").write("\n".join(lines)+"\n")
 print("jsc inputs", len(lines), "system malloc, no libpas")
 PY
 
+"$ROOT/tools/build-webcore-color.sh"
 mapfile -t KERN < <(find build/boot build/kernel -name '*.o' | sort)
 ld.lld -m aarch64linux -T boot/linker.ld --gc-sections \
     --no-undefined \
@@ -47,6 +48,7 @@ ld.lld -m aarch64linux -T boot/linker.ld --gc-sections \
     "${KERN[@]}" \
     build/jsc_guest.o \
     build/jsc_link_stubs.o \
+    @build/webcore-color.rsp \
     /tmp/jsc-build/std/tree.o \
     /tmp/jsc-build/std/hashtable_c++0x.o \
     @/tmp/jsc-build/objs-guest.rsp \

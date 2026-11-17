@@ -111,7 +111,16 @@ static int boot_is_webkit(void)
  * the result. Tier-1 declarations do not change. */
 uint32_t system_reserve_kb(void)
 {
-    return KERNEL_RESERVE_KB;
+    extern char __image_start[], __image_end[];
+    uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
+    /* Image plus the 640x480 surface. Stay at 16 MB when that already fits. */
+    uint64_t need = ((uint64_t)__image_end - base) + (640ull * 480ull * 4ull);
+    uint32_t kb = (uint32_t)((need + 1023ull) / 1024ull);
+    if (kb < KERNEL_RESERVE_KB)
+        kb = KERNEL_RESERVE_KB;
+    /* 2 MB alignment keeps the colored pool on a block boundary. */
+    kb = (kb + 2047u) & ~2047u;
+    return kb;
 }
 
 uint64_t webkit_structure_bytes(void)
@@ -175,12 +184,17 @@ void resource_init(uint64_t ram_bytes)
     ram_kb = ram_bytes / 1024;
     pressure = 0;
     reason[0] = 0;
+    uint32_t reserve_kb = system_reserve_kb();
     printf("[boot] system reserve %u us/period, %u KB;\n       tier-1 %u us/period, %u KB; guard %u us/period\n",
-           SYS_RESERVE_US, system_reserve_kb(), resource_t1_cpu_us(), resource_t1_mem_kb(),
+           SYS_RESERVE_US, reserve_kb, resource_t1_cpu_us(), resource_t1_mem_kb(),
            resource_guard_us());
+    if (reserve_kb > KERNEL_RESERVE_KB)
+        printf("[boot] system reserve grew from %u KB to %u KB to hold the image and framebuffer; tier-1 declarations unchanged\n",
+               KERNEL_RESERVE_KB, reserve_kb);
     if (webkit_structure_bytes())
-        printf("[boot] webkit admission: structure reservation %lu KB; system reserve %u KB includes the framebuffer; tier-1 declarations unchanged (%u KB, %u us)\n",
-               webkit_structure_bytes() / 1024, system_reserve_kb(), resource_t1_mem_kb(), resource_t1_cpu_us());
+        printf("[boot] webkit admission: structure reservation %lu KB is inside the 128 MB budget; system reserve %u KB includes the framebuffer; tier-1 declarations unchanged (%u KB, %u us)\n",
+               webkit_structure_bytes() / 1024, reserve_kb, resource_t1_mem_kb(), resource_t1_cpu_us());
+    printf("[boot] EL1 identity map, when on, is not separate-process isolation. Three-tier hardware isolation is not claimed.\n");
 }
 
 static int ranges_overlap(uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1)

@@ -1,0 +1,36 @@
+Quota OS layers. Dependencies point downward.
+
+1. Kernel (kernel/, boot/)
+   Scheduling, three-tier admission, MMU, and the in-kernel framebuffer
+   and input services. No HTML, CSS, or WebCore types.
+   Tier-1 declarations stay the compiled constants. WebKit does not
+   enlarge them. The EL1 identity map is page protection in one kernel
+   address space. It is not separate-process isolation. That isolation
+   is not implemented.
+
+2. System services, transitional
+   fb_reserve / fb_reserved_range and input_init live in the kernel.
+   They are not protected service processes. A later transport can
+   replace these entry points. Callers must not mask IRQs across a
+   tier-1 slot. The WebKit guest runs on the tier-3 shell, so its CPU
+   is the tier-3 quantum.
+
+3. Platform adaptation (port/quotaos/, tools/generate-webcore-derived.sh)
+   The only place that includes upstream WebCore. It calls kernel
+   services. It does not talk to the UART, GIC, or page tables.
+   Upstream generators write build/webcore-derived. Settings flags that
+   CSSProperties.json names and Settings.yaml omits are bool settings
+   defaulting to false, produced by that script.
+
+4. Guest / demo (quotaos_jsc_guest)
+   Runs the JSC scripts and asks the platform adapter to paint.
+   It does not parse CSS itself and it does not allocate outside the
+   admitted framebuffer and the structure-window children.
+
+Build targets
+   tools/generate-webcore-derived.sh   headers from the pinned WebKit tree
+   tools/link-jsc-guest.sh             JSC guest plus the WebCore objects
+                                       listed in that script
+   prebuilt/quotaos.bin                serial drop-in, not this engine
+   prebuilt/quotaos-jsc.bin            JSC guest. Replace it only when the
+                                       banner matches the parent commit.
