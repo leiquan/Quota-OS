@@ -7,6 +7,7 @@ void kmain(uint64_t dtb)
 {
     asm volatile("msr daifset, #2" ::: "memory");
     uart_init();
+    mmu_init();
     printf("\nQuota OS microkernel\n");
     printf("Version: %s (%s)\n", QUOTAOS_VERSION, QUOTAOS_COMMIT);
     printf("基于三级资源声明的微内核，\n保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。\n");

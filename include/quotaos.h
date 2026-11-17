@@ -235,6 +235,8 @@ void busy_ticks(uint64_t t);
 
 int dtb_fault_expected(void);
 void dtb_note_fault(void);
+int mmu_fault_expected(void);
+void mmu_note_fault(void);
 
 void resource_init(uint64_t ram_bytes);
 const struct tier1_decl *resource_tier1(int *count);
@@ -361,7 +363,12 @@ void dev_period(void);
 uint64_t sched_period_now(void);
 int sched_in_t1_window(uint64_t now);
 void gic_ppi_enable(uint32_t id, int on);
+void mmu_init(void);
+int mmu_protect(uint64_t addr, uint64_t len, int prot);
 uint32_t system_reserve_kb(void);
+/* webkit boot only. 0 on every other boot, including e4. */
+uint64_t webkit_structure_bytes(void);
+uint64_t webkit_structure_base(void);
 /* End of the JSC arena. The weak default is the image end, so a kernel
  * without the engine keeps the old framebuffer floor. */
 uint64_t jsc_arena_end(void);

@@ -7,16 +7,17 @@ cd "$ROOT"
 CXX=aarch64-linux-gnu-g++
 CC=aarch64-linux-gnu-gcc
 KFLAGS=(-std=gnu11 -Wall -Wextra -Werror -O2 -ffreestanding -fno-stack-protector
-    -fno-builtin -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align
+    -fno-builtin -fno-pic -fno-pie -ftls-model=local-exec -mgeneral-regs-only -mstrict-align
     -fno-asynchronous-unwind-tables -I include -I build)
 mkdir -p build/kernel
-for f in kernel/main.c kernel/resource.c kernel/color.c kernel/fb.c kernel/webkit.c kernel/jsc_sys.c kernel/jsc_icu_stubs.c; do
+for f in kernel/main.c kernel/resource.c kernel/color.c kernel/fb.c kernel/webkit.c kernel/wkalloc.c kernel/sched.c kernel/uart.c kernel/jsc_sys.c kernel/jsc_icu_stubs.c kernel/mmu.c; do
     $CC "${KFLAGS[@]}" -c -o "build/${f%.c}.o" "$f"
 done
 INCS=$(cat /tmp/jsc-build/incs.line)
 $CXX -std=c++23 -Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack-protector \
-    -ffunction-sections -fdata-sections -Wno-expansion-to-defined -w \
+    -ftls-model=local-exec -ffunction-sections -fdata-sections -Wno-expansion-to-defined -w \
     -DENABLE_C_LOOP=1 -DENABLE_JIT=0 -DENABLE_YARR_JIT=0 -DENABLE_WEBASSEMBLY=0 \
+    -DGIGACAGE_ENABLED=0 -DUSE_SYSTEM_MALLOC=1 \
     -I /tmp/jsc-build/include -I /tmp/jsc-build/gen \
     $INCS -idirafter /usr/include \
     -c port/quotaos/jsc_guest.cpp -o build/jsc_guest.o
@@ -26,16 +27,14 @@ $CXX -std=c++23 -Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack
 
 python3 - << 'PY'
 import os
-drop={"WTF_wtf_generic_MemoryFootprintGeneric.cpp.o","WTF_wtf_generic_MemoryPressureHandlerGeneric.cpp.o"}
+drop={"WTF_wtf_generic_MemoryFootprintGeneric.cpp.o","WTF_wtf_generic_MemoryPressureHandlerGeneric.cpp.o","bmalloc_bmalloc_mbmalloc.cpp.o"}
+root="/tmp/jsc-build/obj-sm"
 lines=[]
-for n in sorted(os.listdir("/tmp/jsc-build/obj")):
+for n in sorted(os.listdir(root)):
     if n.endswith(".o") and n not in drop:
-        lines.append("/tmp/jsc-build/obj/"+n)
-for n in sorted(os.listdir("/tmp/jsc-build/libpas")):
-    if n.endswith(".o"):
-        lines.append("/tmp/jsc-build/libpas/"+n)
+        lines.append(root+"/"+n)
 open("/tmp/jsc-build/objs-guest.rsp","w").write("\n".join(lines)+"\n")
-print("jsc inputs", len(lines))
+print("jsc inputs", len(lines), "system malloc, no libpas")
 PY
 
 mapfile -t KERN < <(find build/boot build/kernel -name '*.o' | sort)

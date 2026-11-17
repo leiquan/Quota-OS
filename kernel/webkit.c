@@ -1,8 +1,7 @@
 /*
  * -append webkit. Autostart of the native port hook.
- * The WebKit engine is not linked. Nothing here parses HTML, CSS, or JS.
  * Tier-1 slots keep running; this shell task stays Tier 3.
- * MMU is off. Do not read any line here as hardware isolation.
+ * The JSC guest, when linked, is what evaluates JavaScript. This file does not.
  */
 #include "quotaos.h"
 #include "webkit_host.h"
@@ -16,6 +15,12 @@ __attribute__((weak)) int webkit_engine_linked(void)
 __attribute__((weak)) int quotaos_jsc_guest(void)
 {
     return -1;
+}
+
+/* The shell task stack is 8 KB. The strong definition runs the guest on a 1 MB stack. */
+__attribute__((weak)) int jsc_call_on_stack(int (*fn)(void))
+{
+    return fn();
 }
 
 __attribute__((weak)) int webkit_engine_main(struct webkit_host *host)
@@ -38,11 +43,11 @@ void webkit_autostart(void)
     int linked = webkit_engine_linked();
     printf("[webkit] engine linked: %s\n", linked ? "yes" : "no");
     if (!linked)
-        printf("[webkit] HTML/CSS/JS is not running\n");
+        printf("[webkit] WebCore is not linked\n");
     gap("no QuotaOS port in WebKit ALL_PORTS");
-    gap("WebCore is forced off without JavaScriptCore");
+    gap("WebCore is not linked");
     gap("OSAllocatorPOSIX uses mmap, mprotect, guard pages");
-    gap("MMU is off, so that allocator has no VM");
+    gap("wkalloc does not grant executable or guard pages");
     {
         uint64_t pa = 0;
         int ex = wk_reserve(4096, 1, 0, &pa);
@@ -79,7 +84,7 @@ void webkit_autostart(void)
         int rc = webkit_engine_main(&host);
         printf("[webkit] engine returned %d\n", rc);
     }
-    int jrc = quotaos_jsc_guest();
+    int jrc = jsc_call_on_stack(quotaos_jsc_guest);
     printf("[webkit] upstream JSC guest returned %d\n", jrc);
     if (keys != 0) {
         printf("[webkit] keyboard absent, no input events\n");

@@ -3,8 +3,8 @@
  * executable pages). WebKit is not linked. These calls only record
  * what this CPU can and cannot do.
  *
- * Executable pages and guard pages need an MMU. It is off. Those
- * requests are refused. Ordinary bytes come from the 16 MB system
+ * This allocator refuses executable pages and guard pages. JSC calls
+ * mprotect for those. Ordinary bytes come from the 16 MB system
  * reserve, under the page pool, so they are not Tier-1 colored pages
  * and they are not lent to an application admission slot.
  */
@@ -13,11 +13,11 @@
 int wk_reserve(uint64_t bytes, int executable, unsigned guard_pages, uint64_t *pa)
 {
     if (executable) {
-        printf("[wk] refuse executable %lu bytes (MMU off)\n", bytes);
+        printf("[wk] refuse executable %lu bytes\n", bytes);
         return -1;
     }
     if (guard_pages) {
-        printf("[wk] refuse %u guard pages (MMU off)\n", guard_pages);
+        printf("[wk] refuse %u guard pages\n", guard_pages);
         return -1;
     }
     if (kernel_reserve_alloc(bytes, 4096, pa) != 0) {

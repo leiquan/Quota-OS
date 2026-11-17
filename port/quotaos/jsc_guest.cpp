@@ -17,8 +17,8 @@ void *_ZN9Inspector15ScriptArguments6createEPN3JSC14JSGlobalObjectEON3WTF6Vector
 }
 
 namespace std {
-void (*__once_call)();
-void *__once_callable;
+thread_local void (*__once_call)();
+thread_local void *__once_callable;
 }
 
 extern "C" void __once_proxy(void)

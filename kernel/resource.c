@@ -97,21 +97,42 @@ uint64_t resource_ram_kb(void)
     return ram_kb;
 }
 
-/* webkit boot only: the engine image and its contiguous heap sit in the
- * system reserve, above the image and below the colored pool. Tier-1
- * declarations do not change. e4 and every other boot keep 16 MB. */
-uint32_t system_reserve_kb(void)
+static int boot_is_webkit(void)
 {
     const char *args = dtb_bootargs();
-    if (args[0] == 'w' && strcmp(args, "webkit") == 0)
-        return KERNEL_RESERVE_KB + 16u * 1024u;
+    return args[0] == 'w' && strcmp(args, "webkit") == 0;
+}
+
+/* The kernel image stays in the 16 MB reserve on every boot. webkit mode
+ * also keeps a 64 MB structure-heap window at the top of RAM, because
+ * JavaScriptCore's StructureID encoding needs a power-of-two reservation
+ * aligned to its own size. The smallest size that encoder still accepts
+ * is a 32 MB heap, which the POSIX allocator maps as 64 MB so it can align
+ * the result. Tier-1 declarations do not change. */
+uint32_t system_reserve_kb(void)
+{
     return KERNEL_RESERVE_KB;
+}
+
+uint64_t webkit_structure_bytes(void)
+{
+    return boot_is_webkit() ? (64ull << 20) : 0;
+}
+
+uint64_t webkit_structure_base(void)
+{
+    if (!webkit_structure_bytes())
+        return 0;
+    extern char __image_start[];
+    uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
+    return base + ram_kb * 1024 - webkit_structure_bytes();
 }
 
 uint64_t resource_app_mem_capacity_kb(void)
 {
     /* v012 起再扣掉缓存着色补齐（Tier 1 颜色里别人不能用的页） */
-    uint64_t fixed = (uint64_t)system_reserve_kb() + resource_t1_mem_kb() + color_padding_kb();
+    uint64_t fixed = (uint64_t)system_reserve_kb() + webkit_structure_bytes() / 1024
+        + resource_t1_mem_kb() + color_padding_kb();
     return ram_kb > fixed ? ram_kb - fixed : 0;
 }
 
@@ -157,9 +178,9 @@ void resource_init(uint64_t ram_bytes)
     printf("[boot] system reserve %u us/period, %u KB;\n       tier-1 %u us/period, %u KB; guard %u us/period\n",
            SYS_RESERVE_US, system_reserve_kb(), resource_t1_cpu_us(), resource_t1_mem_kb(),
            resource_guard_us());
-    if (system_reserve_kb() != KERNEL_RESERVE_KB)
-        printf("[boot] webkit mode reserve %u KB (baseline %u KB). Tier-1 table unchanged.\n",
-               system_reserve_kb(), KERNEL_RESERVE_KB);
+    if (webkit_structure_bytes())
+        printf("[boot] webkit admission: structure reservation %lu KB; system reserve %u KB; tier-1 declarations unchanged\n",
+               webkit_structure_bytes() / 1024, system_reserve_kb());
 }
 
 int resource_pressure(void)

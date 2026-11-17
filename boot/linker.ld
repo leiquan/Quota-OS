@@ -42,9 +42,18 @@ SECTIONS
         __init_array_end = .;
     } :data
 
-    /* TLS stays in the image. PT_TLS keeps SHF_TLS, which lld requires. */
+    /*
+     * AArch64 TP points 16 bytes before the TLS block. Those 16 bytes are
+     * the TCB and are not part of PT_TLS, so they do not change symbol offsets.
+     */
+    . = ALIGN(16);
+    . += 16;
+    __tls_start = .;
     .tdata : { *(.tdata .tdata.*) } :data :tls
-    .tbss : { *(.tbss .tbss.*) } :data :tls
+    .tbss : {
+        *(.tbss .tbss.*)
+        __tls_end = .;
+    } :data :tls
 
     .bss : ALIGN(16) {
         __bss_start = .;

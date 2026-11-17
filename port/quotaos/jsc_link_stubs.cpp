@@ -49,11 +49,6 @@ extern "C" void _ZN3WTF14FileSystemImpl10FileHandle3mapENS0_14MappedFileModeENS0
 {
     stop("FileHandle::map");
 }
-extern "C" void _ZN3WTF14FileSystemImpl14createDumpFileENS_10StringViewES1_S1_(void)
-{
-    stop("createDumpFile");
-}
-extern "C" void _ZN3WTF14FileSystemImpl14MappedFileDataD1Ev(void *) {}
 
 extern "C" void _ZNK3JSC12CachePayload4spanEv(void) { stop("CachePayload::span"); }
 extern "C" void _ZN3JSC12CachePayloadC1EOS0_(void *) {}
@@ -67,15 +62,6 @@ extern "C" void _ZN3JSC12CachePayload17makeMallocPayloadEON3WTF10MallocSpanIhNS1
     stop("CachePayload::makeMallocPayload");
 }
 
-extern "C" void _ZNK3JSC7JITCode19calleeSaveRegistersEv(void) { stop("JITCode::calleeSaveRegisters"); }
-extern "C" void _ZN3JSC13NativeJITCodeC1ENS_21MacroAssemblerCodeRefILN3WTF6PtrTagE357EEENS_7JITTypeENS_9IntrinsicENS_7JITCode14ShareAttributeE(void)
-{
-    stop("NativeJITCode");
-}
-extern "C" void _ZN3JSC13DirectJITCodeC1ENS_21MacroAssemblerCodeRefILN3WTF6PtrTagE357EEENS2_7CodePtrILS3_357ELNS2_18FunctionAttributesE0EEENS_7JITTypeENS_7JITCode14ShareAttributeE(void)
-{
-    stop("DirectJITCode");
-}
 extern "C" void _ZN3JSC13genericUnwindERNS_2VMEPNS_9CallFrameE(void) { stop("genericUnwind"); }
 extern "C" void _ZN3JSC23AssemblyCommentRegistry10initializeEv(void) {}
 extern "C" void _ZN3JSC4Wasm10makeStringERKNS0_11IndexOrNameE(void) { stop("Wasm::makeString"); }
@@ -89,5 +75,4 @@ extern "C" void _ZN3JSC14JITStubRoutine19observeZeroRefCountEv(void) {}
 extern "C" void _ZN3JSC19PolymorphicCallNode19unlinkOrUpgradeImplERNS_2VMEPNS_9CodeBlockES4_(void) { stop("PolymorphicCallNode"); }
 extern "C" void _ZN3JSC26PolymorphicCallStubRoutine16unlinkForcefullyEv(void) {}
 extern "C" int _ZN3JSC14JITStubRoutine9visitWeakERNS_2VME(void) { return 0; }
-extern "C" void _ZN3WTF13printInternalERNS_11PrintStreamEN3JSC7JITTypeE(void) {}
 extern "C" void _ZN3JSC12dumpBytecodeEPNS_18BytecodeDumperBaseINS_17InstructionStreamINS_15BaseInstructionINS_14JSOpcodeTraitsEEEEEEEjPKS4_(void) {}

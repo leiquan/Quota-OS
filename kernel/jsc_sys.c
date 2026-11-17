@@ -10,14 +10,66 @@ extern char __image_start[], __image_end[];
 extern void (*__init_array_start[])(void);
 extern void (*__init_array_end[])(void);
 
+static uint8_t jsc_stack[1u << 20] __attribute__((aligned(16)));
+
+int jsc_call_on_stack(int (*fn)(void))
+{
+    uint64_t top = ((uint64_t)jsc_stack + sizeof jsc_stack) & ~15ull;
+    register uint64_t result asm("x0") = (uint64_t)fn;
+    register uint64_t top_reg asm("x1") = top;
+    asm volatile(
+        "stp x29, x30, [sp, #-16]!\n"
+        "mov x9, sp\n"
+        "mov sp, x1\n"
+        "blr x0\n"
+        "mov sp, x9\n"
+        "ldp x29, x30, [sp], #16\n"
+        : "+r"(result), "+r"(top_reg)
+        :
+        : "x9", "memory", "cc");
+    return (int)result;
+}
+
 static uint8_t *arena;
 static size_t arena_size;
 static size_t arena_used;
 static uint64_t arena_limit;
 static int arena_ready;
 static int mmap_logs;
+static int structure_handed;
 
-int errno;
+__thread int errno;
+extern char __tls_start[];
+extern char __tls_end[];
+
+__attribute__((visibility("hidden"))) int pas_process_is_shutting_down(void)
+{
+    return 0;
+}
+
+int mkostemp(char *templ, int flags)
+{
+    (void)templ;
+    (void)flags;
+    errno = 38;
+    return -1;
+}
+
+void quotaos_entropy(uint8_t *buf, size_t n)
+{
+    static int logged;
+    static uint64_t state;
+    if (!logged) {
+        logged = 1;
+        printf("[jsc] entropy is CNTVCT, not cryptographic\n");
+    }
+    for (size_t i = 0; i < n; i++) {
+        uint64_t c;
+        asm volatile("mrs %0, cntvct_el0" : "=r"(c));
+        state = state * 6364136223846793005ull + c + 1;
+        buf[i] = (uint8_t)(state >> 33);
+    }
+}
 
 int *__errno_location(void)
 {
@@ -33,21 +85,26 @@ void jsc_arena_init(void)
 {
     uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
     uint64_t pool = base + (uint64_t)system_reserve_kb() * 1024;
-    uint64_t cushion = 2ull << 20;
-    uint64_t start = ((uint64_t)__image_end + 4095ull) & ~4095ull;
+    uint64_t structure = webkit_structure_base();
+    uint64_t window = webkit_structure_bytes();
     arena_ready = 0;
     arena_used = 0;
-    if (pool <= cushion || start >= pool - cushion) {
-        printf("[jsc] arena refused image_end 0x%lx pool 0x%lx\n", start, pool);
-        arena_limit = (uint64_t)__image_end;
+    /* The aligned structure heap uses the low half of the window. The high
+     * half is released by the aligner and becomes the malloc arena. */
+    if (structure && window >= (64ull << 20) && structure >= pool) {
+        uint64_t start = structure + window / 2;
+        arena = (uint8_t *)start;
+        arena_limit = structure + window;
+        arena_size = (size_t)(arena_limit - start);
+        memset(arena, 0, arena_size);
+        arena_ready = 1;
+        printf("[jsc] arena 0x%lx %lu bytes\n", start, (uint64_t)arena_size);
+        printf("[jsc] layout pool 0x%lx <= structure 0x%lx < arena 0x%lx-0x%lx\n",
+               pool, structure, start, arena_limit);
         return;
     }
-    arena = (uint8_t *)start;
-    arena_limit = pool - cushion;
-    arena_size = (size_t)(arena_limit - start);
-    memset(arena, 0, arena_size);
-    arena_ready = 1;
-    printf("[jsc] arena 0x%lx %lu bytes, pool 0x%lx\n", start, (uint64_t)arena_size, pool);
+    printf("[jsc] arena refused pool 0x%lx structure 0x%lx\n", pool, structure);
+    arena_limit = (uint64_t)__image_end;
 }
 
 static void *bump(size_t n)
@@ -57,6 +114,20 @@ static void *bump(size_t n)
         return 0;
     void *p = arena + arena_used;
     arena_used += n;
+    return p;
+}
+
+static void *bump_pages(size_t n)
+{
+    size_t page = 4096;
+    if (!arena_ready)
+        return 0;
+    size_t aligned = (arena_used + page - 1) & ~(page - 1);
+    size_t bytes = (n + page - 1) & ~(page - 1);
+    if (bytes > arena_size || aligned > arena_size - bytes)
+        return 0;
+    void *p = arena + aligned;
+    arena_used = aligned + bytes;
     return p;
 }
 
@@ -78,7 +149,21 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off)
         errno = 22;
         return (void *)-1;
     }
-    void *p = bump(len);
+    /* StructureID encoding needs one aligned reservation. The window is real
+     * RAM at the top of the machine, excluded from the colored pool. */
+    if (!structure_handed && (flags & 0x4000)) {
+        uint64_t base = webkit_structure_base();
+        uint64_t bytes = webkit_structure_bytes();
+        if (base && len >= (32ull << 20) && len <= bytes) {
+            structure_handed = 1;
+            memset((void *)base, 0, len);
+            printf("[jsc] structure window 0x%lx %lu bytes\n", base, (uint64_t)len);
+            return (void *)base;
+        }
+    }
+    void *p = bump_pages(len);
+    if (p && mmap_logs <= 24)
+        printf("[jsc] mmap ok 0x%lx %lu\n", (uint64_t)p, (uint64_t)len);
     if (!p) {
         errno = 12;
         printf("[jsc] mmap refused len %lu used %lu\n", (uint64_t)len, (uint64_t)arena_used);
@@ -89,15 +174,19 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off)
 
 int mprotect(void *p, size_t n, int prot)
 {
-    (void)p;
-    (void)n;
-    (void)prot;
+    if (mmu_protect((uint64_t)p, n, prot) == 0)
+        return 0;
     errno = 13;
+    printf("[jsc] mprotect refused prot 0x%x len %lu\n", prot, (uint64_t)n);
     return -1;
 }
 
 int munmap(void *p, size_t n)
 {
+    uint64_t base = webkit_structure_base();
+    uint64_t bytes = webkit_structure_bytes();
+    if (base && (uint64_t)p >= base && (uint64_t)p + n <= base + bytes)
+        return 0;
     if (!arena_ready || (uint8_t *)p < arena || (uint8_t *)p >= arena + arena_used)
         return -1;
     size_t off = (size_t)((uint8_t *)p - arena);
@@ -111,7 +200,9 @@ int madvise(void *p, size_t n, int advice)
 {
     (void)p;
     (void)n;
-    (void)advice;
+    /* MADV_WILLNEED: the pages are already resident RAM. */
+    if (advice == 3)
+        return 0;
     errno = 22;
     return -1;
 }
@@ -147,8 +238,10 @@ void *malloc(size_t n)
         }
     }
     struct blk *b = bump(sizeof *b + n);
-    if (!b)
+    if (!b) {
+        printf("[jsc] malloc refused %lu used %lu\n", (uint64_t)n, (uint64_t)arena_used);
         return 0;
+    }
     b->n = n;
     return b + 1;
 }
@@ -252,8 +345,13 @@ int gettimeofday(struct timespec_j *tv, void *tz)
 
 int getrlimit(int r, void *lim)
 {
-    (void)r;
-    (void)lim;
+    /* RLIMIT_STACK. The guest runs on jsc_stack, not the 8 KB shell stack. */
+    if (r == 3 && lim) {
+        unsigned long *p = lim;
+        p[0] = sizeof jsc_stack;
+        p[1] = sizeof jsc_stack;
+        return 0;
+    }
     errno = 22;
     return -1;
 }
@@ -267,7 +365,9 @@ int sysinfo(void *info)
 
 void abort(void)
 {
-    printf("[jsc] abort\n");
+    uint64_t lr;
+    asm volatile("mov %0, x30" : "=r"(lr));
+    printf("[jsc] abort lr 0x%lx\n", lr);
     for (;;)
         asm volatile("wfi");
 }
@@ -298,35 +398,19 @@ int sched_yield(void)
     return 0;
 }
 
-static uint64_t urandom_state;
-static int urandom_logged;
-
 int open(const char *path, int flags, ...)
 {
     (void)flags;
-    if (path && strcmp(path, "/dev/urandom") == 0) {
-        if (!urandom_logged) {
-            urandom_logged = 1;
-            printf("[jsc] /dev/urandom is the virtual counter, not a device file\n");
-        }
-        return 3;
-    }
+    (void)path;
     errno = 2;
     return -1;
 }
 
 long read(int fd, void *buf, size_t n)
 {
-    if (fd == 3 && buf) {
-        uint8_t *p = buf;
-        for (size_t i = 0; i < n; i++) {
-            uint64_t c;
-            asm volatile("mrs %0, cntvct_el0" : "=r"(c));
-            urandom_state = urandom_state * 6364136223846793005ull + c + 1;
-            p[i] = (uint8_t)(urandom_state >> 33);
-        }
-        return (long)n;
-    }
+    (void)fd;
+    (void)buf;
+    (void)n;
     errno = 9;
     return -1;
 }
@@ -572,9 +656,9 @@ int pthread_attr_getstack(const void *a, void **s, size_t *n)
 {
     (void)a;
     if (s)
-        *s = 0;
+        *s = jsc_stack;
     if (n)
-        *n = 0;
+        *n = sizeof jsc_stack;
     return 0;
 }
 
@@ -960,9 +1044,11 @@ void jsc_enable_fp_and_tls(void)
     asm volatile("mrs %0, cpacr_el1" : "=r"(cpacr));
     cpacr |= 3ull << 20;
     asm volatile("msr cpacr_el1, %0; isb" ::"r"(cpacr));
-    /* This static link stores absolute TLS addresses in the GOT and adds TP.
-     * TP must be 0 so the access lands on the image's .tbss/.tdata. */
-    asm volatile("msr tpidr_el0, xzr");
+    /* Local-exec offsets are TP + 16 + symbol. Point TP at the TCB. */
+    for (char *p = __tls_start; p < __tls_end; p++)
+        *p = 0;
+    uint64_t tp = (uint64_t)__tls_start - 16;
+    asm volatile("msr tpidr_el0, %0" ::"r"(tp));
 }
 
 unsigned long __stack_chk_guard = 0x00a5a5a5a5a5a5a5ull;

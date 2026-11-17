@@ -1236,12 +1236,17 @@ uint64_t handle_sync(uint64_t frame_sp)
         k_ipc_op = (int)(esr & 0xffff);
         return schedule(frame_sp, 0);
     }
-    if (dtb_fault_expected() && (ec == 0x24 || ec == 0x25)) {
-        dtb_note_fault();
+    if ((dtb_fault_expected() || mmu_fault_expected()) && (ec == 0x24 || ec == 0x25)) {
+        if (dtb_fault_expected())
+            dtb_note_fault();
+        else
+            mmu_note_fault();
         f->elr += 4;
         return frame_sp;
     }
-    printf("\nPANIC sync ec=0x%x esr=0x%lx elr=0x%lx\n", ec, esr, f->elr);
+    uint64_t far = 0;
+    asm volatile("mrs %0, far_el1" : "=r"(far));
+    printf("\nPANIC sync ec=0x%x esr=0x%lx elr=0x%lx far=0x%lx\n", ec, esr, f->elr, far);
     for (;;)
         asm volatile("wfi");
 }

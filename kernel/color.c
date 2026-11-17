@@ -47,7 +47,8 @@ void color_init(uint64_t ram_bytes)
 {
     uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
     pool_base = base + (uint64_t)system_reserve_kb() * 1024;
-    uint64_t end = base + ram_bytes;
+    uint64_t structure = webkit_structure_base();
+    uint64_t end = structure ? structure : base + ram_bytes;
     pool_pages = end > pool_base ? (end - pool_base) / PAGE : 0;
     per_color = pool_pages / NCOLORS;
     for (int c = 0; c < NCOLORS; c++)
