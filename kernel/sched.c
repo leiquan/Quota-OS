@@ -669,8 +669,11 @@ static void finish_bench(void)
         if (tasks[i].bench_owned && tasks[i].state != TASK_EMPTY)
             kill_locked(&tasks[i]);
     rebuild_lists();
-    shell_task->wait_bench = 0;
-    shell_task->state = TASK_READY;
+    /* The serial menu parks the shell. A GUI window does not. */
+    if (shell_task->wait_bench) {
+        shell_task->wait_bench = 0;
+        shell_task->state = TASK_READY;
+    }
 }
 
 static void ipc_release_held(void);
@@ -1272,6 +1275,30 @@ void sched_bench(uint32_t periods)
     asm volatile("svc #0" ::: "memory");
     while (shell_task->wait_bench)
         asm volatile("svc #0" ::: "memory");
+}
+
+int sched_bench_async(uint32_t periods)
+{
+    int rc = 0;
+    asm volatile("msr daifset, #2" ::: "memory");
+    if (bench_state)
+        rc = -1;
+    else {
+        bench_left = periods;
+        bench_state = 1;
+    }
+    asm volatile("msr daifclr, #2" ::: "memory");
+    return rc;
+}
+
+int sched_bench_busy(void)
+{
+    return bench_state != 0;
+}
+
+uint32_t sched_bench_left(void)
+{
+    return bench_left;
 }
 
 static const char *reason_name[] = {"late", "unfinished", "not_started", "skipped"};

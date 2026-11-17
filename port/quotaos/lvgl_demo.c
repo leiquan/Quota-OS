@@ -17,6 +17,7 @@ static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *count_label;
 static lv_obj_t *field;
+static lv_obj_t *result;
 static unsigned clicks;
 
 #define CUR_W 16
@@ -218,6 +219,13 @@ static void on_click(lv_event_t *e)
     printf("[lvgl] click count %u\n", clicks);
 }
 
+static void on_menu(lv_event_t *e)
+{
+    int id = (int)(uintptr_t)lv_event_get_user_data(e);
+    printf("[menu] button %d\n", id);
+    demo_menu_start(id);
+}
+
 int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
 {
     fb_px = pixels;
@@ -254,18 +262,49 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     printf("[lvgl] software cursor %dx%d black fill white outline hotspot 0,0\n", CUR_W, CUR_H);
 
     lv_obj_t *title = lv_label_create(screen);
-    lv_label_set_text(title, "Quota OS");
-    lv_obj_set_pos(title, 24, 16);
+    lv_label_set_text(title, "Quota OS menu");
+    lv_obj_set_pos(title, 8, 2);
     lv_obj_set_style_text_color(title, lv_color_hex(0x101820), 0);
 
+    lv_obj_t *list = lv_obj_create(screen);
+    lv_obj_set_pos(list, 8, 24);
+    lv_obj_set_size(list, 624, 250);
+    lv_obj_set_style_bg_color(list, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_bg_opa(list, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(list, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_border_width(list, 1, 0);
+    lv_obj_set_style_pad_all(list, 2, 0);
+    for (int i = 0; i < demo_menu_count(); i++) {
+        char line[80];
+        demo_menu_line(i, line, (int)sizeof line);
+        lv_obj_t *item = lv_button_create(list);
+        lv_obj_set_pos(item, 0, i * 40);
+        lv_obj_set_size(item, 600, 36);
+        lv_obj_set_style_bg_color(item, lv_color_hex(0xffffff), 0);
+        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_color(item, lv_color_hex(0x101820), 0);
+        lv_obj_set_style_border_width(item, 1, 0);
+        lv_obj_set_style_text_color(item, lv_color_hex(0x101820), 0);
+        lv_obj_add_event_cb(item, on_menu, LV_EVENT_CLICKED, (void *)(uintptr_t)(i + 1));
+        lv_obj_t *il = lv_label_create(item);
+        lv_label_set_text(il, line);
+        lv_obj_set_style_text_color(il, lv_color_hex(0x101820), 0);
+        lv_obj_center(il);
+    }
+
+    result = lv_label_create(screen);
+    lv_obj_set_pos(result, 8, 278);
+    lv_obj_set_width(result, 620);
+    lv_label_set_text(result, "idle");
+    lv_obj_set_style_text_color(result, lv_color_hex(0x101820), 0);
+
     lv_obj_t *btn = lv_button_create(screen);
-    lv_obj_set_pos(btn, 24, 70);
-    lv_obj_set_size(btn, 180, 56);
+    lv_obj_set_pos(btn, 8, 300);
+    lv_obj_set_size(btn, 120, 36);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(btn, lv_color_hex(0x101820), 0);
     lv_obj_set_style_border_width(btn, 2, 0);
-    lv_obj_set_style_text_color(btn, lv_color_hex(0x101820), 0);
     lv_obj_add_event_cb(btn, on_click, LV_EVENT_CLICKED, NULL);
     lv_obj_t *bl = lv_label_create(btn);
     lv_label_set_text(bl, "+1");
@@ -274,12 +313,12 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
 
     count_label = lv_label_create(screen);
     lv_label_set_text(count_label, "Count: 0");
-    lv_obj_set_pos(count_label, 24, 150);
+    lv_obj_set_pos(count_label, 140, 308);
     lv_obj_set_style_text_color(count_label, lv_color_hex(0x101820), 0);
 
     field = lv_textarea_create(screen);
-    lv_obj_set_pos(field, 24, 210);
-    lv_obj_set_size(field, 400, 120);
+    lv_obj_set_pos(field, 8, 344);
+    lv_obj_set_size(field, 420, 120);
     lv_textarea_set_placeholder_text(field, "type here");
     lv_obj_set_style_bg_color(field, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(field, LV_OPA_COVER, 0);
@@ -291,16 +330,31 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_group_add_obj(group, field);
     lv_indev_set_group(keypad, group);
 
-    printf("[lvgl] button box 24,70 180x56\n");
+    printf("[lvgl] menu4 box %d,%d 600x36\n", 8 + 2, 24 + 2 + 3 * 40);
+    printf("[lvgl] button box 8,300 120x36\n");
     printf("[lvgl] ready\n");
 
     uint64_t t0 = now_us();
     uint64_t next = t0;
-    while (now_us() - t0 < 12000000ull) {
+    char shown[120];
+    shown[0] = 0;
+    while (now_us() - t0 < 20000000ull) {
+        char st[120];
         take_inputs();
         lv_timer_handler();
+        demo_menu_status(st, (int)sizeof st);
+        if (strcmp(st, shown) != 0) {
+            lv_label_set_text(result, st);
+            int n = 0;
+            while (st[n] && n < (int)sizeof shown - 1) {
+                shown[n] = st[n];
+                n++;
+            }
+            shown[n] = 0;
+        }
         if (now_us() >= next) {
-            printf("[lvgl] alive count %u text [%s]\n", clicks, lv_textarea_get_text(field));
+            printf("[lvgl] alive count %u text [%s] status [%s]\n", clicks,
+                   lv_textarea_get_text(field), st);
             next = now_us() + 1000000ull;
         }
     }

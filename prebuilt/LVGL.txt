@@ -1,7 +1,11 @@
 Same bytes as prebuilt/quotaos.bin. Kept so the lvgl name still exists.
 
-Banner Version: 016 (287aa11). 667656 bytes. White background.
-sha256 198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988
+Banner Version: 016 (ac565ac). 674264 bytes. White menu.
+sha256 8f7d4e077730c12a288faff06b3c7c94d8077b532e7cbd904c5f1625d270c416
+
+The white-cursor milestone is commit ac565ac, 667656 bytes,
+sha256 198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988.
+That file is not this one.
 
 Empty boot arguments start LVGL. The earlier file that required
 -append lvgl was 666176 bytes, sha256

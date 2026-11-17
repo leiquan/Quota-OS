@@ -10,13 +10,15 @@ License: [Apache-2.0](LICENSE)
 
 ## 现在能直接跑的映像
 
-`prebuilt/quotaos.bin` 是白底 LVGL 界面，深色字，按钮和文本框有黑边。客户机自己画一支黑底白边的软件指针，跟 virtio 指针坐标走。不传 `-append` 就进这个界面，不会回到 `select>`。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (287aa11)`。`287aa11` 是包含这版字节的提交的父提交。
+`prebuilt/quotaos.bin` 是白底 LVGL 串口菜单。18 项都有入口。能安全跑的项调用原来的测试；会占一级槽或用 `sched_bench` 堵住 shell 的项标成 not connected，点下去只打印原因。软件指针仍是黑底白边。不传 `-append` 就进这个界面。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (ac565ac)`。`ac565ac` 是包含这版字节的提交的父提交。
 
-sha256：`quotaos.bin` `198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988`，`quotaos.elf` `51913f17aeb9febbf2736ecca2b823acc03b218f77444f5cecf325a95497fab7`。667656 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。
+sha256：`quotaos.bin` `8f7d4e077730c12a288faff06b3c7c94d8077b532e7cbd904c5f1625d270c416`，`quotaos.elf` `e1fbd40d00b159779ba80e7cef5cc5a7f14da8d347938cb89878cf8d641e3c68`。674264 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。
+
+上一份白底指针里程碑是提交 `ac565ac`，667656 字节，sha256 `198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988`。它不是这一份菜单镜像。
 
 上一份串口内核完整留在 `prebuilt/quotaos-serial.bin`（93744 字节，sha256 `afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05`，elf `bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64`，横幅 `Version: 016 (af050b5)`）。下面历史段落里的 e4 日志对应的是那份串口内核，不是现在的默认文件。
 
-要看见按钮并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过：白底上指针可见，点 +1 后计数为 1，键盘 `a` `b` 出现在文本框里。截图 `docs/v016/lvgl/white-cursor-page.png`、`docs/v016/lvgl/white-cursor-field.png`、`docs/v016/lvgl/white-cursor-click.png`。串口 `docs/v016/lvgl/white-cursor.raw`。
+要看见菜单并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过：点第 4 项打出旧设备拒绝，点第 6 项打印未接入原因，点第 5 项跑完 200 个周期且 Tier 1 错过 0 次，再点 +1、键入 `ab`。截图 `docs/v016/lvgl/menu-page.png`、`docs/v016/lvgl/menu-end.png`。串口 `docs/v016/lvgl/menu-gui.raw`。白底指针里程碑的三张截图仍是 `docs/v016/lvgl/white-cursor-page.png`、`white-cursor-field.png`、`white-cursor-click.png`。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
@@ -29,7 +31,7 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
 
 QEMU 会打印 `Could not open option rom 'vgabios-ramfb.bin'`。客户机仍然写了 `etc/ramfb`，`screendump` 拿到了上面的画面。
 
-不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`，然后 `[fb] etc/ramfb not in fw_cfg`。这不是 `select>`。串口菜单只要 `-append serial`。`-append e4` 仍是 e4：同一份默认映像上 item9 PASS、item10 PASS、QA DONE（`docs/v016/lvgl/e4-white.raw`）。Tier-1 仍是 13312 KB、1500 us。这一屏不是一级任务的硬件隔离。启动行仍是 EL1、MMU 关、一个内核地址空间。
+不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`，然后 `[fb] etc/ramfb not in fw_cfg`。这不是 `select>`。串口菜单只要 `-append serial`。`-append e4` 仍是 e4：同一份菜单映像上 item9 PASS、item10 PASS、QA DONE（`docs/v016/lvgl/e4-menu.raw`）。白底指针那一版的 e4 是 `docs/v016/lvgl/e4-white.raw`。Tier-1 仍是 13312 KB、1500 us。这一屏不是一级任务的硬件隔离。启动行仍是 EL1、MMU 关、一个内核地址空间。
 
 文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。
 

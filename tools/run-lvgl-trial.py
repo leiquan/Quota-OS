@@ -93,29 +93,43 @@ def main():
     move_to(560, 40)
     qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-cursor-dark.ppm"}})
     print("cursor dark")
-    move_to(160, 270)
+    move_to(160, 400)
     qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-cursor-light.ppm"}})
     print("cursor light")
-    # Button center is pixel (114, 98). QMP absolute axes are 0..32767.
-    x = 114 * 32767 // 639
-    y = 98 * 32767 // 479
     def send(events):
         reply = qmp(s, {"execute": "input-send-event", "arguments": {"events": events}})
         if "error" in reply:
             print("QMP", reply.strip())
+    def click(px, py):
+        send([
+            {"type": "abs", "data": {"axis": "x", "value": px * 32767 // 639}},
+            {"type": "abs", "data": {"axis": "y", "value": py * 32767 // 479}},
+        ])
+        time.sleep(0.25)
+        qmp(s, {"execute": "human-monitor-command",
+                "arguments": {"command-line": "mouse_button 1"}})
+        time.sleep(0.25)
+        qmp(s, {"execute": "human-monitor-command",
+                "arguments": {"command-line": "mouse_button 0"}})
+        time.sleep(0.3)
+    def wait_for(token, seconds):
+        end = time.time() + seconds
+        text = ""
+        while time.time() < end:
+            text = open(LOG, "r", errors="replace").read()
+            if token in text:
+                return text
+            time.sleep(0.1)
+        return text
     print("mice", qmp(s, {"execute": "human-monitor-command",
-                           "arguments": {"command-line": "info mice"}}).strip()[:500])
-    send([
-        {"type": "abs", "data": {"axis": "x", "value": x}},
-        {"type": "abs", "data": {"axis": "y", "value": y}},
-    ])
-    time.sleep(0.3)
-    print("down", qmp(s, {"execute": "human-monitor-command",
-                          "arguments": {"command-line": "mouse_button 1"}}).strip()[:200])
-    time.sleep(0.3)
-    print("up", qmp(s, {"execute": "human-monitor-command",
-                        "arguments": {"command-line": "mouse_button 0"}}).strip()[:200])
-    time.sleep(0.3)
+                           "arguments": {"command-line": "info mice"}}).strip()[:300])
+    click(310, 164)
+    print("clicked menu 4", "[menu] done 4" in wait_for("[menu] done 4", 5))
+    click(310, 244)
+    print("clicked menu 6", "not connected" in wait_for("not connected", 4))
+    click(310, 204)
+    print("clicked menu 5", "[menu] done 5" in wait_for("[menu] done 5", 8))
+    click(68, 318)
     for key in ("a", "b"):
         print(key, qmp(s, {"execute": "human-monitor-command",
                            "arguments": {"command-line": "sendkey " + key}}).strip()[:200])
@@ -129,14 +143,14 @@ def main():
     end = time.time() + 15
     while time.time() < end:
         text = open(LOG, "r", errors="replace").read()
-        if "[lvgl] result" in text:
+        if "[lvgl] result" in text or "[menu] done 5" in text:
             break
         time.sleep(0.1)
     proc.kill()
     proc.wait(timeout=5)
     print("--- log ---")
     for line in text.splitlines():
-        if any(s in line for s in ("[lvgl]", "[admit]", "[fb]", "[input]", "Version", "EL1", "REFUSED")):
+        if any(s in line for s in ("[lvgl]", "[menu]", "结果", "not connected", "=== 4", "=== 5", "Version")):
             print(line)
     if os.path.exists(RAW):
         data = open(RAW, "rb").read()
