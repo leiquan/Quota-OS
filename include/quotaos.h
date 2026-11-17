@@ -361,6 +361,10 @@ void dev_period(void);
 uint64_t sched_period_now(void);
 int sched_in_t1_window(uint64_t now);
 void gic_ppi_enable(uint32_t id, int on);
+uint32_t system_reserve_kb(void);
+/* End of the JSC arena. The weak default is the image end, so a kernel
+ * without the engine keeps the old framebuffer floor. */
+uint64_t jsc_arena_end(void);
 void color_init(uint64_t ram_bytes);
 uint64_t color_padding_kb(void);
 uint32_t color_alloc_shared(uint32_t n);

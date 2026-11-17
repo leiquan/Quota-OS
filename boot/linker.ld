@@ -9,6 +9,7 @@ PHDRS
 {
     text PT_LOAD FLAGS(5);
     data PT_LOAD FLAGS(6);
+    tls PT_TLS FLAGS(4);
 }
 
 SECTIONS
@@ -30,7 +31,20 @@ SECTIONS
 
     .data : {
         *(.data .data.*)
+        *(.data.rel.ro .data.rel.ro.*)
+        *(.got .got.*)
     } :data
+
+    .init_array : {
+        __init_array_start = .;
+        KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+        KEEP(*(.init_array))
+        __init_array_end = .;
+    } :data
+
+    /* TLS stays in the image. PT_TLS keeps SHF_TLS, which lld requires. */
+    .tdata : { *(.tdata .tdata.*) } :data :tls
+    .tbss : { *(.tbss .tbss.*) } :data :tls
 
     .bss : ALIGN(16) {
         __bss_start = .;

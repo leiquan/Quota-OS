@@ -97,10 +97,21 @@ uint64_t resource_ram_kb(void)
     return ram_kb;
 }
 
+/* webkit boot only: the engine image and its contiguous heap sit in the
+ * system reserve, above the image and below the colored pool. Tier-1
+ * declarations do not change. e4 and every other boot keep 16 MB. */
+uint32_t system_reserve_kb(void)
+{
+    const char *args = dtb_bootargs();
+    if (args[0] == 'w' && strcmp(args, "webkit") == 0)
+        return KERNEL_RESERVE_KB + 16u * 1024u;
+    return KERNEL_RESERVE_KB;
+}
+
 uint64_t resource_app_mem_capacity_kb(void)
 {
     /* v012 起再扣掉缓存着色补齐（Tier 1 颜色里别人不能用的页） */
-    uint64_t fixed = (uint64_t)KERNEL_RESERVE_KB + resource_t1_mem_kb() + color_padding_kb();
+    uint64_t fixed = (uint64_t)system_reserve_kb() + resource_t1_mem_kb() + color_padding_kb();
     return ram_kb > fixed ? ram_kb - fixed : 0;
 }
 
@@ -144,8 +155,11 @@ void resource_init(uint64_t ram_bytes)
     pressure = 0;
     reason[0] = 0;
     printf("[boot] system reserve %u us/period, %u KB;\n       tier-1 %u us/period, %u KB; guard %u us/period\n",
-           SYS_RESERVE_US, KERNEL_RESERVE_KB, resource_t1_cpu_us(), resource_t1_mem_kb(),
+           SYS_RESERVE_US, system_reserve_kb(), resource_t1_cpu_us(), resource_t1_mem_kb(),
            resource_guard_us());
+    if (system_reserve_kb() != KERNEL_RESERVE_KB)
+        printf("[boot] webkit mode reserve %u KB (baseline %u KB). Tier-1 table unchanged.\n",
+               system_reserve_kb(), KERNEL_RESERVE_KB);
 }
 
 int resource_pressure(void)

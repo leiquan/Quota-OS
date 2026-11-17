@@ -11,6 +11,11 @@
 
 extern char __image_start[], __image_end[];
 
+__attribute__((weak)) uint64_t jsc_arena_end(void)
+{
+    return (uint64_t)__image_end;
+}
+
 static uint64_t reserve_cursor;
 static uint32_t *fb_pixels;
 static uint32_t fb_bytes;
@@ -34,12 +39,15 @@ int kernel_reserve_alloc(uint64_t bytes, uint64_t align, uint64_t *pa)
 {
     if (!reserve_cursor) {
         uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
-        reserve_cursor = base + (uint64_t)KERNEL_RESERVE_KB * 1024;
+        reserve_cursor = base + (uint64_t)system_reserve_kb() * 1024;
     }
     if (align == 0 || (align & (align - 1)) != 0)
         return -1;
     uint64_t a = (reserve_cursor - bytes) & ~(align - 1);
-    if (a < (uint64_t)__image_end)
+    uint64_t floor = jsc_arena_end();
+    if (floor < (uint64_t)__image_end)
+        floor = (uint64_t)__image_end;
+    if (a < floor)
         return -1;
     reserve_cursor = a;
     *pa = a;

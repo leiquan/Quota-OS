@@ -29,7 +29,7 @@ void kmain(uint64_t dtb)
     resource_init(ram);
     color_init(ram);
     printf("[boot] kernel image+bss %lu KB of the %u KB system reserve\n",
-           (uint64_t)(__image_end - __image_start) / 1024, KERNEL_RESERVE_KB);
+           (uint64_t)(__image_end - __image_start) / 1024, system_reserve_kb());
     gic_init();
     timer_init();
     printf("[boot] CNTFRQ %lu Hz (1 tick = %lu ns), virtual timer PPI 27\n", timer_freq(),

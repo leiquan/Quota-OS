@@ -12,6 +12,12 @@ __attribute__((weak)) int webkit_engine_linked(void)
     return 0;
 }
 
+/* Strong definition is in the JSC guest link. -1 means that link is absent. */
+__attribute__((weak)) int quotaos_jsc_guest(void)
+{
+    return -1;
+}
+
 __attribute__((weak)) int webkit_engine_main(struct webkit_host *host)
 {
     (void)host;
@@ -73,6 +79,8 @@ void webkit_autostart(void)
         int rc = webkit_engine_main(&host);
         printf("[webkit] engine returned %d\n", rc);
     }
+    int jrc = quotaos_jsc_guest();
+    printf("[webkit] upstream JSC guest returned %d\n", jrc);
     if (keys != 0) {
         printf("[webkit] keyboard absent, no input events\n");
         printf("[webkit] done\n");
