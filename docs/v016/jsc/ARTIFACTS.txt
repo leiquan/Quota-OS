@@ -1,6 +1,7 @@
 Three different kernels. Do not treat them as one image.
 
-1. Serial drop-in, current prebuilt/quotaos.bin
+1. Serial drop-in, now prebuilt/quotaos-serial.bin
+   It used to be prebuilt/quotaos.bin. The default name is the LVGL image.
    93744 bytes
    sha256 afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05
    Banner Version: 016 (af050b5). MMU off. Serial menu. Not JavaScriptCore.

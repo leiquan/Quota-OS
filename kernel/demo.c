@@ -629,11 +629,6 @@ void shell_main(void)
         for (;;)
             asm volatile("wfi");
     }
-    if (strcmp(args, "lvgl") == 0) {
-        lvgl_autostart();
-        for (;;)
-            asm volatile("wfi");
-    }
     if (strcmp(args, "e1") == 0) {
         decl_demo_device_tier1();
         decl_demo_overcommit();
@@ -677,6 +672,20 @@ void shell_main(void)
         run_qa(0);
     if (strcmp(args, "qa-long") == 0)
         run_qa(1);
+    /* Empty bootargs are the owner's UTM default. That path is LVGL.
+     * The serial menu is only -append serial. e4, webkit, qa stay explicit. */
+    if (strcmp(args, "serial") != 0) {
+        if (args[0] == 0)
+            printf("[boot] no bootarg, starting LVGL\n");
+        else if (strcmp(args, "lvgl") == 0)
+            printf("[boot] bootarg lvgl, starting LVGL\n");
+        else
+            printf("[boot] bootarg %s is not serial, starting LVGL\n", args);
+        lvgl_autostart();
+        for (;;)
+            asm volatile("wfi");
+    }
+    printf("[boot] serial menu\n");
     cmd_help();
     for (;;) {
         printf("select> ");

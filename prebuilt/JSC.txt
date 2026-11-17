@@ -1,9 +1,9 @@
 JSC-only kernel. Not a GUI. Not the serial drop-in.
 
-Do not point the UTM kernel picker at this file. The machine that already
-boots Quota OS still uses prebuilt/quotaos.bin (93744 bytes, sha256
+Do not point the UTM kernel picker at this file. The default kernel is
+prebuilt/quotaos.bin and is the LVGL image. The previous serial drop-in
+is prebuilt/quotaos-serial.bin (93744 bytes, sha256
 afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05).
-That file is unchanged.
 
 This image is quotaos-jsc.bin. Banner Version: 016 (641dc8c). 641dc8c is
 git rev-parse --short=7 of the parent of the commit that introduced these

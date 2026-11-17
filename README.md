@@ -10,20 +10,28 @@ License: [Apache-2.0](LICENSE)
 
 ## 现在能直接跑的映像
 
-不用自己编译，也不用改已经能启动的 UTM。还是原来的 virt、GICv2、Cortex-A72、128 MB、无磁盘、串口。只把内核文件换成 `prebuilt/quotaos.bin`。机器属性继续填 `gic-version=2`，Arguments 继续只放 `-cpu cortex-a72`，不要加 `-kernel`。说明和 sha256 在 `prebuilt/RUN.txt`、`prebuilt/SHA256SUMS`。
+`prebuilt/quotaos.bin` 是 LVGL 界面。不传 `-append` 就进这个界面，不会回到 `select>`。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (e5d75c1)`。`e5d75c1` 是包含这版字节的提交的父提交。
 
-这不是 WebKit。没有可点的窗口。旧映像能进 `select>` 不能用来证明这一版有图形界面。启动应看到 `Version: 016 (af050b5)` 和 `[boot] EL1h, MMU off. No hardware isolation.` `af050b5` 是包含这版字节的提交的父提交（编译时的 HEAD）。
+sha256：`quotaos.bin` `da5cbcb7bc0c2ef90c3d98d38b73731c0b9b6238ef1aa1a7d06eb0626980d413`，`quotaos.elf` `fc8011965da33fee71364a0da515465683a80a734ebcee8ff49f53569900cbf4`。666432 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。
+
+上一份串口内核完整留在 `prebuilt/quotaos-serial.bin`（93744 字节，sha256 `afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05`，elf `bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64`，横幅 `Version: 016 (af050b5)`）。下面历史段落里的 e4 日志对应的是那份串口内核，不是现在的默认文件。
+
+要看见按钮并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过：点 +1 后计数为 1，键盘 `a` `b` 出现在文本框里。截图 `docs/v016/lvgl/default-screen.png`，串口 `docs/v016/lvgl/default-cmdline.raw`。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
-  -nographic -nic none -kernel prebuilt/quotaos.bin
+  -display none -nic none \
+  -device ramfb \
+  -device virtio-keyboard-device \
+  -device virtio-tablet-device \
+  -kernel prebuilt/quotaos.bin
 ```
 
-sha256：`quotaos.bin` 为 `afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05`，`quotaos.elf` 为 `bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64`。
+QEMU 会打印 `Could not open option rom 'vgabios-ramfb.bin'`。客户机仍然写了 `etc/ramfb`，`screendump` 拿到了上面的画面。
 
-icount 下 e4 在这版映像上跑完：设备验证打出三行实测，然后 `E4 item9 PASS`、`E4 item10 PASS`、`QA DONE`（`docs/v016/cxx/e4-icount.raw`）。普通串口启动走的是宿主机时钟，不会碰到 WFI 卡住那条路径。原因写在 `docs/v016/cxx/ROOTCAUSE.txt`。Cortex-A72 能执行内存里的指令；缺的是我们还没建页表，不是 CPU 没有执行权限。WebKit `PlatformEnable.h` 在 `ENABLE_JIT=0` 且 `ENABLE_C_LOOP=1` 时不会把汇编器打开，`ExecutableAllocator.cpp` 的可执行池只在 `ENABLE(JIT)` 里编译。`-append webkit` 里 `cxx 42` 表示 `operator new`、虚调用、以及 `delete` 后再 `new` 拿回同一块。这仍不是浏览器。
+不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`，然后 `[fb] etc/ramfb not in fw_cfg`。这不是 `select>`。串口菜单只要 `-append serial`。`-append e4` 仍是 e4：同一份默认映像上 item9 PASS、item10 PASS、QA DONE（`docs/v016/lvgl/e4-default.raw`）。Tier-1 仍是 13312 KB、1500 us。这一屏不是一级任务的硬件隔离。启动行仍是 EL1、MMU 关、一个内核地址空间。
 
-画面：文档里的 UTM 会删掉 Display。不额外加设备时，同一条 virt 命令打出 `[fb] etc/ramfb not in fw_cfg (9 files)` 和 `[input] no virtio-input (id 18)`。要在屏幕上看到像素，就得有文档配置里删掉的显示设备。这一版不要求你加它。
+文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。
 
 ## 版本号规则
 
@@ -468,10 +476,12 @@ UTM 是沙盒应用，在 QEMU 参数里手写 `-kernel /路径/quotaos.bin` 会
    - **QEMU Machine Properties** 填 `gic-version=2`（新版在 QEMU 页、Arguments 上方；旧版在 System 页，要先打开 Show Advanced Settings）。从 252a90d 起内核也能从设备树认出 GICv3，不填也能启动（命令行 QEMU 10.0 的 `gic-version=2/3/max` 验证过，日志 `docs/gic-C/`；UTM 上还没有实测）。
    - QEMU → Arguments 里可加 `-cpu cortex-a72`。**不要**写 `-kernel`，UTM 会自己加。
    - 左边栏 Devices 下把 Display 删掉，再新建一个 Serial（Built-in Terminal）。较新的 UTM 在没有显示设备时会自动打开串口窗口，已有就不用再加。
-7. 启动。串口窗口里出现和下面「菜单」相同的界面。
+7. 启动。当前 `quotaos.bin` 启动参数为空，串口里是 `[boot] no bootarg, starting LVGL`，不是下面的菜单。下面的菜单属于 `quotaos-serial.bin`，或这版加引导参数 `serial`。
 8. 启动横幅里会有一行 `[boot] GICv3 from DTB: …`（或 `GICv2 …`），说明认出了中断控制器。如果是 `[boot] ERROR: no GICv2 … or GICv3 … interrupt-controller node`，说明设备树里没有这两种 GIC，内核会停在这里，不会 PANIC。
 
 旧版本（2259e51 及以前）只会 GICv2，在 UTM 的 GICv3 上写 GICv2 CPU 接口 0x08010000 会 `PANIC sync ec=0x25 esr=0x96000050 elr=0x400821e0`，当时必须在 QEMU Machine Properties 里填 `gic-version=2`。现在不需要了；填了也照样能跑。
+
+当前 `prebuilt/quotaos.bin` 在启动参数为空时进入 LVGL，不再进入 `select>`。上面第 6 步删掉 Display、只留 Serial 的写法仍然成立：这样启动能在串口里看到 `[boot] no bootarg, starting LVGL`，屏幕上没有像素，因为没有 ramfb。要看到并点击，QEMU 侧需要 `-device ramfb`、`-device virtio-keyboard-device`、`-device virtio-tablet-device`。这三行是在 QEMU 8.2.2 上测过的设备名。UTM 本身这次没有跑，不能从这里编一个 UTM 里添加它们的菜单。Arguments 里原来的 `-cpu cortex-a72` 保持不变，不要写 `-kernel`。想要原来的串口菜单，换 `prebuilt/quotaos-serial.bin`，或在这版上加引导参数 `serial`。
 
 UTM 和不加 icount 的 QEMU 里，客户机时钟跟着宿主机走，宿主机一卡就会出现时钟跳动，看到的时延和错过次数只作参考。
 

@@ -10,6 +10,7 @@ import time
 
 BIN = sys.argv[1] if len(sys.argv) > 1 else "build/quotaos-lvgl.bin"
 LOG = sys.argv[2] if len(sys.argv) > 2 else "/tmp/lvgl-trial.log"
+APPEND = sys.argv[3] if len(sys.argv) > 3 else ""
 QMP = "/tmp/lvgl-qmp.sock"
 RAW = "/tmp/lvgl-fb.raw"
 PPM = "/tmp/lvgl-fb.ppm"
@@ -56,10 +57,11 @@ def main():
         "-device", "virtio-keyboard-device",
         "-device", "virtio-tablet-device",
         "-kernel", BIN,
-        "-append", "lvgl",
         "-serial", "file:" + LOG,
         "-qmp", "unix:" + QMP + ",server,nowait",
     ]
+    if APPEND:
+        cmd[cmd.index("-kernel") + 2:cmd.index("-kernel") + 2] = ["-append", APPEND]
     proc = subprocess.Popen(cmd)
     s = qmp_open()
     greeting = qmp_read(s)

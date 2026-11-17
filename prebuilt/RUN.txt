@@ -1,43 +1,52 @@
-Drop-in kernel for the UTM virtual machine that already boots Quota OS.
-Not a WebKit GUI. Replacing this file does not add a window.
+Default kernel. LVGL screen. Not the old serial menu.
 
-What you do
-  Keep the VM you already run. Do not change machine type, GIC,
-  CPU, memory, serial, or boot arguments.
-  Documented setup this image matches: virt, GICv2, Cortex-A72,
-  128 MB, no disk, kernel chosen in UTM's file picker, Display
-  removed, Serial kept. QEMU Machine Properties stay gic-version=2.
-  QEMU Arguments stay -cpu cortex-a72, with no -kernel line.
-  Point that same kernel picker at this quotaos.bin and start.
+Boot arguments empty, or absent, start LVGL. They do not fall through
+to select>. The serial menu on this image is -append serial.
+-append e4 still runs e4. -append webkit still runs the JSC guest
+only when that image is the JSC file, not this one.
 
-What you should see
-  Version: 016 (af050b5)
-  [boot] EL1h, MMU off. No hardware isolation.
-  [boot] GICv2 from DTB
-  select>
-  The menu is the serial menu. There is nothing to click.
-  A successful boot of an older quotaos.bin does not verify a GUI.
-  This image has no HTML, CSS, or JavaScript. engine is not linked.
-
-Banner convention
-  af050b5 is git rev-parse --short=7 of the parent of the commit
+Machine
+  virt, GICv2, Cortex-A72, 128 MB. Do not change those.
+  Banner Version: 016 (e5d75c1). e5d75c1 is the parent of the commit
   that introduced these bytes.
 
 SHA-256
-  quotaos.bin afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05
-  quotaos.elf bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64
-  Also in SHA256SUMS.
+  quotaos.bin da5cbcb7bc0c2ef90c3d98d38b73731c0b9b6238ef1aa1a7d06eb0626980d413
+  quotaos.elf fc8011965da33fee71364a0da515465683a80a734ebcee8ff49f53569900cbf4
+  size quotaos.bin 666432
+  quotaos-lvgl.bin is the same bytes.
 
-Same guest on the command line, no extra devices
-  qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 \
-    -m 128M -nographic -nic none -kernel prebuilt/quotaos.bin
+Previous serial drop-in, kept under a new name
+  quotaos-serial.bin afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05
+  quotaos-serial.elf bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64
+  93744 bytes. Banner Version: 016 (af050b5). That file still opens select>.
 
-Graphics is not in this configuration
-  Stock virt (the machine UTM virt + gic-version=2 exposes) has
-  fw_cfg and empty virtio-mmio slots. A boot with no added device
-  prints: [fb] etc/ramfb not in fw_cfg (9 files)
-  and [input] no virtio-input (id 18).
-  The documented UTM setup also deletes Display.
-  Pixels on screen would require a display device that setup
-  removes. This drop-in does not add that device and does not
-  ask you to.
+QEMU 8.2.2 command that showed the button and the text field
+  qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
+    -display none -nic none \
+    -device ramfb \
+    -device virtio-keyboard-device \
+    -device virtio-tablet-device \
+    -kernel prebuilt/quotaos.bin
+
+No -append. Click on +1, then keys a and b: Count: 1 and text ab.
+Log docs/v016/lvgl/default-cmdline.raw
+Screenshot docs/v016/lvgl/default-screen.png
+QEMU also prints: Could not open option rom 'vgabios-ramfb.bin'.
+The guest still programs etc/ramfb.
+
+Without those three devices the serial log says
+  [boot] no bootarg, starting LVGL
+  [fb] etc/ramfb not in fw_cfg
+and does not print select>. docs/v016/lvgl/default-nodev.raw
+
+The UTM VM documented in README deletes Display and keeps Serial.
+Swapping only this file in that VM was not tested in UTM.
+Do not expect a picture until ramfb and the two virtio input devices
+are present. No UTM menu names are added here.
+
+Same file, icount e4
+  python3 tools/e4_bound.py prebuilt/quotaos.bin docs/v016/lvgl/e4-default.raw 40 icount
+item9 PASS, item10 PASS, QA DONE. Tier-1 stays 13312 KB and 1500 us.
+This screen is one EL1 address space with the MMU off. It is not
+a tier-1 hardware isolation claim.

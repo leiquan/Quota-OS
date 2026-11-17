@@ -1,44 +1,11 @@
-LVGL guest. Not the serial drop-in and not the JSC image.
+Same bytes as prebuilt/quotaos.bin. Kept so the lvgl name still exists.
 
-Do not point the existing UTM kernel picker at this file if that machine
-has Display removed. The serial drop-in remains prebuilt/quotaos.bin
-(93744 bytes, sha256
-afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05).
-The JSC image remains prebuilt/quotaos-jsc.bin.
+Banner Version: 016 (e5d75c1). 666432 bytes.
+sha256 da5cbcb7bc0c2ef90c3d98d38b73731c0b9b6238ef1aa1a7d06eb0626980d413
 
-This image is quotaos-lvgl.bin. Banner Version: 016 (1253502). 1253502 is
-git rev-parse --short=7 of the parent of the commit that introduced these
-bytes. Upstream LVGL v9.3.0, commit
-c033a98afddd65aaafeebea625382a94020fe4a7, MIT licence in
-third_party/lvgl/LICENCE.txt.
+Empty boot arguments start LVGL. The earlier file that required
+-append lvgl was 666176 bytes, sha256
+259eed530e9b4fe8bc1102c69a9c80cfbdbc390970f1a05bae1e5689563146ba,
+banner 1253502. Its log remains docs/v016/lvgl/trial.raw.
 
-sha256 quotaos-lvgl.bin 259eed530e9b4fe8bc1102c69a9c80cfbdbc390970f1a05bae1e5689563146ba
-sha256 quotaos-lvgl.elf 6bd9198362eeb90e6fbb3bfceee4fd866c502f13134d801821532da6829ee0d1
-size quotaos-lvgl.bin 666176
-
-QEMU 8.2.2. The command that produced the screenshot and the input log:
-
-  qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
-    -display none -nic none \
-    -device ramfb \
-    -device virtio-keyboard-device \
-    -device virtio-tablet-device \
-    -kernel prebuilt/quotaos-lvgl.bin -append lvgl
-
-QEMU prints "Could not open option rom 'vgabios-ramfb.bin'". The guest
-still writes etc/ramfb, and screendump returned the screen below.
-These are QEMU devices, not UTM menu names.
-
-The screen is a button labeled +1, a count, and a text field. A click at
-the button and the keys a then b produced Count: 1 and the text ab.
-docs/v016/lvgl/screen.png is that framebuffer. docs/v016/lvgl/trial.raw
-is the serial log. Developer self-test, not independent QA.
-
-The same binary with -append e4 (no ramfb required) is
-docs/v016/lvgl/e4.raw: item9 PASS, item10 PASS, QA DONE. Tier-1 stays
-13312 KB and 1500 us. That run does not draw the UI. A passing display
-demo is not a tier-1 guarantee. The address space is EL1 with the MMU
-off. It is not separate-process isolation.
-
-Build: tools/build-lvgl-guest.sh
-The script does not replace quotaos.bin or quotaos-jsc.bin.
+See RUN.txt for the QEMU command, the screenshot, and the serial file.
