@@ -1,10 +1,11 @@
 /*
- * Substrate for the upstream CLoop link. Memory returned by mmap and malloc
- * is the contiguous arena between the image and the framebuffer cushion.
- * mprotect, madvise, and pthread_create do not report success.
+ * Substrate for the upstream CLoop link. malloc and ordinary mmap come from
+ * the high half of the structure parent window. mprotect uses the EL1 map.
  */
 #include "quotaos.h"
 #include <stdarg.h>
+
+void abort(void);
 
 extern char __image_start[], __image_end[];
 extern void (*__init_array_start[])(void);
@@ -37,6 +38,8 @@ static uint64_t arena_limit;
 static int arena_ready;
 static int mmap_logs;
 static int structure_handed;
+static uint64_t structure_live_lo, structure_live_hi;
+static int ownership_tested;
 
 __thread int errno;
 extern char __tls_start[];
@@ -99,8 +102,8 @@ void jsc_arena_init(void)
         memset(arena, 0, arena_size);
         arena_ready = 1;
         printf("[jsc] arena 0x%lx %lu bytes\n", start, (uint64_t)arena_size);
-        printf("[jsc] layout pool 0x%lx <= structure 0x%lx < arena 0x%lx-0x%lx\n",
-               pool, structure, start, arena_limit);
+        printf("[jsc] layout parent 0x%lx-0x%lx children heap 0x%lx-0x%lx arena 0x%lx-0x%lx\n",
+               structure, structure + window, structure, start, start, arena_limit);
         boot_check_reservations(structure, window, start, arena_limit);
         return;
     }
@@ -132,6 +135,68 @@ static void *bump_pages(size_t n)
     return p;
 }
 
+static int range_hit(uint64_t a, uint64_t n, uint64_t lo, uint64_t hi)
+{
+    return n && hi > lo && a < hi && a + n > lo;
+}
+
+/* The structure heap and the malloc arena are siblings inside one parent.
+ * Fill the arena, prove the bump cannot enter the heap, then give the arena back. */
+static void jsc_ownership_test(void)
+{
+    if (ownership_tested || !arena_ready || structure_live_hi <= structure_live_lo)
+        return;
+    if (range_hit((uint64_t)arena, arena_size, structure_live_lo, structure_live_hi))
+        return;
+    ownership_tested = 1;
+    uint32_t *canary = (uint32_t *)structure_live_lo;
+    uint32_t saved_canary = *canary;
+    *canary = 0xA11CE001u;
+    size_t saved_used = arena_used;
+    arena_used = 0;
+    size_t filled = 0;
+    int crossed = 0;
+    for (;;) {
+        void *p = bump_pages(1u << 20);
+        if (!p)
+            break;
+        uint64_t a = (uint64_t)p;
+        if (a < (uint64_t)arena || a + (1u << 20) > arena_limit)
+            crossed = 1;
+        if (range_hit(a, 1u << 20, structure_live_lo, structure_live_hi))
+            crossed = 1;
+        *(uint32_t *)p = 0x22222222u;
+        filled += 1u << 20;
+    }
+    for (;;) {
+        void *p = bump_pages(4096);
+        if (!p)
+            break;
+        uint64_t a = (uint64_t)p;
+        if (a < (uint64_t)arena || a + 4096 > arena_limit)
+            crossed = 1;
+        if (range_hit(a, 4096, structure_live_lo, structure_live_hi))
+            crossed = 1;
+        filled += 4096;
+    }
+    arena_used = arena_size - 4096;
+    void *last = bump_pages(4096);
+    int exact = last && (uint64_t)last + 4096 == arena_limit;
+    void *overflow = bump_pages(4096);
+    int stopped = overflow == 0;
+    int canary_ok = *canary == 0xA11CE001u;
+    *canary = saved_canary;
+    arena_used = saved_used;
+    printf("[jsc] ownership heap 0x%lx-0x%lx arena 0x%lx-0x%lx filled %lu crossed %d exact %d stopped %d canary %d\n",
+           structure_live_lo, structure_live_hi, (uint64_t)arena, arena_limit,
+           (uint64_t)filled, crossed, exact, stopped, canary_ok);
+    if (crossed || !exact || !stopped || !canary_ok || filled != arena_size) {
+        printf("[jsc] ownership FAIL\n");
+        abort();
+    }
+    printf("[jsc] ownership PASS\n");
+}
+
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off)
 {
     (void)fd;
@@ -141,7 +206,7 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off)
         printf("[jsc] mmap addr 0x%lx len %lu prot 0x%x flags 0x%x\n",
                (uint64_t)addr, (uint64_t)len, prot, flags);
     }
-    /* MAP_FIXED would claim a chosen address. This machine has no page tables. */
+    /* MAP_FIXED would claim a chosen address. Refuse it. */
     if (flags & 0x10) {
         errno = 22;
         return (void *)-1;
@@ -157,12 +222,25 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off)
         uint64_t bytes = webkit_structure_bytes();
         if (base && len >= (32ull << 20) && len <= bytes) {
             structure_handed = 1;
+            structure_live_lo = base;
+            structure_live_hi = base + len;
             memset((void *)base, 0, len);
             printf("[jsc] structure window 0x%lx %lu bytes\n", base, (uint64_t)len);
             return (void *)base;
         }
     }
+    if (structure_live_hi > structure_live_lo
+        && range_hit((uint64_t)arena, arena_size, structure_live_lo, structure_live_hi)) {
+        errno = 12;
+        printf("[jsc] mmap refused len %lu while structure live still covers the arena\n", (uint64_t)len);
+        return (void *)-1;
+    }
     void *p = bump_pages(len);
+    if (p && range_hit((uint64_t)p, len, structure_live_lo, structure_live_hi)) {
+        errno = 12;
+        printf("[jsc] mmap landed in the structure heap\n");
+        return (void *)-1;
+    }
     if (p && mmap_logs <= 24)
         printf("[jsc] mmap ok 0x%lx %lu\n", (uint64_t)p, (uint64_t)len);
     if (!p) {
@@ -184,10 +262,20 @@ int mprotect(void *p, size_t n, int prot)
 
 int munmap(void *p, size_t n)
 {
-    uint64_t base = webkit_structure_base();
-    uint64_t bytes = webkit_structure_bytes();
-    if (base && (uint64_t)p >= base && (uint64_t)p + n <= base + bytes)
+    uint64_t a = (uint64_t)p;
+    uint64_t b = a + n;
+    if (structure_live_hi > structure_live_lo && a < structure_live_hi && b > structure_live_lo) {
+        if (a <= structure_live_lo && b >= structure_live_hi)
+            structure_live_lo = structure_live_hi = 0;
+        else if (a <= structure_live_lo)
+            structure_live_lo = b;
+        else if (b >= structure_live_hi)
+            structure_live_hi = a;
+        else
+            printf("[jsc] munmap left a hole in the structure heap\n");
+        jsc_ownership_test();
         return 0;
+    }
     if (!arena_ready || (uint8_t *)p < arena || (uint8_t *)p >= arena + arena_used)
         return -1;
     size_t off = (size_t)((uint8_t *)p - arena);

@@ -197,22 +197,28 @@ void boot_check_reservations(uint64_t structure, uint64_t window, uint64_t arena
     color_pool_range(&pool0, &pool1);
     int have_fb = fb_reserved_range(&fb0, &fb_n) == 0;
     uint64_t fb1 = fb0 + fb_n;
+    uint64_t parent1 = structure + window;
     uint64_t heap1 = structure + window / 2;
-    int bad = 0;
+    /* The 64 MB window is one parent reservation. The structure heap and the
+     * malloc arena are its two children. The parent contains the arena, so a
+     * check of those two printed ranges is not an overlap failure. */
+    int siblings = !ranges_overlap(structure, heap1, arena, arena_end)
+        && arena == heap1 && arena_end == parent1;
+    int bad = !siblings;
     if (ranges_overlap(image0, image1, pool0, pool1))
         bad = 1;
-    if (have_fb && (ranges_overlap(image0, image1, fb0, fb1) || ranges_overlap(fb0, fb1, pool0, pool1)))
+    if (ranges_overlap(image0, image1, structure, parent1))
         bad = 1;
-    if (have_fb && (fb0 < image1 || fb1 > pool0))
+    if (ranges_overlap(pool0, pool1, structure, parent1))
         bad = 1;
-    if (ranges_overlap(pool0, pool1, structure, structure + window))
+    if (have_fb && (ranges_overlap(image0, image1, fb0, fb1) || ranges_overlap(fb0, fb1, pool0, pool1)
+            || ranges_overlap(fb0, fb1, structure, parent1) || fb0 < image1 || fb1 > pool0))
         bad = 1;
-    if (arena < heap1 || arena_end > structure + window || ranges_overlap(structure, heap1, arena, arena_end))
-        bad = 1;
-    printf("[boot] ranges image 0x%lx-0x%lx fb 0x%lx-0x%lx pool 0x%lx-0x%lx structure 0x%lx-0x%lx arena 0x%lx-0x%lx\n",
-           image0, image1, have_fb ? fb0 : 0, have_fb ? fb1 : 0, pool0, pool1,
-           structure, structure + window, arena, arena_end);
-    printf("[boot] reservation overlap %d; framebuffer %lu KB stays inside the %u KB system reserve\n",
+    printf("[boot] independent image 0x%lx-0x%lx fb 0x%lx-0x%lx pool 0x%lx-0x%lx parent 0x%lx-0x%lx\n",
+           image0, image1, have_fb ? fb0 : 0, have_fb ? fb1 : 0, pool0, pool1, structure, parent1);
+    printf("[boot] parent children structure-heap 0x%lx-0x%lx arena 0x%lx-0x%lx disjoint %d\n",
+           structure, heap1, arena, arena_end, siblings);
+    printf("[boot] reservation bad %d; framebuffer %lu KB stays inside the %u KB system reserve\n",
            bad, have_fb ? fb_n / 1024 : 0, system_reserve_kb());
 }
 
