@@ -7,7 +7,8 @@ size -t text 25361818 data 188381 bss 47933
 reserve hole bytes 16252928 (image at 0x40080000, pool at 0x41000000)
 gc-sections link not measured: bfd ld segfault elfnn-aarch64.c:5308; gold internal error relocate_tls aarch64.cc:7555
 wtf objects 171 of 180 (skipped win/cf/cocoa/glib/playstation/spi). size -t text 1493280 data 6157 bss 26648
-wtf not compiled: OSAllocatorPOSIX.cpp (HAVE_MMAP unset, MmapSpan omitted), FileSystem.cpp (MappedFileData::mutableSpan), DateMath.cpp and GregorianDateTime.cpp (HAVE_LOCALTIME_R unset, localtime_s), plus Haiku/Fuchsia files
+wtf not compiled in the consistent set: OSAllocatorPOSIX.cpp (HAVE_MMAP unset, MmapSpan omitted), FileSystem.cpp (MappedFileData::mutableSpan), DateMath.cpp and GregorianDateTime.cpp (HAVE_LOCALTIME_R unset, localtime_s), plus Haiku/Fuchsia files
+side compile with -DHAVE_MMAP=1 -DHAVE_LOCALTIME_R=1 succeeded for OSAllocatorPOSIX.cpp FileSystem.cpp DateMath.cpp GregorianDateTime.cpp CachePayload.cpp. Not mixed into the 639-object set. OSAllocatorPOSIX.o undefined: mmap mprotect munmap madvise prctl. Those calls are not implemented and were not stubbed.
 not linked into quotaos.bin. mmap was not stubbed. no JS executed. not WebKit.
 failed:
   ConsoleClient.cpp ConsoleObject.cpp TypeSet.cpp missing InspectorProtocolObjects.h
