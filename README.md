@@ -381,16 +381,16 @@ e3 超时演示的数字和 v014 差得多：v014 提交作业 1783、完成 110
 
 64M：交付的 v015 映像在本机 QEMU 8.2.2 上停在「没有 GIC」（`docs/baseline-4c2a559/boot-64m-serial.raw`）。原因是着色去写 Tier 1 页，写进了放在页池里的 DTB。v016 在着色前把 DTB 拷进内核 BSS。64M 现在能到 `select>`，补齐仍是 3584 KB，菜单 1 的应用内存容量 32256 KB（`docs/v016/final-64-serial.raw`）。128M 菜单 1 的准入式子仍是 `reserve 350 + tier-1 1500 + tier-2 min 0`（`docs/v016/final-128-serial.raw`）。
 
-e4 的 icount **没有 PASS**。`tools/acceptance.py` 要等到 `QA DONE` 才落盘，所以卡住时看起来像没输出。修改后的映像有一次跑了约 14 分钟后被 SIGKILL，串口停在设备验证那一行（`docs/v016/e4-sigterm-ignored-serial.raw`；当时用的 `timeout 20` 只发了 SIGTERM，QEMU 没退出，所以那份不是 20 秒的记录）。随后用同一条命令、外部 75 秒、到点 SIGKILL、边跑边写串口。对照三份映像：v014 提交 `559daede18af8e201a41e41ab5e046ba7c8b66ec` 里的原 prebuilt（sha256 `cbca322f60f042c317c2cf02657c733df3010a2258e7a3f929720d86ddafcba0`，没有重编），交付的 v015（sha256 `99ec3fa2ea6ab795a3297feeda020a175afae126b894323267b22614e7078bb6`），和本版（sha256 `8dbd8a40329c16a2c7c5de704cb1ea5c5ffc9abb9867977818b69f81aa18c95a`）：
+e4 的 icount 在改 idle 之前没有 PASS。`tools/acceptance.py` 要等到 `QA DONE` 才落盘，所以卡住时看起来像没输出。未改的映像有一次跑了约 14 分钟后被 SIGKILL，串口停在设备验证那一行（`docs/v016/e4-sigterm-ignored-serial.raw`；当时用的 `timeout 20` 只发了 SIGTERM，QEMU 没退出，所以那份不是 20 秒的记录）。同一条命令、外部 75 秒、到点 SIGKILL、边跑边写串口，三份都停在同一行：v014 提交 `559daede18af8e201a41e41ab5e046ba7c8b66ec` 的原 prebuilt（sha256 `cbca322f60f042c317c2cf02657c733df3010a2258e7a3f929720d86ddafcba0`），交付的 v015（sha256 `99ec3fa2ea6ab795a3297feeda020a175afae126b894323267b22614e7078bb6`），和当时的本版（sha256 `8dbd8a40329c16a2c7c5de704cb1ea5c5ffc9abb9867977818b69f81aa18c95a`）。那三份都不是 PASS。原因是后来量出来的，不是当时猜的：QEMU 8.2.2 的 `-icount shift=4,sleep=off` 在 `wfi` 里不把虚拟时间推到已经写好的比较值。诊断映像在空槽里打印 `slot-idle now 693043 cval 718750 ctl 0x1 shell 1`（shell 仍是 READY，槽主人不在，定时器开着，比较值还在 411 us 之后），然后 `idle` 执行 `wfi`，8 秒内没有下一条。`-d int` 两秒里 icount 只有 4 次异常返回，最后一条 eret 的 PC `0x40084c94` 是 `idle_entry` 的 `wfi`；同一映像不加 icount，两秒里有 266 次 IRQ。icount 下 `idle` 改为空转，比较值到了中断照常进来。槽尾、保护区、准入没有改。设备验证仍跑 8 次作业和 8 次中止。修过的映像 sha256 `4fc7ce6d401c1e47765743732e5c2cebdef0f85451608eb0c25a13e07146bb9b`，icount e4 在约 3 秒时打印 `E4 item9 PASS`、`E4 item10 PASS`、`QA DONE`（Tier 1 错过 0，item9 超出最多 12，上限 81）。这是开发自测，不是独立 QA。同一映像不加 icount 的对照里 item9 是 FAIL（超出最多 68780，超过 81；class b 错过 0），不记成通过。回归脚本 `tools/e4_bound.py` 边写边存，到点 SIGKILL；只有内核自己打出两行 PASS 和 `QA DONE` 才退出 0。v014 原映像用它跑 20 秒仍是 NOT-PASS。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
   -nographic -nic none -kernel <image> -append e4 -icount shift=4,sleep=off
 ```
 
-三份都停在 `verifying` / `IRQs masked, before the next guard`，字节数从第一秒到杀掉都没增加（v014 1145，v015 1145，v016 1245；v016 多出来的是 EL1h 和 DTB 快照两行）。没有 `sim-dma` 的实测行，没有 `E4 item9`，没有 `QA DONE`。三份都不是 PASS。v015 和本版一起停，排除不了这两份共有的缺陷。v014 的原映像在同一条命令下停在同一行，所以这次没有看到从 v015 才开始的停住；这也没有指出原因。仓库里旧的 e4 PASS 不能算成这次的结果。原始记录在 `docs/v016/e4-bounded/`（含 `v014-559daed-*`、`sha256.txt`、`source.txt`）。本机 QEMU 是 8.2.2（Debian `1:8.2.2+ds-0ubuntu1.18`），不是 README 里旧记录用的 QEMU 10.0。
+停住的原始记录还在 `docs/v016/e4-bounded/`（v014 1145 字节、v015 1145、当时的 v016 1245，都没有 `sim-dma` 行）。诊断串口在 `docs/v016/cause/`。修过之后的 icount 记录在 `docs/v016/e4-fix/v016-icount-complete.raw`，普通时钟对照在 `v016-normal-control.raw`。本机 QEMU 是 8.2.2（Debian `1:8.2.2+ds-0ubuntu1.18`），不是旧记录用的 QEMU 10.0。仓库里更早的 e4 PASS 不能代替这次的日志。
 
-工具链：`aarch64-linux-gnu-gcc` 13.3.0。在 `4c2a559` 上 `make SRC_COMMIT=559daed` 得不到交付映像的 sha256（交付的 bin 是 `99ec3fa2…`，这次编译器得到 `a250441e…`）。记录在 `docs/baseline-4c2a559/`。本版映像 sha256：`8dbd8a40329c16a2c7c5de704cb1ea5c5ffc9abb9867977818b69f81aa18c95a`（`docs/v016/sha256-final.txt`）。上面这些都是开发自测，不是独立 QA。
+工具链：`aarch64-linux-gnu-gcc` 13.3.0。在 `4c2a559` 上 `make SRC_COMMIT=559daed` 得不到交付映像的 sha256（交付的 bin 是 `99ec3fa2…`，这次编译器得到 `a250441e…`）。记录在 `docs/baseline-4c2a559/`。修 idle 之前的本版映像是 `8dbd8a40…`（`docs/v016/sha256-final.txt`）。现在的映像是上面的 `4fc7ce6d…`。这些都是开发自测，不是独立 QA。WebKit 仍然没有链进来。
 
 ## 编译
 

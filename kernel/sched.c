@@ -259,8 +259,18 @@ static void spin_entry(void)
         asm volatile("" ::: "memory");
 }
 
+/*
+ * QEMU 8.2.2 -icount sleep=off 在 WFI 里不把虚拟时间推到下一个定时器。
+ * 空槽进了 idle 就再也不会有定时器中断，设备验证停在第一条作业前。
+ * icount 下改成空转，计数器仍按指令走，比较值到了中断照常进来。
+ * 普通时钟仍用 WFI。槽尾、保护区和准入都没改。
+ */
 static void idle_entry(void)
 {
+    if (clock_is_icount()) {
+        for (;;)
+            asm volatile("" ::: "memory");
+    }
     for (;;)
         asm volatile("wfi");
 }
