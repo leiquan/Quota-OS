@@ -10,9 +10,9 @@ License: [Apache-2.0](LICENSE)
 
 ## 现在能直接跑的映像
 
-`prebuilt/quotaos.bin` 不带 `-append` 时仍是白底彩色四组菜单，软件指针仍是黑底白边。四组是绘制、三级压力、准入、有界故障。这一屏是一个内核任务里的 LVGL，不是两个 EL0 进程。`-append isolate` 才跑下面的 EL0 隔离。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (233674f)`。`233674f` 是包含这版字节的提交的父提交。
+`prebuilt/quotaos.bin` 不带 `-append` 时仍是白底彩色四组菜单，软件指针仍是黑底白边。四组是绘制、三级压力、准入、有界故障。这一屏是一个内核任务里的 LVGL，不是两个 EL0 进程。`-append isolate` 才跑下面的 EL0 隔离。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (4cbb153)`。`4cbb153` 是包含这版字节的提交的父提交。
 
-sha256：`quotaos.bin` `1d90d60c5ce89f14f6a70e03133a3b52f76aeaeeb996a929785d9723b065083b`，`quotaos.elf` `c00aacd25d9a3d791613969e1384a0c1499119d24c0c0abfc4c3407d13bd6b89`。697256 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。上一份默认菜单映像是 682232 字节，sha256 `dc71eb9a2ec4124d79c13b5e506d11f6614a124d35abf91fcb6278d09d2dfded`，横幅 `Version: 016 (11b8eb6)`，不是现在这个文件。
+sha256：`quotaos.bin` `c51236a1ed9590b4f92105ef967f9f7450e3b95f17783ec75944bd6381595a98`，`quotaos.elf` `8dbd8865537a7dd84e132fc27aeab93d1dd9f2f257f4190bcbde6a397de16147`。705888 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。`cc30662` 那份是 697256 字节，sha256 `1d90d60c5ce89f14f6a70e03133a3b52f76aeaeeb996a929785d9723b065083b`，横幅 `Version: 016 (233674f)`。再往前的菜单映像是 682232 字节，sha256 `dc71eb9a2ec4124d79c13b5e506d11f6614a124d35abf91fcb6278d09d2dfded`。这两份都不是现在的默认文件。
 
 白底指针里程碑仍是提交 `ac565ac`，667656 字节，sha256 `198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988`。十八项列表那一版是提交 `11b8eb6`，674264 字节，sha256 `8f7d4e077730c12a288faff06b3c7c94d8077b532e7cbd904c5f1625d270c416`。这两份都不是现在的默认文件。
 
@@ -31,26 +31,38 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
 
 QEMU 会打印 `Could not open option rom 'vgabios-ramfb.bin'`。客户机仍然写了 `etc/ramfb`，`screendump` 拿到了上面的画面。
 
-不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`。这次带 ramfb 的空参数启动写了 `[lvgl] ready`，并且写明 `[lvgl] one kernel task. It is not an EL0 process.`（`docs/v016/el0-isolate-233674f/lvgl-boot.log`）。串口菜单只要 `-append serial`，这次见到 `select>`（`docs/v016/el0-isolate-233674f/serial-menu.log`）。`-append e4` 的旧日志仍是旧映像上的记录，不能当作这次 EL0 隔离的结果。Tier-1 声明仍是 13312 KB、1500 us。启动行是 `[boot] EL1 SPSel=1 SCTLR_EL1.M=1`。一级实时性这次不验收。
+不加大设备、也不加 `-append` 时，串口是 `[boot] no bootarg, starting LVGL`。这次带 ramfb 的空参数启动写了 `[lvgl] ready`，并且写明 `[lvgl] one kernel task. It is not an EL0 process.`（`docs/v016/el0-isolate-4cbb153/lvgl-boot.log`）。串口菜单只要 `-append serial`，这次见到 `select>`（`docs/v016/el0-isolate-4cbb153/serial-menu.log`）。`-append e4` 的旧日志仍是旧映像上的记录。Tier-1 声明仍是 13312 KB、1500 us。启动行是 `[boot] EL1 SPSel=1 SCTLR_EL1.M=1`。
 
 ## EL0 进程隔离（`-append isolate`）
 
-两个 EL0 程序各有自己的 TTBR0 和一代句柄（`generation << 16 | slot+1`）。EL0 只能访问自己的代码页、栈页和 4096 字节绘图页。内核 RAM、设备寄存器 `0x08000000-0x0c000000`、全局 framebuffer、另一应用的物理页都不给 EL0 写权限。提交要同时满足：指针就是自己的绘图页、长度等于矩形字节数且不超过 4096、矩形落在该应用的视口内。每个应用同时最多 3 笔在途提交，全局队列 8，每个 10 ms 周期最多接受 2 次。队列满或超频直接拒绝，不在显示服务里等待。`disp_drain` 只由这个测试壳调用，不进 `display-vsync`。
+两个 EL0 程序各有自己的 TTBR0。句柄是 `generation << 16 | (slot+1)`，在任务变成可运行之前采样。EL0 表里有应用的代码页、栈页、4096 字节绘图页，外加一个 EL1 专用的入口页（异常进来时先切回内核 TTBR0）。内核 RAM 块、设备区、全局 framebuffer 不在这张表里。启动日志写的是 `pte=0`，执行内核时的 ESR 是 `0x82000007`（翻译故障），不再是 `cc30662` 上的 `0x8200000e`（二级块的权限故障）。
 
-回收从内核接到 `proc_kill` 或 EL0 异常开始：先作废提交权和句柄代际，再取消仍指向旧代际的队列项，队列里不再引用这页之后才解映射并释放。目标是两个调度周期，也就是 20000 us。这是目标。下面的数字是这一次 QEMU 8.2.2 主机时钟跑出来的 CNTVCT，不是事先标定的上限，也不把平均值当成界限。回收时屏蔽 IRQ，所以调度周期计数这次保持 0；耗时看 us 和 ticks。
+提交核对指针就是自己的绘图页、长度等于矩形字节数且不超过 4096、宽高不会把 `x+w` 卷回。每个应用同时最多 3 笔在途，全局队列 8，每个 10 ms 周期最多接受 2 次。旧代际的队列项在 `disp_drain` 里直接摘掉，不绘制，也不扣新一代的 hold。
 
-这一次 `build/quotaos-lvgl.bin`（也就是现在的 `prebuilt/quotaos.bin`）上：
+回收在异常或 `proc_kill` 里只短暂关中断：作废提交权、代际加一、摘掉旧队列、任务标死。页清零和释放在线程上下文做，做之前再看队列是否还点着这页。目标仍是 20000 us 的 CNTVCT。通过与否看这次的 us，不看会被关中断冻住的软件周期计数。最长连续关中断时间另记。
 
-- 终止 100 次全部回到基线，`late=0`，us 最小 8、最大 308，周期计数最大 0，旧句柄拒绝 100 次。
-- 非法访存 100 次全部回到基线，`late=0`，us 最小 35、最大 177，周期计数最大 0，旧句柄拒绝 100 次。
-- 一例内核数据异常：`ec=0x24 esr=0x9200000e elr=0x1b4 far=0x400813a0 spsr=0x60000340 pte=0x40000040000701 level=2 ap_el0=0 class=kernel`。
-- 设备 `far=0x9000000`、另一应用页 `far=0x401ed000`、framebuffer `far=0x40ed4000`、未映射 `far=0x3000`、执行内核 `ec=0x20`，账本都回到只剩幸存应用。
-- 范围拒绝 4 次后接受 1 次合法提交。频率拒绝 1 次。队列深度拒绝从 0 增到 1。退出时 3 笔在途一次取消。
-- 幸存应用提交数 402，终止轮之后 807，异常轮之后 810。
-- 结束时 `pages_free=16 pages_used=0 queue=0 holds=0 mem_kb=0 running=0 refusals=0`。
-- `display-vsync` 作业 213 到 427，`timer-server` 213 到 427。这只说明系统还在调度，不是截止期验收。
+`cc30662` 上「执行内核后立刻重启，旧句柄仍成功」的来源：`proc_spawn` 先 `task_start`（开中断）再 `make_handle`。角色 9 的第一条用户指令是 `br` 到 `kmain`。地图那行 `printf` 期间定时器可以跑起这个任务。`proc_el0_abort` 看到的是 EL0（`SPSR` 低 4 位为 0）、`EC=0x20`，然后 `reap_timed` 把代际加一。函数返回的句柄已经是死后的代际。下一次 `proc_spawn` 看到 `gen != 0` 就沿用它，`from_handle` 因此对上新占用者，日志是 `stale=0 alive=1`。故障若发生在 `make_handle` 之前，返回的仍是死前代际，日志是 `stale=-1 alive=0`。这是同一次发布竞争的两侧，不是代际被清零。同一条 `-append isolate`：`cc30662` 映像这次宿主时钟四次都落在 `stale=-1` 那一侧（`docs/v016/el0-isolate-4cbb153/baseline-cc30662-host.txt`）；修过的映像 16 次执行内核重启都是 `from_el0=1`、`same=0`、`stale=-1`、`alive=0`。
 
-画面：同时活着时左绿右蓝，终止左应用后左边变成服务涂上的暗红，右边继续是蓝色。`docs/v016/el0-isolate-233674f/both.png`、`docs/v016/el0-isolate-233674f/after.png`。完整串口是 `docs/v016/el0-isolate-233674f/serial.log`。
+这一次映像上的 CNTVCT（最小和最大，不是平均值，也不是事先的上限）：
+
+- 宿主时钟：终止 100/100，`late=0`，us 7 到 545；读内核 100/100，`late=0`，us 158 到 1325。旧句柄都拒绝。幸存应用提交 402，终止轮后 807，异常轮后 810。靠近 `display-vsync` 释放时连做 20 次终止，错过数 2 保持 2，没有新增。最长连续关中断 154 us。这 154 us 含宿主机停顿。
+- `-icount shift=4,sleep=off`：终止 100/100，us 93 到 642；读内核 100/100，us 225 到 556。`display-vsync` 截止期 500 us，错过数 0 到 0。最长连续关中断 33 us。幸存应用提交 2、7、10，仍在增加；icount 下画面等待缩短到 2 ms，所以次数比宿主时钟少。
+
+结束时 `pages_free=16 pages_used=0 queue=0 holds=0 mem_kb=0 refusals=0`。范围拒绝 4、频率拒绝 1、深度拒绝 0 到 1、退出时 3 笔在途一次取消。
+
+画面：`docs/v016/el0-isolate-4cbb153/both.png`、`after.png`。宿主串口 `serial-host.log`，icount 串口 `serial-icount.log`。
+
+```bash
+qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
+  -display none -nic none -device ramfb \
+  -device virtio-keyboard-device -device virtio-tablet-device \
+  -kernel prebuilt/quotaos.bin -append isolate
+
+qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
+  -display none -nic none -device ramfb \
+  -device virtio-keyboard-device -device virtio-tablet-device \
+  -kernel prebuilt/quotaos.bin -append isolate -icount shift=4,sleep=off
+```
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
@@ -61,7 +73,7 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
   -kernel prebuilt/quotaos.bin -append isolate
 ```
 
-和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `kernel/lvgl_boot.c` 和 `port/quotaos/lvgl_demo.c`，是可替换的内核侧适配。显示队列在 `kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。
+和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `kernel/lvgl_boot.c` 和 `port/quotaos/lvgl_demo.c`。显示队列在 `kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。菜单宿主计时错过留给菜单那条分支，这次没有改它。
 
 文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。
 
