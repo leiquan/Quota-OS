@@ -564,42 +564,32 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                         "panel light not measured",
                         d.id, d.progress, d.total);
         } else if (d.have_window) {
+            char p99line[72];
+            if (d.p99_ok)
+                lv_snprintf(p99line, sizeof p99line, "%lu us nearest-rank ceil(0.99*n)", d.p99_us);
+            else
+                lv_snprintf(p99line, sizeof p99line, "not measured n<20 or capped");
             lv_snprintf(text, sizeof text,
                         "menu %d done %u/%u\n"
                         "T1 miss %u\n"
                         "class a %lu  b %lu  skipped %lu\n"
                         "class a counts, not a pass\n"
                         "%s\n"
-                        "lat max %lu us\n"
-                        "samples %u%s\n"
-                        "%s\n"
+                        "done max %lu us n=%u%s\n"
+                        "p99 %s\n"
+                        "not_started %u unfinished %u\n"
+                        "open bound %lu us not a completion\n"
                         "shell %u us/period\n"
                         "quota T1 1500us 13312KB\n"
                         "pages not measured\n"
-                        "panel light not measured\n"
-                        "fb click n=%u max %lu us\n"
-                        "fb key n=%u max %lu us\n"
-                        "fb scroll n=%u max %lu us",
+                        "panel light not measured",
                         d.id, d.progress, d.total,
                         d.t1_miss, d.class_a, d.class_b, d.skipped,
                         clock_is_icount() ? "icount" : "host clock, not a pass",
                         d.lat_max_us, d.samples, d.capped ? " capped" : "",
-                        d.p99_ok ? "p99 nearest-rank ceil(0.99*n)" : "p99 not measured n<20 or capped",
-                        d.shell_us,
-                        (unsigned)n_click, cmax, (unsigned)n_key, kmax, (unsigned)n_scroll, smax);
-            if (d.p99_ok) {
-                char extra[80];
-                lv_snprintf(extra, sizeof extra, "\np99 %lu us", d.p99_us);
-                /* append by rebuilding the tail into the remaining space */
-                int used = 0;
-                while (text[used])
-                    used++;
-                int k = 0;
-                while (extra[k] && used + 1 < (int)sizeof text) {
-                    text[used++] = extra[k++];
-                }
-                text[used] = 0;
-            }
+                        p99line,
+                        d.not_started, d.unfinished, d.open_bound_us,
+                        d.shell_us);
             if (d.t2_ok) {
                 char extra[80];
                 int used = 0;

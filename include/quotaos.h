@@ -326,6 +326,7 @@ void sched_set_ipc_hold_rule(int on);
 void sched_total_misses(uint64_t *a, uint64_t *b);
 void sched_window_misses(uint64_t *a, uint64_t *b);
 uint64_t sched_window_skipped(void);
+void sched_open_account(uint32_t *ns, uint32_t *uf, uint32_t *sk, uint64_t *bound_us);
 uint32_t sched_lat_copy(uint32_t *dst, uint32_t cap, int *capped);
 struct menu_detail {
     int id;
@@ -339,6 +340,9 @@ struct menu_detail {
     uint64_t skipped;
     uint64_t lat_max_us;
     uint32_t samples;
+    uint32_t not_started;
+    uint32_t unfinished;
+    uint64_t open_bound_us;
     int p99_ok;
     uint64_t p99_us;
     int capped;

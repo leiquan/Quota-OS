@@ -789,6 +789,8 @@ static void menu_finish_window(void)
 
 static int snap_have, snap_id, snap_p99_ok, snap_capped, snap_t2_ok;
 static uint32_t snap_miss, snap_samples, snap_shell, snap_short, snap_job;
+static uint32_t snap_ns, snap_uf;
+static uint64_t snap_bound;
 static uint64_t snap_lat, snap_p99, snap_a, snap_b, snap_skip;
 
 static uint32_t p99_nearest(uint32_t *v, uint32_t n)
@@ -832,6 +834,7 @@ static void snap_take(void)
     }
     sched_window_misses(&snap_a, &snap_b);
     snap_skip = sched_window_skipped();
+    sched_open_account(&snap_ns, &snap_uf, 0, &snap_bound);
     n = sched_lat_copy(buf, 512, &capped);
     snap_samples = n;
     snap_capped = capped;
@@ -857,7 +860,9 @@ static void snap_take(void)
     }
     printf("[menu] T1 miss %u class a %lu class b %lu skipped %lu. Class a counts. Not a pass line.\n",
            miss, snap_a, snap_b, snap_skip);
-    printf("[menu] lat max %lu us samples %u capped %d\n", lat, n, capped);
+    printf("[menu] done max %lu us samples %u capped %d (completions only)\n", lat, n, capped);
+    printf("[menu] not_started %u unfinished %u open bound %lu us (not a completion)\n",
+           snap_ns, snap_uf, snap_bound);
     if (snap_p99_ok)
         printf("[menu] p99 %lu us nearest-rank ceil(0.99*n) n=%u\n", snap_p99, n);
     else
@@ -887,6 +892,9 @@ void demo_menu_detail(struct menu_detail *d)
     d->skipped = snap_skip;
     d->lat_max_us = snap_lat;
     d->samples = snap_samples;
+    d->not_started = snap_ns;
+    d->unfinished = snap_uf;
+    d->open_bound_us = snap_bound;
     d->p99_ok = snap_p99_ok;
     d->p99_us = snap_p99;
     d->capped = snap_capped;
