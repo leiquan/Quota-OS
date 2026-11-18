@@ -264,6 +264,7 @@ void sched_init(void);
 struct task *sched_current(void);
 struct task *task_create(const char *name, int tier, int kind);
 void task_start(struct task *t);
+void task_ready(struct task *t);
 void task_kill(struct task *t);
 void sched_bind_slot(struct task *t, int slot);
 struct task *sched_slot_owner(int slot);
@@ -492,6 +493,7 @@ struct el0_reap {
     uint32_t gen_after;
     uint64_t us;
     uint64_t ticks;
+    uint64_t cntpct;
     uint64_t periods;
     uint16_t vx, vy, vw, vh;
     char why[16];
@@ -542,6 +544,8 @@ int disp_drain(int max);
 void proc_last_reap(struct el0_reap *o);
 void proc_last_fault(struct el0_fault *o);
 int proc_unmap_refusals(void);
+uint64_t proc_irq_off_max_us(void);
+void proc_finish_pending(void);
 void isolate_run(void);
 
 #ifdef __cplusplus

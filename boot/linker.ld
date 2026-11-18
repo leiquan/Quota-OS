@@ -21,6 +21,12 @@ SECTIONS
         KEEP(*(.text.boot))
     } :text
 
+    .gate : ALIGN(4096) {
+        gate_page_start = .;
+        *(.gate)
+        . = gate_page_start + 4096;
+    } :text
+
     .text : {
         *(.text .text.*)
     } :text

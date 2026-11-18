@@ -45,6 +45,7 @@ extern char user_blob_end[];
 struct proc {
     int slot;
     int alive;
+    int draining;
     int submit_ok;
     uint32_t gen;
     int asid;
@@ -59,6 +60,8 @@ struct proc {
     uint64_t sub_period;
     uint32_t sub_n;
     int pid;
+    uint64_t reap_t0;
+    uint64_t reap_pct0;
 };
 
 struct qent {
@@ -78,12 +81,39 @@ static uint64_t pt_l2[EL0_SLOTS][512] __attribute__((aligned(4096)));
 static uint64_t pt_l3[EL0_SLOTS][512] __attribute__((aligned(4096)));
 static uint8_t pool[EL0_POOL][4096] __attribute__((aligned(4096)));
 static uint8_t pool_used[EL0_POOL];
-static uint64_t kernel_ttbr, installed_ttbr;
+static uint64_t kernel_ttbr;
 static struct el0_reap last_reap;
 static struct el0_fault last_fault;
 static int unmap_refusals;
 static int spawn_logs;
 static int stale_drain;
+static uint64_t irq_off_max;
+extern uint64_t gate_kernel_ttbr, gate_user_ttbr, gate_saved_x0;
+extern char gate_vectors[];
+
+static uint64_t el0_l2_hi[512] __attribute__((aligned(4096)));
+static uint64_t el0_l3_gate[512] __attribute__((aligned(4096)));
+
+static uint64_t cntpct_now(void)
+{
+    uint64_t v;
+    asm volatile("mrs %0, cntpct_el0" : "=r"(v));
+    return v;
+}
+
+static void irq_off_begin(uint64_t *t0)
+{
+    *t0 = ticks_now();
+    asm volatile("msr daifset, #2" ::: "memory");
+}
+
+static void irq_off_end(uint64_t t0)
+{
+    uint64_t d = ticks_now() - t0;
+    if (d > irq_off_max)
+        irq_off_max = d;
+    asm volatile("msr daifclr, #2" ::: "memory");
+}
 
 asm(
     ".section .rodata\n"
@@ -307,16 +337,18 @@ static uint64_t walk(const struct proc *p, uint64_t va, int *level)
 static int range_ok(const struct proc *p, uint64_t va, uint64_t bytes,
                     uint64_t x, uint64_t y, uint64_t w, uint64_t h)
 {
+    uint64_t x1, y1;
     if (w == 0 || h == 0 || w > 32 || h > 32)
         return 0;
     if (bytes != w * h * 4 || bytes > EL0_DRAW)
         return 0;
-    /* Only this app's draw page. A wrapped subtraction must not accept a kernel, device, or framebuffer pointer. */
-    if (va != DRAW_VA || bytes > EL0_DRAW)
+    if (va != DRAW_VA)
         return 0;
     if (x < p->vx || y < p->vy)
         return 0;
-    if (x + w > (uint64_t)p->vx + p->vw || y + h > (uint64_t)p->vy + p->vh)
+    x1 = (uint64_t)p->vx + p->vw;
+    y1 = (uint64_t)p->vy + p->vh;
+    if (w > x1 - x || h > y1 - y)
         return 0;
     return 1;
 }
@@ -421,6 +453,8 @@ int disp_drain(int max)
             continue;
         p = &procs[qq[i].slot];
         if (!p->alive || p->gen != qq[i].gen || qq[i].pa != p->pa[2]) {
+            /* Drop the slot. Do not blit, and do not touch a newer generation's hold. */
+            qq[i].used = 0;
             stale_drain++;
             continue;
         }
@@ -478,16 +512,28 @@ static void mark_dead(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
             dst[((uint32_t)y + row) * fw + x + col] = 0x00600000u;
 }
 
+static int pa_still_queued(uint64_t pa)
+{
+    if (!pa)
+        return 0;
+    for (int i = 0; i < EL0_Q_GLOBAL; i++) {
+        if (!qq[i].used)
+            continue;
+        if (qq[i].pa >= pa && qq[i].pa < pa + 4096)
+            return 1;
+    }
+    return 0;
+}
+
 static void reap_timed(struct proc *p, const char *why, uint64_t t0, uint64_t p0)
 {
-    uint64_t daif, t1, p1;
+    uint64_t off0, pct0;
     uint32_t gen_before;
-    int refused;
 
     if (!p || !p->alive)
         return;
-    asm volatile("mrs %0, daif" : "=r"(daif));
-    asm volatile("msr daifset, #2" ::: "memory");
+    pct0 = cntpct_now();
+    irq_off_begin(&off0);
 
     gen_before = p->gen;
     p->submit_ok = 0;
@@ -513,56 +559,78 @@ static void reap_timed(struct proc *p, const char *why, uint64_t t0, uint64_t p0
     str_copy(last_reap.why, why, (int)sizeof last_reap.why);
 
     last_reap.cancelled = cancel_gen(p, gen_before);
-    refused = 0;
-    if (p->hold != 0) {
+    if (p->task) {
+        p->task->user_ttbr = 0;
+        task_dead(p->task);
+        p->task = 0;
+    }
+    p->ttbr = 0;
+    p->reap_t0 = t0;
+    p->reap_pct0 = pct0;
+    p->draining = 1;
+    irq_off_end(off0);
+    (void)p0;
+}
+
+static void finish_one(struct proc *p)
+{
+    int refused = 0;
+    uint64_t t1, pct1;
+    if (!p->draining)
+        return;
+    if (p->hold != 0 || slot_entries(p->slot) != 0) {
         refused = 1;
         unmap_refusals++;
-        if (p->task) {
-            p->task->user_ttbr = 0;
-            task_dead(p->task);
-            p->task = 0;
-        }
     } else {
+        uint64_t pas[3];
+        for (int i = 0; i < 3; i++)
+            pas[i] = p->pa[i];
         for (int i = 0; i < 3; i++)
             pt_l3[p->slot][i] = 0;
-        for (int i = 0; i < 3; i++)
-            asm volatile("dc civac, %0" :: "r"(&pt_l3[p->slot][i]) : "memory");
         asm volatile("dsb ish" ::: "memory");
         tlb_asid(p->asid);
         for (int i = 0; i < 3; i++) {
             int pg = p->pages[i];
             if (pg < 0 || pg >= EL0_POOL)
                 continue;
+            if (pa_still_queued(pas[i]) || slot_entries(p->slot) != 0) {
+                refused = 1;
+                unmap_refusals++;
+                break;
+            }
             memset(pool[pg], 0, 4096);
             pool_used[pg] = 0;
             p->pages[i] = -1;
             p->pa[i] = 0;
         }
-        if (p->task) {
-            p->task->user_ttbr = 0;
-            task_dead(p->task);
-            p->task = 0;
+        if (!refused) {
+            if (p->app) {
+                resource_release(p->app);
+                p->app = 0;
+            }
+            p->alive = 0;
+            p->draining = 0;
         }
-        if (p->app) {
-            resource_release(p->app);
-            p->app = 0;
-        }
-        p->alive = 0;
-        p->ttbr = 0;
     }
-
     t1 = ticks_now();
-    p1 = sched_period_now();
-    last_reap.hold_after = p->hold;
-    last_reap.free_after = pages_free_n();
-    last_reap.unmap_refused = refused;
-    last_reap.ticks = t1 >= t0 ? t1 - t0 : 0;
-    last_reap.us = ticks_to_us(last_reap.ticks);
-    last_reap.periods = p1 >= p0 ? p1 - p0 : 0;
-    mark_dead(last_reap.vx, last_reap.vy, last_reap.vw, last_reap.vh);
+    pct1 = cntpct_now();
+    if (last_reap.pid == p->pid && last_reap.gen_after == p->gen) {
+        last_reap.hold_after = p->hold;
+        last_reap.free_after = pages_free_n();
+        last_reap.unmap_refused = refused;
+        last_reap.ticks = t1 >= p->reap_t0 ? t1 - p->reap_t0 : 0;
+        last_reap.us = ticks_to_us(last_reap.ticks);
+        last_reap.cntpct = pct1 >= p->reap_pct0 ? pct1 - p->reap_pct0 : 0;
+    }
+    if (!refused)
+        mark_dead(p->vx, p->vy, p->vw, p->vh);
+}
 
-    if ((daif & 0x80ull) == 0)
-        asm volatile("msr daifclr, #2" ::: "memory");
+void proc_finish_pending(void)
+{
+    for (int i = 0; i < EL0_SLOTS; i++)
+        if (procs[i].draining)
+            finish_one(&procs[i]);
 }
 
 static void classify(struct proc *self, uint64_t far, uint64_t pte, char *out)
@@ -630,9 +698,11 @@ void proc_el0_abort(struct irq_frame *f, uint64_t esr)
         if (t)
             task_dead(t);
     }
-    printf("[fault] pid=%d ec=0x%x esr=0x%lx elr=0x%lx far=0x%lx spsr=0x%lx pte=0x%lx level=%d ap_el0=%d class=%s\n",
+    printf("[fault] from_el=%u pid=%d ec=0x%x esr=0x%lx elr=0x%lx far=0x%lx spsr=0x%lx pte=0x%lx level=%d ap_el0=%d class=%s gen %u->%u\n",
+           (unsigned)((last_fault.spsr & 0xfu) == 0 ? 0 : (last_fault.spsr & 0xfu)),
            last_fault.pid, last_fault.ec, last_fault.esr, last_fault.elr, last_fault.far,
-           last_fault.spsr, last_fault.pte, last_fault.level, last_fault.ap_el0, last_fault.kind);
+           last_fault.spsr, last_fault.pte, last_fault.level, last_fault.ap_el0, last_fault.kind,
+           p ? last_reap.gen_before : 0, p ? last_reap.gen_after : 0);
     if (p)
         printf("[fault] reap us=%lu ticks=%lu periods=%lu hold_before=%d cancelled=%d free %d -> %d refused=%d target_us=%u\n",
                last_reap.us, last_reap.ticks, last_reap.periods, last_reap.hold_before, last_reap.cancelled,
@@ -670,6 +740,7 @@ int proc_kill(int64_t handle)
     if (!p)
         return -1;
     reap_timed(p, "kill", ticks_now(), sched_period_now());
+    proc_finish_pending();
     return 0;
 }
 
@@ -708,7 +779,6 @@ static uint64_t code_pte(uint64_t pa)
 
 static void build_pt(struct proc *p)
 {
-    uint64_t ram;
     memset(pt_l0[p->slot], 0, 4096);
     memset(pt_l1[p->slot], 0, 4096);
     memset(pt_l2[p->slot], 0, 4096);
@@ -717,13 +787,9 @@ static void build_pt(struct proc *p)
     pt_l3[p->slot][1] = data_pte(p->pa[1]);
     pt_l3[p->slot][2] = data_pte(p->pa[2]);
     pt_l2[p->slot][0] = (uint64_t)(uintptr_t)pt_l3[p->slot] | PTE_VALID | PTE_PAGE;
-    for (uint64_t va = 0x08000000ull; va < 0x0c000000ull; va += 0x200000ull) {
-        uint64_t l2i = (va >> 21) & 511ull;
-        pt_l2[p->slot][l2i] = va | PTE_VALID | PTE_AF | ATTR_DEVICE | PTE_PXN | PTE_UXN;
-    }
     pt_l1[p->slot][0] = (uint64_t)(uintptr_t)pt_l2[p->slot] | PTE_VALID | PTE_PAGE;
-    ram = mmu_l2_ram_phys();
-    pt_l1[p->slot][1] = ram | PTE_VALID | PTE_PAGE;
+    /* RAM half is not the kernel L2. Only the shared gate page is present. */
+    pt_l1[p->slot][1] = (uint64_t)(uintptr_t)el0_l2_hi | PTE_VALID | PTE_PAGE;
     pt_l0[p->slot][0] = (uint64_t)(uintptr_t)pt_l1[p->slot] | PTE_VALID | PTE_PAGE;
     p->ttbr = (uint64_t)(uintptr_t)pt_l0[p->slot] | ((uint64_t)p->asid << 48);
     for (int i = 0; i < 512; i += 8) {
@@ -753,6 +819,7 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
     uint64_t blen, pack;
     int pg[3];
 
+    proc_finish_pending();
     for (int i = 0; i < EL0_SLOTS; i++) {
         if (!procs[i].alive) {
             p = &procs[i];
@@ -821,8 +888,6 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
     task_arm_el0(p->task, 0, USER_SP, role, limit, foreign_pa, fb_pa, kern_va, pack);
     p->task->user_ttbr = p->ttbr;
     p->pid = p->task->id;
-    p->alive = 1;
-    task_start(p->task);
     if (spawn_logs < 2) {
         int lv = 0;
         uint64_t pc = walk(p, CODE_VA, &lv);
@@ -843,7 +908,15 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
                p->pid, (unsigned long)make_handle(p), p->gen, p->asid, p->pa[2]);
     }
     spawn_logs++;
-    return make_handle(p);
+    {
+        uint64_t off0, published;
+        irq_off_begin(&off0);
+        p->alive = 1;
+        task_ready(p->task);
+        published = make_handle(p);
+        irq_off_end(off0);
+        return (int64_t)published;
+    }
 }
 
 void proc_ledger(const char *tag)
@@ -867,16 +940,26 @@ void proc_ledger(const char *tag)
 
 void proc_on_switch(struct task *next)
 {
-    uint64_t want;
-    if (!kernel_ttbr)
-        return;
-    want = kernel_ttbr;
+    /* Do not switch TTBR0 here. Kernel code is still running at its link address.
+     * gate_eret installs this value on the way back to EL0. */
     if (next && next->user_ttbr)
-        want = next->user_ttbr;
-    if (want == installed_ttbr)
-        return;
-    asm volatile("msr ttbr0_el1, %0; isb" :: "r"(want) : "memory");
-    installed_ttbr = want;
+        gate_user_ttbr = next->user_ttbr;
+    else
+        gate_user_ttbr = 0;
+}
+
+static void init_gate_map(void)
+{
+    uint64_t gva = (uint64_t)(uintptr_t)gate_vectors & ~4095ull;
+    uint64_t l2i = (gva >> 21) & 511ull;
+    uint64_t l3i = (gva >> 12) & 511ull;
+    memset(el0_l2_hi, 0, sizeof el0_l2_hi);
+    memset(el0_l3_gate, 0, sizeof el0_l3_gate);
+    el0_l3_gate[l3i] = (gva & ~4095ull) | PTE_VALID | PTE_PAGE | PTE_AF | SH_INNER | PTE_UXN;
+    el0_l2_hi[l2i] = (uint64_t)(uintptr_t)el0_l3_gate | PTE_VALID | PTE_PAGE;
+    printf("[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x%lx. It does not map the kernel RAM block, devices, or the framebuffer.\n",
+           gva);
+    printf("[proc] permission-only sharing of the kernel L2 is not what this table does.\n");
 }
 
 void proc_init(void)
@@ -890,9 +973,16 @@ void proc_init(void)
             procs[i].pages[k] = -1;
     }
     kernel_ttbr = mmu_kernel_ttbr();
-    installed_ttbr = kernel_ttbr;
+    gate_kernel_ttbr = kernel_ttbr;
+    gate_user_ttbr = 0;
+    init_gate_map();
     printf("[proc] EL0 slots %d pool %d draw %u queue %d/%d freq %d/period. target %u us is a goal, not a measured bound.\n",
            EL0_SLOTS, EL0_POOL, EL0_DRAW, EL0_Q_PER, EL0_Q_GLOBAL, EL0_FREQ, EL0_REAP_TARGET_US);
-    printf("[proc] kernel ttbr 0x%lx. Handles carry a generation. Realtime tier-1 is not accepted here.\n",
+    printf("[proc] kernel ttbr 0x%lx. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.\n",
            kernel_ttbr);
+}
+
+uint64_t proc_irq_off_max_us(void)
+{
+    return ticks_to_us(irq_off_max);
 }

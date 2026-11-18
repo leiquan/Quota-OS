@@ -4,6 +4,80 @@
  *
  * 每个向量槽 128 字节，整张表 2KB 对齐，这是 VBAR_EL1 的硬件要求。
  */
+/*
+ * VBAR points at this page. It is the only kernel page in an EL0 table.
+ * From EL0 the stub switches TTBR0 back to the kernel map before it touches
+ * the kernel stack. EL1 slots just branch at the real handlers.
+ */
+.section .gate, "ax"
+.align 11
+.global gate_vectors
+gate_vectors:
+    b       unhandled_sync
+    .align 7
+    b       unhandled_irq
+    .align 7
+    b       unhandled_sync
+    .align 7
+    b       unhandled_sync
+    .align 7
+    b       el1_sync
+    .align 7
+    b       el1_irq
+    .align 7
+    b       unhandled_sync
+    .align 7
+    b       unhandled_sync
+    .align 7
+gate_el0_sync:
+    msr     tpidr_el1, x16
+    adr     x16, gate_kernel_ttbr
+    ldr     x16, [x16]
+    msr     ttbr0_el1, x16
+    dsb     ish
+    isb
+    mrs     x16, tpidr_el1
+    b       el0_sync
+    .align 7
+gate_el0_irq:
+    msr     tpidr_el1, x16
+    adr     x16, gate_kernel_ttbr
+    ldr     x16, [x16]
+    msr     ttbr0_el1, x16
+    dsb     ish
+    isb
+    mrs     x16, tpidr_el1
+    b       el0_irq
+    .align 7
+    b       unhandled_sync
+    .align 7
+    b       unhandled_sync
+    .align 7
+    b       unhandled_sync
+    .align 7
+    b       unhandled_irq
+    .align 7
+    b       unhandled_sync
+    .align 7
+    b       unhandled_sync
+
+.align 3
+.global gate_kernel_ttbr, gate_user_ttbr, gate_saved_x0
+gate_kernel_ttbr: .quad 0
+gate_user_ttbr:   .quad 0
+gate_saved_x0:    .quad 0
+
+.global gate_eret
+gate_eret:
+    msr     ttbr0_el1, x0
+    dsb     ish
+    tlbi    vmalle1
+    dsb     ish
+    isb
+    adr     x0, gate_saved_x0
+    ldr     x0, [x0]
+    eret
+
 .section .text
 .align 11
 .global vectors
@@ -181,6 +255,9 @@ k_exit:
     ldp     x26, x27, [sp, #208]
     ldp     x28, x29, [sp, #224]
     ldr     x30,      [sp, #240]
+    adr     x0, gate_user_ttbr
+    ldr     x0, [x0]
+    cbnz    x0, el0_leave
     adrp    x0, k_vars              /* k_eret_ts、k_arm_rel、k_arm_abs、k_cval 挨着放 */
     add     x0, x0, :lo12:k_vars
     ldp     x1, x3, [x0, #8]        /* x1 = k_arm_rel，x3 = k_arm_abs */
@@ -194,6 +271,29 @@ k_exit:
     ldp     x2, x3, [sp, #16]
     ldp     x0, x1, [sp], #272
     eret
+
+el0_leave:
+    /* x0 is the user TTBR. x4-x30 are already the user values. */
+    adr     x1, gate_saved_x0
+    ldr     x2, [sp]
+    str     x2, [x1]
+    adrp    x1, k_vars
+    add     x1, x1, :lo12:k_vars
+    ldr     x0, [x1, #8]
+    ldr     x3, [x1, #16]
+    mrs     x2, cntvct_el0
+    cbz     x0, 9f
+    add     x0, x2, x0
+    cmp     x0, x3
+    csel    x3, x0, x3, lo
+9:  msr     cntv_cval_el0, x3
+    stp     x2, x3, [x1, #24]
+    adr     x0, gate_user_ttbr
+    ldr     x0, [x0]
+    ldr     x1, [sp, #8]
+    ldp     x2, x3, [sp, #16]
+    add     sp, sp, #272
+    b       gate_eret
 
 unhandled_sync:
     save_regs

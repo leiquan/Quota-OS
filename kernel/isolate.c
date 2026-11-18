@@ -22,6 +22,8 @@ static void yld(void)
 
 static void pump(uint64_t us, int drain)
 {
+    if (clock_is_icount())
+        us = us > 2000 ? 2000 : us;
     uint64_t t = now_us();
     while (now_us() - t < us) {
         yld();
@@ -37,6 +39,7 @@ static int wait_dead(int64_t h, int max)
         yld();
         n++;
     }
+    proc_finish_pending();
     return n;
 }
 
@@ -78,7 +81,8 @@ static int baseline_empty(void)
 
 static int late_of(const struct el0_reap *r)
 {
-    return r->us > EL0_REAP_TARGET_US || r->periods > 2;
+    /* CNTVCT microseconds. The scheduler period counter does not move while IRQs are off. */
+    return r->us > EL0_REAP_TARGET_US;
 }
 
 static uint32_t peek(int64_t h)
@@ -110,8 +114,8 @@ static void note_us(uint64_t us, uint64_t periods, uint64_t *mn, uint64_t *mx, u
 static void report(const char *kind, int i, const struct el0_reap *r, int stale, int fresh,
                    int ledger, uint32_t bsub)
 {
-    printf("[isolate] %s %d pid=%d gen %u->%u us=%lu ticks=%lu periods=%lu late=%d hold %d->%d cancel=%d free %d->%d draw0=0x%x refused=%d stale=%d fresh=%d ledger=%d b_sub=%u\n",
-           kind, i, r->pid, r->gen_before, r->gen_after, r->us, r->ticks, r->periods, late_of(r),
+    printf("[isolate] %s %d pid=%d gen %u->%u us=%lu ticks=%lu cntpct=%lu late=%d hold %d->%d cancel=%d free %d->%d draw0=0x%x refused=%d stale=%d fresh=%d ledger=%d b_sub=%u\n",
+           kind, i, r->pid, r->gen_before, r->gen_after, r->us, r->ticks, r->cntpct, late_of(r),
            r->hold_before, r->hold_after, r->cancelled, r->free_before, r->free_after, r->draw0,
            r->unmap_refused, stale, fresh, ledger, bsub);
 }
@@ -316,8 +320,10 @@ void isolate_run(void)
             led = a_gone(h, r.gen_before);
             h2 = spawn_a(0, 1, 0, fb, kern);
             stale = proc_submit_handle(h);
-            printf("[isolate] class %s yields=%d ec=0x%x far=0x%lx class=%s ap_el0=%d spsr=0x%lx us=%lu stale=%d alive=%d\n",
-                   specs[i].name, y, ft.ec, ft.far, ft.kind, ft.ap_el0, ft.spsr, r.us, stale, proc_alive(h));
+            printf("[isolate] class %s yields=%d from_el0=%d ec=0x%x esr=0x%lx elr=0x%lx far=0x%lx class=%s ap_el0=%d spsr=0x%lx gen %u->%u h=0x%lx h2=0x%lx same=%d stale=%d alive=%d\n",
+                   specs[i].name, y, (ft.spsr & 0xfu) == 0, ft.ec, ft.esr, ft.elr, ft.far, ft.kind,
+                   ft.ap_el0, ft.spsr, r.gen_before, r.gen_after, (unsigned long)h, (unsigned long)h2,
+                   h == h2, stale, proc_alive(h));
             printf("[isolate] class %s match_ec=%d match_far=%d match_name=%d ledger=%d\n",
                    specs[i].name, ft.ec == specs[i].ec,
                    !specs[i].check_far || ft.far == specs[i].far_expect,
@@ -404,6 +410,54 @@ void isolate_run(void)
     }
 
     {
+        int bad = 0;
+        for (int i = 0; i < 16; i++) {
+            struct el0_fault ft;
+            struct el0_reap r;
+            int64_t h = spawn_a(9, 1, 0, fb, kern);
+            int y = wait_dead(h, WAIT_MAX);
+            int64_t h2;
+            int st, al;
+            proc_last_fault(&ft);
+            proc_last_reap(&r);
+            h2 = spawn_a(0, 1, 0, fb, kern);
+            st = proc_submit_handle(h);
+            al = proc_alive(h);
+            printf("[exec-re] %d yields=%d from_el0=%d ec=0x%x esr=0x%lx elr=0x%lx far=0x%lx spsr=0x%lx gen %u->%u h=0x%lx h2=0x%lx same=%d stale=%d alive=%d\n",
+                   i, y, (ft.spsr & 0xfu) == 0, ft.ec, ft.esr, ft.elr, ft.far, ft.spsr,
+                   r.gen_before, r.gen_after, (unsigned long)h, (unsigned long)h2, h == h2, st, al);
+            if (st != -1 || al || h == h2 || (ft.spsr & 0xfu) != 0 || ft.ec != 0x20)
+                bad++;
+            if (proc_alive(h2))
+                proc_kill(h2);
+        }
+        printf("[exec-re] bad=%d of 16\n", bad);
+    }
+
+    {
+        struct task *vs = sched_find("display-vsync");
+        uint32_t m0 = vs ? vs->misses : 0;
+        uint64_t deadline_us = vs ? ticks_to_us(vs->deadline_t) : 0;
+        for (int i = 0; i < 20; i++) {
+            int64_t h = spawn_a(0, 0x7fffffff, 0, fb, kern);
+            int y = 0;
+            uint64_t guard;
+            while (y < 200 && proc_alive(h) && proc_queue_for(h) < 1) {
+                yld();
+                y++;
+            }
+            guard = sched_next_guard(ticks_now());
+            while (ticks_now() + us_to_ticks(30) < guard)
+                yld();
+            proc_kill(h);
+        }
+        printf("[t1] display-vsync deadline_us=%lu misses %u -> %u irq_off_max_us=%lu\n",
+               deadline_us, m0, vs ? vs->misses : 0, proc_irq_off_max_us());
+        if (vs && vs->start_ts >= vs->release_ts && vs->release_ts)
+            printf("[t1] last release-to-start us=%lu\n", ticks_to_us(vs->start_ts - vs->release_ts));
+    }
+
+    {
         int y = wait_queue(b, WAIT_MAX);
         struct el0_reap r;
         uint32_t before = proc_submits(b);
@@ -428,8 +482,9 @@ void isolate_run(void)
         printf("[isolate] display-vsync jobs %u -> %u (not a deadline result)\n", v0, vsync->jobs);
     if (tsrv)
         printf("[isolate] timer-server jobs %u -> %u (not a deadline result)\n", t0j, tsrv->jobs);
-    printf("[isolate] target_us %u late_kill %d late_fault %d. Misses stay failures. Realtime is separate.\n",
+    printf("[isolate] target_us %u late_kill %d late_fault %d. Pass/fail uses CNTVCT us, not the scheduler period counter.\n",
            EL0_REAP_TARGET_US, kill_late, fault_late);
-    printf("[isolate] periods is the scheduler period counter. Reap masks IRQs, so it often stays 0. us and ticks are CNTVCT.\n");
+    printf("[isolate] irq_off_max_us=%lu. That is the longest continuous DAIF.I stretch measured with CNTVCT.\n",
+           proc_irq_off_max_us());
     printf("[isolate] DONE\n");
 }

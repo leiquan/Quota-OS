@@ -77,7 +77,7 @@ el1_entry:
     ldr     x1, =_boot_stack_top
     mov     sp, x1
 
-    ldr     x1, =vectors
+    ldr     x1, =gate_vectors
     msr     VBAR_EL1, x1
     isb
 

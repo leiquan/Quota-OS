@@ -351,13 +351,19 @@ void task_dead(struct task *t)
     rebuild_lists();
 }
 
+/* IRQs stay as the caller left them. */
+void task_ready(struct task *t)
+{
+    if (t->kind != KIND_JOB)
+        t->state = TASK_READY;
+    rebuild_lists();
+}
+
 /* 死循环型立刻就绪；周期作业等下一次释放。 */
 void task_start(struct task *t)
 {
     asm volatile("msr daifset, #2" ::: "memory");
-    if (t->kind != KIND_JOB)
-        t->state = TASK_READY;
-    rebuild_lists();
+    task_ready(t);
     asm volatile("msr daifclr, #2" ::: "memory");
 }
 
