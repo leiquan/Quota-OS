@@ -10,15 +10,13 @@ License: [Apache-2.0](LICENSE)
 
 ## 现在能直接跑的映像
 
-`prebuilt/quotaos.bin` 不带 `-append` 时仍是白底彩色四组菜单，软件指针仍是黑底白边。四组是绘制、三级压力、准入、有界故障。这一屏是一个内核任务里的 LVGL，不是两个 EL0 进程。`-append isolate` 才跑下面的 EL0 隔离。固定配置仍是 virt、GICv2、Cortex-A72、128 MB。横幅 `Version: 016 (4cbb153)`。`4cbb153` 是包含这版字节的提交的父提交。
+本地整合版以 PR #2 `9c9ab92` 为基础合入 PR #1 `55704ca`。默认进入精简 LVGL 主页，保留完成样本与未完成观察的独立统计；`-append isolate` 运行独立页表、句柄和回收测试。LVGL 本身仍是 EL1 内核任务，不等同于 EL0 应用。下面历史镜像哈希和旧日志不是本次整合测试结果。本次镜像从源码重新构建，结果见随附本地测试报告。
 
-sha256：`quotaos.bin` `c51236a1ed9590b4f92105ef967f9f7450e3b95f17783ec75944bd6381595a98`，`quotaos.elf` `8dbd8865537a7dd84e132fc27aeab93d1dd9f2f257f4190bcbde6a397de16147`。705888 字节。`prebuilt/quotaos-lvgl.bin` 是同一份拷贝。`cc30662` 那份是 697256 字节，sha256 `1d90d60c5ce89f14f6a70e03133a3b52f76aeaeeb996a929785d9723b065083b`，横幅 `Version: 016 (233674f)`。再往前的菜单映像是 682232 字节，sha256 `dc71eb9a2ec4124d79c13b5e506d11f6614a124d35abf91fcb6278d09d2dfded`。这两份都不是现在的默认文件。
-
-白底指针里程碑仍是提交 `ac565ac`，667656 字节，sha256 `198eb516bd00188a68bae7a4538adb40a8b6a1b5410512fae187700a31738988`。十八项列表那一版是提交 `11b8eb6`，674264 字节，sha256 `8f7d4e077730c12a288faff06b3c7c94d8077b532e7cbd904c5f1625d270c416`。这两份都不是现在的默认文件。
+上一份精简菜单是提交 `66a295b`，682896 字节，sha256 `1c91348a3e0935f677ea8ccf0ecdc8e1b75c82ce313daf7fd84b0169a3332164`。它的面板 lat max 只统计完成作业。分组菜单 `60fa448` 是 682232 字节，sha256 `dc71eb9a2ec4124d79c13b5e506d11f6614a124d35abf91fcb6278d09d2dfded`。白底指针里程碑仍是 `ac565ac`。这几份都不是现在的默认文件。
 
 上一份串口内核完整留在 `prebuilt/quotaos-serial.bin`（93744 字节，sha256 `afed7949f5b3adc6dcb3d6c86e05356ed69fd315eca55fbeafae656f62880e05`，elf `bf6338345233296ffac12393f37e477078299ec91c65ce68ab90fa5e656b8f64`，横幅 `Version: 016 (af050b5)`）。下面历史段落里的 e4 日志对应的是那份串口内核，不是现在的默认文件。
 
-要看见分组并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过：滚一行、跑菜单 9 的 200 周期有界负载（Tier 1 错过 2 次，shell 平均 143 us/周期），点 +1、键入 `ab`。点击、按键、滚动到 framebuffer 提交各有微秒样本。到屏幕发光未测。p99 未测。截图 `docs/v016/lvgl/groups-page.png`、`docs/v016/lvgl/groups-end.png`。串口 `docs/v016/lvgl/groups.raw`。
+要看见分组并点击，QEMU 需要这三个设备。下面这条命令在 QEMU 8.2.2 上跑过。主页点 tier-3 load，跑菜单 9 的 200 周期。同一脚本修前修后各跑宿主时钟 3 轮和 icount 3 轮。修前的 `66a295b` 在宿主 host-03 上有 3 次 `display-vsync` not_started（1404、1379、2532 us），面板 lat max 只有 359 us。修好后宿主 host-01 是 T1 miss 5、class a 5、done max 451 us、样本 395、open bound 1823 us、not_started 4、unfinished 1。icount 三轮都是 miss 0、done max 80 us、样本 400。class a 照算，500 us 和 300 us 的槽长没有放宽。这不是 30 轮验收，也不是硬件隔离。e4 不代替这次 GUI 压力。到屏幕发光未测，页数未测。截图 `docs/v016/lvgl/timing-host-01.png`。修前日志 `docs/v016/lvgl/timing-before/`，修后 `docs/v016/lvgl/timing-after/`。
 
 ```bash
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
@@ -74,6 +72,7 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
 ```
 
 和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `kernel/lvgl_boot.c` 和 `port/quotaos/lvgl_demo.c`。显示队列在 `kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。菜单宿主计时错过留给菜单那条分支，这次没有改它。
+
 
 文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。
 

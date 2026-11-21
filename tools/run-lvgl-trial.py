@@ -60,6 +60,9 @@ def main():
         "-serial", "file:" + LOG,
         "-qmp", "unix:" + QMP + ",server,nowait",
     ]
+    icount = len(sys.argv) > 4 and sys.argv[4] == "icount"
+    if icount:
+        cmd += ["-icount", "shift=4,sleep=off"]
     if APPEND:
         cmd[cmd.index("-kernel") + 2:cmd.index("-kernel") + 2] = ["-append", APPEND]
     proc = subprocess.Popen(cmd)
@@ -68,7 +71,7 @@ def main():
     qmp(s, {"execute": "qmp_capabilities"})
     ready = False
     fb = None
-    deadline = time.time() + 8
+    deadline = time.time() + (60 if icount else 8)
     while time.time() < deadline:
         text = open(LOG, "r", errors="replace").read()
         if "ramfb published" in text and fb is None:
@@ -121,29 +124,60 @@ def main():
                 return text
             time.sleep(0.1)
         return text
-    print("mice", qmp(s, {"execute": "human-monitor-command",
-                           "arguments": {"command-line": "info mice"}}).strip()[:300])
-    click(305, 80)
-    print("scrolled", "scroll once" in wait_for("scroll once", 3))
-    click(305, 176)
-    print("clicked stress", "[menu] done 5" in wait_for("[menu] done 5", 8))
-    click(68, 318)
-    for key in ("a", "b"):
-        print(key, qmp(s, {"execute": "human-monitor-command",
-                           "arguments": {"command-line": "sendkey " + key}}).strip()[:200])
-        time.sleep(0.2)
-    time.sleep(0.8)
+    text = open(LOG, "r", errors="replace").read()
+    def box(name):
+        key = "[lvgl] " + name + " box "
+        for line in text.splitlines():
+            if line.startswith(key):
+                parts = line[len(key):].replace("x", " ").replace(",", " ").split()
+                x, y, w, h = [int(p) for p in parts[:4]]
+                return x + w // 2, y + h // 2
+        return None
+    load9 = box("load9")
+    inp = box("input")
+    cover = box("cover")
+    back = box("back")
+    plus = box("plus")
+    print("boxes", load9, inp, cover, back, plus)
+    move_to(500, 200)
+    qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-home.ppm"}})
+    print("home shot")
+    if load9:
+        click(*load9)
+    done_wait = 90 if icount else 20
+    done = "[menu] done 9" in wait_for("[menu] done 9", done_wait)
+    print("clicked load", done)
+    if not done:
+        text = open(LOG, "r", errors="replace").read()
+        print("icount blocker" if icount else "host blocker",
+              "done 9 not seen", "panic" if "PANIC" in text else "no panic")
+    time.sleep(0.4)
+    move_to(520, 360)
+    qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-screen.ppm"}})
+    print("result shot")
+    if done and cover:
+        click(*cover)
+        time.sleep(0.4)
+        qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-cover.ppm"}})
+        print("cover shot")
+        if back:
+            click(*back)
+            time.sleep(0.3)
+    if done and inp:
+        click(*inp)
+        time.sleep(0.3)
+        if plus:
+            click(*plus)
+        for key in ("a", "b"):
+            print(key, qmp(s, {"execute": "human-monitor-command",
+                               "arguments": {"command-line": "sendkey " + key}}).strip()[:200])
+            time.sleep(0.2)
+        time.sleep(0.4)
+        qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-input.ppm"}})
+        print("input shot")
     qmp(s, {"execute": "human-monitor-command",
             "arguments": {"command-line": "pmemsave 0x%x 1228800 %s" % (fb, RAW)}})
-    shot = qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-screen.ppm"}})
-    print("screendump", shot.strip()[:300])
-    text = ""
-    end = time.time() + 15
-    while time.time() < end:
-        text = open(LOG, "r", errors="replace").read()
-        if "[lvgl] result" in text or "[menu] done 5" in text:
-            break
-        time.sleep(0.1)
+    text = open(LOG, "r", errors="replace").read()
     proc.kill()
     proc.wait(timeout=5)
     print("--- log ---")

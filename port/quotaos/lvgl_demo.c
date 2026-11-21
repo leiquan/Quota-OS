@@ -17,9 +17,29 @@ static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *count_label;
 static lv_obj_t *field;
-static lv_obj_t *result;
 static lv_obj_t *menu_list;
 static lv_obj_t *legend;
+static lv_obj_t *detail;
+static lv_obj_t *page_home;
+static lv_obj_t *page_input;
+static lv_obj_t *page_cover;
+
+static void show_page(int which)
+{
+    if (which == 0) {
+        lv_obj_remove_flag(page_home, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
+    } else if (which == 1) {
+        lv_obj_add_flag(page_home, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(page_input, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(page_home, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
+    }
+}
 static unsigned clicks;
 
 #define CUR_W 16
@@ -279,14 +299,32 @@ static void on_group(lv_event_t *e)
         printf("[lvgl] click and key samples are taken from real events. Panel light is not measured.\n");
         return;
     }
+    if (id == 200) {
+        show_page(1);
+        printf("[lvgl] input page\n");
+        return;
+    }
+    if (id == 201) {
+        show_page(2);
+        printf("[lvgl] coverage page\n");
+        return;
+    }
+    if (id == 202) {
+        show_page(0);
+        printf("[lvgl] home\n");
+        return;
+    }
     demo_menu_start(id);
 }
 
 static lv_obj_t *add_row(lv_obj_t *parent, int y, uint32_t bg, uint32_t edge, const char *text, int id)
 {
     lv_obj_t *item = lv_button_create(parent);
+    int32_t cw = lv_obj_get_content_width(parent);
+    if (cw < 40)
+        cw = 230;
     lv_obj_set_pos(item, 0, y);
-    lv_obj_set_size(item, 590, 32);
+    lv_obj_set_size(item, cw, 32);
     lv_obj_set_style_bg_color(item, lv_color_hex(bg), 0);
     lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(item, lv_color_hex(edge), 0);
@@ -361,114 +399,246 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         lv_label_set_text(legend, leg);
     }
 
-    menu_list = lv_obj_create(screen);
-    lv_obj_set_pos(menu_list, 8, 40);
-    lv_obj_set_size(menu_list, 624, 230);
+    page_home = lv_obj_create(screen);
+    lv_obj_set_pos(page_home, 0, 36);
+    lv_obj_set_size(page_home, 640, 444);
+    lv_obj_set_style_bg_opa(page_home, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(page_home, 0, 0);
+    lv_obj_remove_flag(page_home, LV_OBJ_FLAG_SCROLLABLE);
+
+    menu_list = lv_obj_create(page_home);
+    lv_obj_set_pos(menu_list, 4, 0);
+    lv_obj_set_size(menu_list, 250, 400);
     lv_obj_set_style_bg_color(menu_list, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(menu_list, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(menu_list, lv_color_hex(0x101820), 0);
     lv_obj_set_style_border_width(menu_list, 1, 0);
     lv_obj_set_style_pad_all(menu_list, 2, 0);
+    lv_obj_remove_flag(menu_list, LV_OBJ_FLAG_SCROLLABLE);
     /* Blue draw, green stress, orange admission, red fault. Text states stay on the row. */
-    add_head(menu_list, 0, 0xdbeafe, "1 Draw  blue  status in the line below");
-    add_row(menu_list, 22, 0xdbeafe, 0x1d4ed8, "scroll once | idle | to framebuffer", 100);
-    add_row(menu_list, 56, 0xdbeafe, 0x1d4ed8, "click +1 or type | fb timer below", 104);
-    add_head(menu_list, 96, 0xdcfce7, "2 Stress  green  Tier1 miss and lat_max");
-    add_row(menu_list, 118, 0xdcfce7, 0x166534, "tier-1 window  menu 5 | idle", 5);
-    add_row(menu_list, 152, 0xdcfce7, 0x166534, "tier-3 load  menu 9 | idle", 9);
-    add_row(menu_list, 186, 0xdcfce7, 0x166534, "stop | ends next period", 103);
-    add_head(menu_list, 226, 0xffedd5, "3 Admit  orange  quota is not pages");
-    add_row(menu_list, 248, 0xffedd5, 0xc2410c, "install or release Pixel Racer", 2);
-    add_row(menu_list, 282, 0xffedd5, 0xc2410c, "admit until refused  menu 3", 3);
-    add_row(menu_list, 316, 0xffedd5, 0xc2410c, "reject too big  menu 4", 4);
-    add_head(menu_list, 356, 0xfee2e2, "4 Fault  red  bounded only");
-    add_row(menu_list, 378, 0xfee2e2, 0xb91c1c, "repeat tier-1 window  menu 5", 5);
-    add_row(menu_list, 412, 0xfee2e2, 0xb91c1c, "bounded hogs 200 periods  menu 9", 9);
-    add_row(menu_list, 446, 0xfee2e2, 0xb91c1c, "runaway | not available", 101);
-    add_row(menu_list, 480, 0xfee2e2, 0xb91c1c, "ram crash | not available", 102);
+    add_head(menu_list, 0, 0xdbeafe, "Draw");
+    add_row(menu_list, 18, 0xdbeafe, 0x1d4ed8, "scroll once", 100);
+    lv_obj_t *inb = add_row(menu_list, 52, 0xdbeafe, 0x1d4ed8, "input page", 200);
+    add_head(menu_list, 90, 0xdcfce7, "Stress");
+    add_row(menu_list, 108, 0xdcfce7, 0x166534, "tier-1 window", 5);
+    lv_obj_t *load9 = add_row(menu_list, 142, 0xdcfce7, 0x166534, "tier-3 load", 9);
+    add_row(menu_list, 176, 0xdcfce7, 0x166534, "stop", 103);
+    add_head(menu_list, 214, 0xffedd5, "Admit");
+    add_row(menu_list, 232, 0xffedd5, 0xc2410c, "install Pixel Racer", 2);
+    add_row(menu_list, 266, 0xffedd5, 0xc2410c, "admit until full", 3);
+    add_row(menu_list, 300, 0xffedd5, 0xc2410c, "reject too big", 4);
+    add_head(menu_list, 338, 0xfee2e2, "Fault");
+    lv_obj_t *covb = add_row(menu_list, 356, 0xfee2e2, 0xb91c1c, "coverage", 201);
 
-    result = lv_label_create(screen);
-    lv_obj_set_pos(result, 8, 278);
-    lv_obj_set_width(result, 620);
-    lv_label_set_text(result, "idle");
-    lv_obj_set_style_text_color(result, lv_color_hex(0x101820), 0);
+    detail = lv_label_create(page_home);
+    lv_obj_set_pos(detail, 258, 0);
+    lv_obj_set_size(detail, 370, 430);
+    lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(detail, "no result yet\nT1 miss not measured\np99 not measured\npages not measured");
+    lv_obj_set_style_text_color(detail, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_bg_color(detail, lv_color_hex(0xf8fafc), 0);
+    lv_obj_set_style_bg_opa(detail, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(detail, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_border_width(detail, 1, 0);
+    lv_obj_set_style_pad_all(detail, 6, 0);
 
-    lv_obj_t *btn = lv_button_create(screen);
-    lv_obj_set_pos(btn, 8, 300);
-    lv_obj_set_size(btn, 120, 36);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0xffffff), 0);
+    page_input = lv_obj_create(screen);
+    lv_obj_set_pos(page_input, 0, 36);
+    lv_obj_set_size(page_input, 640, 444);
+    lv_obj_set_style_bg_color(page_input, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_bg_opa(page_input, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(page_input, 0, 0);
+    lv_obj_remove_flag(page_input, LV_OBJ_FLAG_SCROLLABLE);
+    add_row(page_input, 8, 0xffffff, 0x101820, "back", 202);
+    lv_obj_t *btn = lv_button_create(page_input);
+    lv_obj_set_pos(btn, 8, 52);
+    lv_obj_set_size(btn, 140, 40);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xdbeafe), 0);
     lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(btn, lv_color_hex(0x101820), 0);
+    lv_obj_set_style_border_color(btn, lv_color_hex(0x1d4ed8), 0);
     lv_obj_set_style_border_width(btn, 2, 0);
     lv_obj_add_event_cb(btn, on_click, LV_EVENT_CLICKED, NULL);
     lv_obj_t *bl = lv_label_create(btn);
     lv_label_set_text(bl, "+1");
     lv_obj_set_style_text_color(bl, lv_color_hex(0x101820), 0);
     lv_obj_center(bl);
-
-    count_label = lv_label_create(screen);
+    count_label = lv_label_create(page_input);
     lv_label_set_text(count_label, "Count: 0");
-    lv_obj_set_pos(count_label, 140, 308);
+    lv_obj_set_pos(count_label, 160, 60);
     lv_obj_set_style_text_color(count_label, lv_color_hex(0x101820), 0);
-
-    field = lv_textarea_create(screen);
-    lv_obj_set_pos(field, 8, 344);
-    lv_obj_set_size(field, 420, 120);
+    field = lv_textarea_create(page_input);
+    lv_obj_set_pos(field, 8, 108);
+    lv_obj_set_size(field, 400, 40);
+    lv_textarea_set_one_line(field, true);
     lv_textarea_set_placeholder_text(field, "type here");
     lv_obj_set_style_bg_color(field, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(field, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(field, lv_color_hex(0x101820), 0);
     lv_obj_set_style_border_width(field, 2, 0);
     lv_obj_set_style_text_color(field, lv_color_hex(0x101820), 0);
+    {
+        lv_group_t *group = lv_group_create();
+        lv_group_add_obj(group, field);
+        lv_indev_set_group(keypad, group);
+    }
+    lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
 
-    lv_group_t *group = lv_group_create();
-    lv_group_add_obj(group, field);
-    lv_indev_set_group(keypad, group);
+    page_cover = lv_obj_create(screen);
+    lv_obj_set_pos(page_cover, 0, 36);
+    lv_obj_set_size(page_cover, 640, 444);
+    lv_obj_set_style_bg_color(page_cover, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_bg_opa(page_cover, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(page_cover, 0, 0);
+    lv_obj_remove_flag(page_cover, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *back = add_row(page_cover, 4, 0xffffff, 0x101820, "back", 202);
+    {
+        lv_obj_t *cov = lv_label_create(page_cover);
+        lv_obj_set_pos(cov, 8, 44);
+        lv_obj_set_width(cov, 620);
+        lv_obj_set_style_text_color(cov, lv_color_hex(0x101820), 0);
+        lv_label_set_text(cov,
+            "Not connected. Serial menu still runs them.\n"
+            "6 tier-1 slot cut: spin task in a tier-1 slot\n"
+            "10 runaway: same, unbounded loop is not started\n"
+            "13 budget token: sched_bench blocks the shell\n"
+            "14 device timeout: sched_bench blocks the shell\n"
+            "15 interrupt storm: sched_bench blocks the shell\n"
+            "16 bandwidth cap: sched_bench blocks the shell\n"
+            "18 IPC hold: four sched_bench windows block the shell\n"
+            "Unbounded runaway and a RAM crash are not started.");
+    }
+    lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
 
-    printf("[lvgl] stress5 box 10,%d 590x32\n", 40 + 2 + 118);
-    printf("[lvgl] button box 8,300 120x36\n");
-    printf("[menu] serial 6 10 13 14 15 16 18 stay not connected\n");
-    printf("[menu] runaway and ram crash are not started\n");
+    lv_obj_update_layout(screen);
+    {
+        lv_area_t box;
+        lv_obj_get_coords(load9, &box);
+        printf("[lvgl] load9 box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+               (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
+        lv_obj_get_coords(inb, &box);
+        printf("[lvgl] input box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+               (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
+        lv_obj_get_coords(covb, &box);
+        printf("[lvgl] cover box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+               (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
+        lv_obj_get_coords(back, &box);
+        printf("[lvgl] back box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+               (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
+        lv_obj_get_coords(btn, &box);
+        printf("[lvgl] plus box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+               (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
+    }
+    printf("[menu] serial 6 10 13 14 15 16 18 stay on the coverage page\n");
     printf("[lvgl] ready\n");
 
     uint64_t t0 = now_us();
-    uint64_t next = t0;
-    char shown[120];
+    /* The shell stack is 8 KB. These stay off that stack. */
+    static char shown[480];
+    static char leg_shown[160];
+    static char text[480];
+    static struct menu_detail d;
     shown[0] = 0;
-    while (now_us() - t0 < 20000000ull) {
-        char st[120];
+    leg_shown[0] = 0;
+    while (now_us() - t0 < 45000000ull) {
+        int i;
+        uint64_t cmax = 0, kmax = 0, smax = 0;
         take_inputs();
         lv_timer_handler();
-        demo_menu_status(st, (int)sizeof st);
-        {
-            char both[200];
-            const char *click = n_click ? "sampled" : "not measured";
-            const char *key = n_key ? "sampled" : "not measured";
-            const char *scroll = n_scroll ? "sampled" : "not measured";
-            lv_snprintf(both, sizeof both, "%s | click %s | key %s | scroll %s | light not measured",
-                        st, click, key, scroll);
-            lv_snprintf(st, sizeof st, "%s", both);
+        demo_menu_detail(&d);
+        for (i = 0; i < n_click; i++)
+            if (click_dt[i] > cmax)
+                cmax = click_dt[i];
+        for (i = 0; i < n_key; i++)
+            if (key_dt[i] > kmax)
+                kmax = key_dt[i];
+        for (i = 0; i < n_scroll; i++)
+            if (scroll_dt[i] > smax)
+                smax = scroll_dt[i];
+        if (d.running) {
+            lv_snprintf(text, sizeof text,
+                        "menu %d running %u/%u\n"
+                        "T1 miss not measured yet\n"
+                        "class a counts when the window ends\n"
+                        "p99 not measured yet\n"
+                        "pages not measured\n"
+                        "panel light not measured",
+                        d.id, d.progress, d.total);
+        } else if (d.have_window) {
+            char p99line[72];
+            if (d.p99_ok)
+                lv_snprintf(p99line, sizeof p99line, "%lu us nearest-rank ceil(0.99*n)", d.p99_us);
+            else
+                lv_snprintf(p99line, sizeof p99line, "not measured n<20 or capped");
+            lv_snprintf(text, sizeof text,
+                        "menu %d done %u/%u\n"
+                        "T1 miss %u\n"
+                        "class a %lu  b %lu  skipped %lu\n"
+                        "class a counts, not a pass\n"
+                        "%s\n"
+                        "done max %lu us n=%u%s\n"
+                        "p99 %s\n"
+                        "not_started %u unfinished %u\n"
+                        "open bound %lu us not a completion\n"
+                        "shell %u us/period\n"
+                        "quota T1 1500us 13312KB\n"
+                        "pages not measured\n"
+                        "panel light not measured",
+                        d.id, d.progress, d.total,
+                        d.t1_miss, d.class_a, d.class_b, d.skipped,
+                        clock_is_icount() ? "icount" : "host clock, not a pass",
+                        d.lat_max_us, d.samples, d.capped ? " capped" : "",
+                        p99line,
+                        d.not_started, d.unfinished, d.open_bound_us,
+                        d.shell_us);
+            if (d.t2_ok) {
+                char extra[80];
+                int used = 0;
+                int k = 0;
+                lv_snprintf(extra, sizeof extra, "\ntier2 short %u  job miss %u", d.t2_short, d.job_miss);
+                while (text[used])
+                    used++;
+                while (extra[k] && used + 1 < (int)sizeof text)
+                    text[used++] = extra[k++];
+                text[used] = 0;
+            }
+        } else {
+            lv_snprintf(text, sizeof text,
+                        "no window yet\n"
+                        "T1 miss not measured\n"
+                        "p99 not measured\n"
+                        "pages not measured\n"
+                        "panel light not measured\n"
+                        "fb click n=%u max %lu us\n"
+                        "fb key n=%u max %lu us\n"
+                        "fb scroll n=%u max %lu us",
+                        (unsigned)n_click, cmax, (unsigned)n_key, kmax, (unsigned)n_scroll, smax);
         }
-        if (strcmp(st, shown) != 0) {
-            lv_label_set_text(result, st);
+        if (strcmp(text, shown) != 0) {
+            lv_label_set_text(detail, text);
             int n = 0;
-            while (st[n] && n < (int)sizeof shown - 1) {
-                shown[n] = st[n];
+            while (text[n] && n < (int)sizeof shown - 1) {
+                shown[n] = text[n];
                 n++;
             }
             shown[n] = 0;
+            if (!d.running && d.have_window)
+                printf("[lvgl] detail\n%s\n", text);
         }
-        if (now_us() >= next) {
+        {
             char leg[160];
             demo_menu_legend(leg, (int)sizeof leg);
-            lv_label_set_text(legend, leg);
-            printf("[lvgl] legend %s\n", leg);
-            printf("[lvgl] alive count %u text [%s] status [%s]\n", clicks,
-                   lv_textarea_get_text(field), st);
-            next = now_us() + 1000000ull;
+            if (strcmp(leg, leg_shown) != 0) {
+                lv_label_set_text(legend, leg);
+                printf("[lvgl] legend %s\n", leg);
+                int n = 0;
+                while (leg[n] && n < (int)sizeof leg_shown - 1) {
+                    leg_shown[n] = leg[n];
+                    n++;
+                }
+                leg_shown[n] = 0;
+            }
         }
     }
-    printf("[lvgl] result clicks %u text [%s] drops %u\n", clicks, lv_textarea_get_text(field),
-           input_drop_count());
-    return clicks > 0 ? 0 : 1;
+    printf("[lvgl] result clicks %u drops %u\n", clicks, input_drop_count());
+    return 0;
 }
