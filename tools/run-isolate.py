@@ -10,7 +10,7 @@ BIN = sys.argv[1] if len(sys.argv) > 1 else "build/quotaos.bin"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "/tmp/isolate-out"
 os.makedirs(OUT, exist_ok=True)
 LOG = os.path.join(OUT, "serial.log")
-QMP = os.path.join(OUT, "qmp.sock")
+QMP = "/tmp/quota-isolate-qmp.sock"
 RAW1 = os.path.join(OUT, "both.raw")
 RAW2 = os.path.join(OUT, "after.raw")
 
@@ -86,6 +86,8 @@ def main():
         "-serial", "file:" + LOG,
         "-qmp", "unix:" + QMP + ",server,nowait",
     ]
+    if len(sys.argv) > 3 and sys.argv[3] == "icount":
+        cmd += ["-icount", "shift=4,sleep=off"]
     open(os.path.join(OUT, "command.txt"), "w").write(" ".join(cmd) + "\n")
     proc = subprocess.Popen(cmd)
     s = qmp_open()

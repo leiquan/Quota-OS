@@ -7,7 +7,12 @@ set -euo pipefail
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 CC=${CC:-aarch64-linux-gnu-gcc}
-CFLAGS=(-std=gnu11 -Wall -Wextra -Werror -O2 -ffreestanding -fno-stack-protector
+CXX=${CXX:-aarch64-linux-gnu-g++}
+OBJCOPY=${OBJCOPY:-aarch64-linux-gnu-objcopy}
+NM=${NM:-aarch64-linux-gnu-nm}
+RUNTIME_LIB=${RUNTIME_LIB:--lgcc}
+EXTRA_CFLAGS=${EXTRA_CFLAGS:-}
+CFLAGS=($EXTRA_CFLAGS -std=gnu11 -Wall -Wextra -Werror -O2 -ffreestanding -fno-stack-protector
     -fno-builtin -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align
     -fno-asynchronous-unwind-tables -I include -I build)
 mkdir -p build build/user
@@ -25,13 +30,13 @@ srcs=(
 )
 $CC -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none \
     -T user/user.ld -o build/user/paint.elf user/paint.S
-aarch64-linux-gnu-objcopy -O binary build/user/paint.elf build/user/paint.bin
+$OBJCOPY -O binary build/user/paint.elf build/user/paint.bin
 objs=()
 for f in "${srcs[@]}"; do
     obj="build/${f%.*}.o"
     mkdir -p "$(dirname "$obj")"
     if [[ $f == *.cpp ]]; then
-        aarch64-linux-gnu-g++ -std=c++20 -Wall -Wextra -Werror -O2 -ffreestanding \
+        $CXX $EXTRA_CFLAGS -std=c++20 -Wall -Wextra -Werror -O2 -ffreestanding \
             -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack-protector \
             -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align \
             -fno-asynchronous-unwind-tables -I include -I build -c -o "$obj" "$f"
@@ -40,7 +45,7 @@ for f in "${srcs[@]}"; do
     fi
     objs+=("$obj")
 done
-LVFLAGS=(-std=gnu11 -O2 -ffreestanding -fno-stack-protector -fno-builtin
+LVFLAGS=($EXTRA_CFLAGS -std=gnu11 -O2 -ffreestanding -fno-stack-protector -fno-builtin
     -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align
     -fno-asynchronous-unwind-tables -Wno-unused-parameter -w
     -DLV_CONF_INCLUDE_SIMPLE -I third_party/lvgl -I port/quotaos -I include)
@@ -65,7 +70,7 @@ done < <(find third_party/lvgl/src/libs/bin_decoder -name '*.c'; find third_part
 $CC "${LVFLAGS[@]}" -c -o build/port/lvgl_demo.o port/quotaos/lvgl_demo.c
 objs+=(build/port/lvgl_demo.o)
 $CC -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none \
-    -T boot/linker.ld -o build/quotaos-lvgl.elf "${objs[@]}" -lgcc
-aarch64-linux-gnu-objcopy -O binary build/quotaos-lvgl.elf build/quotaos-lvgl.bin
+    -T boot/linker.ld -o build/quotaos-lvgl.elf "${objs[@]}" $RUNTIME_LIB
+$OBJCOPY -O binary build/quotaos-lvgl.elf build/quotaos-lvgl.bin
 echo "linked $(wc -c < build/quotaos-lvgl.bin) bytes"
-aarch64-linux-gnu-nm build/quotaos-lvgl.elf | rg "lvgl_demo_run|__image_end" || true
+$NM build/quotaos-lvgl.elf | grep -E "lvgl_demo_run|__image_end" || true
