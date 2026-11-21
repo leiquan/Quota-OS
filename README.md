@@ -1,12 +1,28 @@
 # Quota OS（版本 016）
 
-基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。
+基于三级资源声明的微内核：一级固定时间槽、二级准入最低值、三级使用剩余资源。有限测试不等同于无条件的硬实时保证。
 
-A microkernel built on three-tier resource declarations: tier-1 tasks never stall, tier-2 tasks run without stalling, and tier-3 tasks get no guarantee.
+A microkernel with fixed Tier-1 slots, admitted Tier-2 minimum reservations, and best-effort Tier-3 work. Real-time guarantees require bounded interrupt latency and execution costs.
 
 AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中断。还是原型：单核。EL0 应用有独立页表；不带启动参数时的 LVGL 仍是一个内核任务。没有生产级认证。
 
 License: [Apache-2.0](LICENSE)
+
+## Apple Silicon 本地运行与验证
+
+```bash
+bash tools/build-lvgl-macos.sh
+bash tools/run-macos-gui.sh
+python3 tools/realtime-rounds.py build/quotaos-lvgl.bin /tmp/quota-native-results \
+  --rounds 10 --modes host --accel hvf --cpu host --machine virt,gic-version=3 \
+  --longevity-seconds 50
+```
+
+Mac 启动器显式选择 HVF、host CPU、GICv3，使用真实宿主时钟，不使用 icount。HVF 不支持这里原来的 GICv2 配置；TCG/Cortex-A72/GICv2 与 icount 结果必须分别记录。测试失败返回非零，class a、未开始和未完成作业均不能作为通过排除。
+
+本地优化使显示复制可抢占，保留正在绘制的页引用；故障串口日志延后到线程上下文；临界区恢复进入前的中断状态。LVGL 持续运行，不再在45秒后退出。LVGL 仍属三级，不占用一级槽和二级最低值。
+
+四类测试结果独立判断：GUI 中的一二级截止期/最低值、EL0功能、回收目标、20次近释放点终止的错过增量。最后一项没有新增错过，不能证明该次启动之前或整段运行从未错过。参见 `docs/local-realtime-optimization.txt`。
 
 ## 现在能直接跑的映像
 

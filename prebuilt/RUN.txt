@@ -1,15 +1,22 @@
-LOCAL INTEGRATION 2026-11-22
-Base PR #2: 9c9ab926cad6c3bbe6a9435d53e5025d6bf80a39
-Merged PR #1: 55704ca581d8d954cc1dc6d4d6ff0faff13e3c77
-Source merge: cf1ec5c127f03b2c109967cbcfa9d72fcba3f559
-Rebuilt with Clang/LLD 23.1.5, freestanding aarch64-none-elf.
-Default bin and lvgl bin are identical. Banner is cf1ec5c.
-Current hashes are in SHA256SUMS; old docs are historical evidence.
-Build on macOS: bash tools/build-lvgl-macos.sh
-Run (visible GUI):
-qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M -display cocoa -nic none -device ramfb -device virtio-keyboard-device -device virtio-tablet-device -kernel prebuilt/quotaos.bin
-Add -append serial for serial menu; -append isolate for EL0 tests.
-Add -icount shift=4,sleep=off for deterministic virtual-time tests.
-TEST LIMIT: host-clock GUI stress has deadline misses; not a realtime acceptance pass.
-LVGL runs as an EL1 task. EL0 isolation is a separate test mode.
+LOCAL OPTIMIZATION 2026-11-22
+Base integration: 5807cc8 (PR2 9c9ab92 + PR1 55704ca)
+The banner names that base. Current hashes: SHA256SUMS.
+
+Apple Silicon build:
+  bash tools/build-lvgl-macos.sh
+Apple Silicon GUI, host time with native virtualization:
+  bash tools/run-macos-gui.sh prebuilt/quotaos.bin
+This uses HVF, host CPU and GICv3. HVF does not support this setup's GICv2.
+GUI is continuous; the old 45-second exit was removed.
+LVGL is still an EL1 Tier3 task. EL0 isolation is a separate mode.
+
+Ten-round native host-time GUI+isolation check:
+  python3 tools/realtime-rounds.py prebuilt/quotaos.bin /tmp/quota-hvf-results --rounds 10 --modes host --accel hvf --cpu host --machine virt,gic-version=3 --longevity-seconds 50
+Reference TCG host+icount checks:
+  python3 tools/realtime-rounds.py prebuilt/quotaos.bin /tmp/quota-tcg-results --rounds 10
+
+TEST STATUS: not an unconditional hard-real-time acceptance pass.
+The final native GUI set includes a failed round with deadline misses.
+TCG host time also misses deadlines; icount is a separate simulation result.
+Details and all final sample definitions: docs/local-realtime-optimization.txt
 No remote pushes or GitHub writes were performed.

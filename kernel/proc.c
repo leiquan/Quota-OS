@@ -50,6 +50,9 @@ struct proc {
     uint32_t gen;
     int asid;
     int hold;
+    int active_draws; /* Pins held by preemptible display copies, outside qq. */
+    int fault_pending;
+    struct el0_fault fault_report;
     int pages[3];
     uint64_t pa[3];
     uint64_t ttbr;
@@ -101,18 +104,20 @@ static uint64_t cntpct_now(void)
     return v;
 }
 
-static void irq_off_begin(uint64_t *t0)
+struct irq_span { uint64_t start, flags; };
+
+static void irq_off_begin(struct irq_span *span)
 {
-    *t0 = ticks_now();
-    asm volatile("msr daifset, #2" ::: "memory");
+    span->flags = irq_save();
+    span->start = ticks_now();
 }
 
-static void irq_off_end(uint64_t t0)
+static void irq_off_end(struct irq_span span)
 {
-    uint64_t d = ticks_now() - t0;
+    uint64_t d = ticks_now() - span.start;
     if (d > irq_off_max)
         irq_off_max = d;
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(span.flags);
 }
 
 asm(
@@ -442,30 +447,40 @@ static void blit(uint64_t pa, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 int disp_drain(int max)
 {
     int n = 0;
-    uint64_t daif;
-    if (max < 0)
+    /* Pixels must never be copied in exception/IRQ-masked context. */
+    uint64_t flags;
+    asm volatile("mrs %0, daif" : "=r"(flags));
+    if (max <= 0 || (flags & 0x80ull))
         return 0;
-    asm volatile("mrs %0, daif" : "=r"(daif));
-    asm volatile("msr daifset, #2" ::: "memory");
     for (int i = 0; i < EL0_Q_GLOBAL && n < max; i++) {
+        struct irq_span span;
+        struct qent work;
         struct proc *p;
-        if (!qq[i].used)
-            continue;
-        p = &procs[qq[i].slot];
-        if (!p->alive || p->gen != qq[i].gen || qq[i].pa != p->pa[2]) {
-            /* Drop the slot. Do not blit, and do not touch a newer generation's hold. */
-            qq[i].used = 0;
-            stale_drain++;
+        irq_off_begin(&span);
+        if (!qq[i].used) {
+            irq_off_end(span);
             continue;
         }
-        blit(qq[i].pa, qq[i].x, qq[i].y, qq[i].w, qq[i].h);
+        work = qq[i];
+        p = &procs[work.slot];
         qq[i].used = 0;
-        if (p->hold)
-            p->hold--;
+        if (!p->alive || p->gen != work.gen || work.pa != p->pa[2]) {
+            /* A stale queue item cannot debit the next generation. */
+            stale_drain++;
+            irq_off_end(span);
+            continue;
+        }
+        /* Transfer the existing queue hold to a draw pin before unmasking.
+         * Kill may cancel queued work, but cannot free a pinned draw page. */
+        p->active_draws++;
+        irq_off_end(span);
+        blit(work.pa, work.x, work.y, work.w, work.h);
+        irq_off_begin(&span);
+        p->active_draws--;
+        p->hold--;
+        irq_off_end(span);
         n++;
     }
-    if ((daif & 0x80ull) == 0)
-        asm volatile("msr daifclr, #2" ::: "memory");
     return n;
 }
 
@@ -489,10 +504,10 @@ static int cancel_gen(struct proc *p, uint32_t gen)
             p->hold--;
         n++;
     }
-    /* A hold with no queue entry is not a reference. An IRQ could split
-     * drain's clear from its hold update. Do not keep the page for that. */
+    /* An active display copy still owns its pin after leaving the queue.
+     * Revocation must not turn that live reference into a free page. */
     if (slot_entries(p->slot) == 0)
-        p->hold = 0;
+        p->hold = p->active_draws;
     return n;
 }
 
@@ -527,7 +542,8 @@ static int pa_still_queued(uint64_t pa)
 
 static void reap_timed(struct proc *p, const char *why, uint64_t t0, uint64_t p0)
 {
-    uint64_t off0, pct0;
+    struct irq_span off0;
+    uint64_t pct0;
     uint32_t gen_before;
 
     if (!p || !p->alive)
@@ -576,7 +592,7 @@ static void finish_one(struct proc *p)
 {
     int refused = 0;
     uint64_t t1, pct1;
-    if (!p->draining)
+    if (!p->draining || p->active_draws)
         return;
     if (p->hold != 0 || slot_entries(p->slot) != 0) {
         refused = 1;
@@ -626,11 +642,30 @@ static void finish_one(struct proc *p)
         mark_dead(p->vx, p->vy, p->vw, p->vh);
 }
 
+static void report_fault(struct proc *p)
+{
+    const struct el0_fault *f = &p->fault_report;
+    if (!p->fault_pending)
+        return;
+    p->fault_pending = 0;
+    printf("[fault] deferred from_el=%u pid=%d ec=0x%x esr=0x%lx elr=0x%lx far=0x%lx spsr=0x%lx pte=0x%lx level=%d ap_el0=%d class=%s gen %u->%u\n",
+           (unsigned)((f->spsr & 0xfu) == 0 ? 0 : (f->spsr & 0xfu)),
+           f->pid, f->ec, f->esr, f->elr, f->far, f->spsr, f->pte, f->level,
+           f->ap_el0, f->kind, p->gen - 1, p->gen);
+}
+
 void proc_finish_pending(void)
 {
-    for (int i = 0; i < EL0_SLOTS; i++)
+    uint64_t flags;
+    asm volatile("mrs %0, daif" : "=r"(flags));
+    /* Page clearing, framebuffer writes and UART are thread work. */
+    if (flags & 0x80ull)
+        return;
+    for (int i = 0; i < EL0_SLOTS; i++) {
         if (procs[i].draining)
             finish_one(&procs[i]);
+        report_fault(&procs[i]);
+    }
 }
 
 static void classify(struct proc *self, uint64_t far, uint64_t pte, char *out)
@@ -698,15 +733,11 @@ void proc_el0_abort(struct irq_frame *f, uint64_t esr)
         if (t)
             task_dead(t);
     }
-    printf("[fault] from_el=%u pid=%d ec=0x%x esr=0x%lx elr=0x%lx far=0x%lx spsr=0x%lx pte=0x%lx level=%d ap_el0=%d class=%s gen %u->%u\n",
-           (unsigned)((last_fault.spsr & 0xfu) == 0 ? 0 : (last_fault.spsr & 0xfu)),
-           last_fault.pid, last_fault.ec, last_fault.esr, last_fault.elr, last_fault.far,
-           last_fault.spsr, last_fault.pte, last_fault.level, last_fault.ap_el0, last_fault.kind,
-           p ? last_reap.gen_before : 0, p ? last_reap.gen_after : 0);
-    if (p)
-        printf("[fault] reap us=%lu ticks=%lu periods=%lu hold_before=%d cancelled=%d free %d -> %d refused=%d target_us=%u\n",
-               last_reap.us, last_reap.ticks, last_reap.periods, last_reap.hold_before, last_reap.cancelled,
-               last_reap.free_before, last_reap.free_after, last_reap.unmap_refused, EL0_REAP_TARGET_US);
+    if (p) {
+        p->fault_report = last_fault;
+        p->fault_pending = 1;
+    }
+
 }
 
 void proc_el0_svc(struct irq_frame *f)
@@ -909,7 +940,8 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
     }
     spawn_logs++;
     {
-        uint64_t off0, published;
+        struct irq_span off0;
+        uint64_t published;
         irq_off_begin(&off0);
         p->alive = 1;
         task_ready(p->task);

@@ -467,9 +467,9 @@ void task_ready(struct task *t)
 /* 死循环型立刻就绪；周期作业等下一次释放。 */
 void task_start(struct task *t)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     task_ready(t);
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
 }
 
 static void kill_locked(struct task *t)
@@ -486,10 +486,10 @@ void task_kill(struct task *t)
 {
     if (!t)
         return;
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     kill_locked(t);
     rebuild_lists();
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
 }
 
 void sched_bind_slot(struct task *t, int slot)
@@ -632,7 +632,7 @@ static void ipc_snap(uint64_t *v)
 
 void sched_ipc_stats(struct ipc_stats *s, int reset)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     *s = ipc;
     s->t_read = ticks_now();
     if (reset) {
@@ -640,7 +640,7 @@ void sched_ipc_stats(struct ipc_stats *s, int reset)
         ipc.t_reset = ticks_now();
         ipc.infl_reset_run = inflight_run(0);
     }
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
 }
 
 static void kernel_stint(uint64_t a, uint64_t b, int guard)
@@ -1451,12 +1451,12 @@ void handle_unhandled(uint64_t frame_sp, uint64_t kind)
 
 void sched_bench(uint32_t periods)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     bench_left = periods;
     bench_state = 1;
     shell_task->wait_bench = 1;
     shell_task->state = TASK_BLOCKED;
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
     asm volatile("svc #0" ::: "memory");
     while (shell_task->wait_bench)
         asm volatile("svc #0" ::: "memory");
@@ -1465,14 +1465,14 @@ void sched_bench(uint32_t periods)
 int sched_bench_async(uint32_t periods)
 {
     int rc = 0;
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     if (bench_state)
         rc = -1;
     else {
         bench_left = periods;
         bench_state = 1;
     }
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
     return rc;
 }
 
@@ -1483,10 +1483,10 @@ int sched_bench_busy(void)
 
 void sched_bench_stop(void)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     if (bench_state == 2 && bench_left > 1)
         bench_left = 1;
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
 }
 
 uint32_t sched_bench_left(void)

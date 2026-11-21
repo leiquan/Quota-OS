@@ -9,6 +9,19 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* Nested critical sections must preserve exception-entry IRQ masking. */
+static inline uint64_t irq_save(void)
+{
+    uint64_t flags;
+    asm volatile("mrs %0, daif; msr daifset, #2" : "=r"(flags) :: "memory");
+    return flags;
+}
+
+static inline void irq_restore(uint64_t flags)
+{
+    asm volatile("msr daif, %0" :: "r"(flags) : "memory");
+}
+
 /*
  * 资源模型（每个 10ms 周期）：
  *   系统预留  内核自己的 CPU（实测每周期最坏值 + 余量）和内存，不外借。

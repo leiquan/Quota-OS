@@ -73,8 +73,8 @@ def main():
     open(LOG, "w").close()
     cmd = [
         "qemu-system-aarch64",
-        "-machine", "virt,gic-version=2",
-        "-cpu", "cortex-a72",
+        "-machine", os.environ.get("QUOTA_QEMU_MACHINE", "virt,gic-version=2"),
+        "-cpu", os.environ.get("QUOTA_QEMU_CPU", "cortex-a72"),
         "-m", "128M",
         "-display", "none",
         "-nic", "none",
@@ -86,6 +86,8 @@ def main():
         "-serial", "file:" + LOG,
         "-qmp", "unix:" + QMP + ",server,nowait",
     ]
+    if os.environ.get("QUOTA_QEMU_ACCEL"):
+        cmd += ["-accel", os.environ["QUOTA_QEMU_ACCEL"]]
     if len(sys.argv) > 3 and sys.argv[3] == "icount":
         cmd += ["-icount", "shift=4,sleep=off"]
     open(os.path.join(OUT, "command.txt"), "w").write(" ".join(cmd) + "\n")

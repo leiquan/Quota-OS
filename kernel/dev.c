@@ -86,7 +86,7 @@ void klog_end(void)
 
 void klog_flush(void)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     uint32_t n = kl_n, lost = kl_lost;
     static char copy[KLOG_LINES][KLOG_LEN];
     for (uint32_t i = 0; i < n; i++)
@@ -95,7 +95,7 @@ void klog_flush(void)
     kl_pos = 0;
     kl_lost = 0;
     kl[0][0] = 0;
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
     for (uint32_t i = 0; i < n; i++)
         printf("%s\n", copy[i]);
     if (lost)
@@ -179,7 +179,7 @@ uint64_t dev_real_us(const struct sim_dev *d, uint64_t req)
 
 void dev_bind(int devno, struct task *drv)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     rt.d = decl_dev(devno);
     rt.drv = drv;
     rt.busy = 0;
@@ -188,7 +188,7 @@ void dev_bind(int devno, struct task *drv)
     rt.lim_masked = 0;
     rt.tlogs = 0;
     line_update();
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
 }
 
 /* 内核里调用（演示结束时 finish_bench 也会走到）：作业作废、关掉中断线。 */
@@ -209,28 +209,28 @@ static void unbind_locked(void)
 
 void dev_unbind(void)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     if (rt.d)
         unbind_locked();
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
 }
 
 /* 风暴模式：设备不做作业，每 interval_us 拉一次中断线（模型自己的计数器记着拉了几次）。 */
 void dev_storm(uint32_t interval_us)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     rt.storm_iv = us_to_ticks(interval_us);
     rt.storm_t0 = ticks_now();
     rt.storm_handled = 0;
     rt.storm = 1;
     cntp_arm(rt.storm_t0 + rt.storm_iv);
     line_update();
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
 }
 
 void dev_stats_get(struct dev_stats *s, int reset)
 {
-    asm volatile("msr daifset, #2" ::: "memory");
+    uint64_t irq_flags = irq_save();
     *s = st;
     if (rt.storm)
         s->raised += (ticks_now() - rt.storm_t0) / rt.storm_iv;
@@ -240,7 +240,7 @@ void dev_stats_get(struct dev_stats *s, int reset)
             rt.storm_t0 = ticks_now();
         }
     }
-    asm volatile("msr daifclr, #2" ::: "memory");
+    irq_restore(irq_flags);
 }
 
 int dev_busy(void)

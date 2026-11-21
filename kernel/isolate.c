@@ -137,6 +137,26 @@ static void steps(const struct el0_reap *r)
            r->pid, r->us, r->ticks, r->periods, EL0_REAP_TARGET_US, late_of(r));
 }
 
+/* These helpers are called both by threads and by exception paths. A nested
+ * helper must not enable IRQs before schedule() has saved its entry state. */
+static void irq_contract_check(void)
+{
+    struct dev_stats d;
+    uint64_t outer = irq_save();
+    uint64_t inner = irq_save();
+    int ok = (inner & 0x80ull) != 0;
+    irq_restore(inner);
+    sched_bench_stop();
+    dev_stats_get(&d, 0);
+    (void)proc_submit_handle(-1);
+    uint64_t after;
+    asm volatile("mrs %0, daif" : "=r"(after));
+    ok = ok && (after & 0x80ull) != 0;
+    irq_restore(outer);
+    asm volatile("mrs %0, daif" : "=r"(after));
+    printf("[irq-contract] nested_mask=%d restored=%d\n", ok, after == outer);
+}
+
 void isolate_run(void)
 {
     uint64_t fb = 0, fbn = 0, kern = (uint64_t)kmain;
@@ -152,6 +172,7 @@ void isolate_run(void)
     struct task *vsync, *tsrv;
     uint32_t v0 = 0, t0j = 0;
 
+    irq_contract_check();
     printf("[isolate] rounds kill=%d fault=%d target_us=%u (2 periods). Target is not a prior result.\n",
            EL0_KILL_ROUNDS, EL0_FAULT_ROUNDS, EL0_REAP_TARGET_US);
     printf("[isolate] queue rejects when full. Drain runs on this shell, not in display-vsync. Tier-1 is not accepted here.\n");

@@ -531,7 +531,6 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     printf("[menu] serial 6 10 13 14 15 16 18 stay on the coverage page\n");
     printf("[lvgl] ready\n");
 
-    uint64_t t0 = now_us();
     /* The shell stack is 8 KB. These stay off that stack. */
     static char shown[480];
     static char leg_shown[160];
@@ -539,7 +538,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     static struct menu_detail d;
     shown[0] = 0;
     leg_shown[0] = 0;
-    while (now_us() - t0 < 45000000ull) {
+    /* The UI is a service, not a 45-second demonstration. IRQs remain enabled
+     * and the scheduler still charges all rendering/input to Tier 3. */
+    for (;;) {
         int i;
         uint64_t cmax = 0, kmax = 0, smax = 0;
         take_inputs();

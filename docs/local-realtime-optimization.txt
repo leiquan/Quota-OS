@@ -1,0 +1,58 @@
+quota-os 本地实时性优化说明（2026-11-22）
+
+结论
+已实际优化、重建和测试，未达到“一二级绝不卡顿”的绝对验收要求。
+最终原生虚拟化真实时钟 GUI 压力通过8/10轮；第2轮二级作业miss1，第9轮一级miss4/二级short1/二级作业miss1。最终TCG真实时钟0/10通过；TCG虚拟指令时钟10/10通过。保留失败，不用icount或完成样本的低延迟替代真实时钟验收。
+
+代码改动
+1. 显示队列不再在整个像素复制期间关中断。短临界区负责取出队列项及转移引用，复制在线程上下文、可抢占地执行；完成后短临界区释放引用。
+2. active_draws 显式表示队列外正在复制的页引用。终止撤销提交、取消队列时保留这些引用；finish_one 在活跃复制结束前不清页或重用页面，防止把缩短临界区变成释放后使用。
+3. EL0异常只记录定长故障信息并撤销任务；格式化和UART输出延后到普通线程上下文。proc_finish_pending 在IRQ屏蔽上下文拒绝清页、绘图及日志输出。
+4. 调度、设备及进程临界区恢复进入前的DAIF状态，替代无条件开IRQ。避免EL0异常调用reap后在调度器尚未保存入口信息时意外重入。新增硬件运行检查 irq-contract，所有最终隔离运行均通过 nested_mask=1/restored=1。
+5. LVGL循环改为持续运行，去掉45秒演示退出。末轮压力窗口之后继续操作50秒，随后点击+1和输入ab，日志和画面确认 Count:1 / ab；不是长时间持续同一压力负载的性能证明。
+6. 新增Apple Silicon启动器，显式HVF/host CPU/GICv3，不使用icount。HVF不支持此处GICv2配置，不会悄悄回退到TCG。
+7. 新增可复用十轮测试器，支持明确的CPU/中断控制器/加速器/时钟配置，失败返回非零。GUI测试在200周期的三级负载下持续移动软件指针并产生真实virtio输入，同时检查一级错过、二级最低值不足和二级周期作业错过。
+
+模型边界
+未增加一级500/300us槽的长度，未放宽截止期、20us guard、350us系统预留或二级最低值。一级槽仍不外借；二级最低值优先于建议值和三级；LVGL仍在三级EL1任务。这里不声称LVGL已经成为受保护的EL0进程。
+CPU最低值和页面/队列额度是原型模型。调度器与驱动开销的最坏时间没有完成证明；真实硬件总线、DMA、缓存以及第三方驱动未做全面硬件资源隔离验证。EL1 GUI本身并没有EL0级故障隔离。这些条件与宿主机调度共同限制无条件实时保证。
+
+测试依据
+最终bin：661800字节
+SHA256：4a583e2f60b033b9acce86c98eec2a77c5ab9c15f0f46e0bb75fe4b8a5f098d7
+最终elf：870240字节
+SHA256：f5fb9fc0a3bb700105a9002ce0a32dd0abcbf847738183b3484100e4b30323e3
+Clang/LLD23.1.5，QEMU11.1.3，128MB。
+横幅5807cc8是本次优化所基于的本地整合提交；最终提交包含源代码改动及这一份测试镜像。
+
+最终验收目录，仅使用与上述哈希一致的结果：
+  final-hvf-ten-rounds/：HVF、host CPU、GICv3、真实时钟，十轮GUI+隔离。
+  final-tcg-ten-rounds/：TCG、Cortex-A72、GICv2，十轮，每轮host与icount GUI+隔离。
+  十轮测试汇总.txt、final-aggregate.json：逐轮汇总。
+  各轮command.json/command.txt、serial.log、stderr.log/runner.log、result.ppm：实际命令与原始证据。
+  e4-final-icount.log：E4 item9 PASS、item10 PASS、QA DONE。
+  serial-final-native.log：串口select>、1/h/x交互回归通过。
+  after-50s.png：末轮50秒后输入页截图，已目视核验。
+两个最终整套测试运行器退出码均为1，表示失败存在。
+初版ten-rounds和hvf-ten-rounds是发现45秒退出问题之前的测试，仍保存但不列作最终通过证据；smoke和baseline目录也只作对照。
+
+EL0结果与限制
+三种配置各10轮：每轮100次终止、100次故障、16次执行内核后重启、五类访问错误、范围/频率/深度拒绝以及最终账本回到空。功能断言全部通过，旧句柄全部拒绝，回收样本均低于20ms目标。
+“20次近display-vsync释放点终止没有新增miss”仅是该专项的增量检查。很多启动在专项之前已经有miss，绝不等同于整段隔离运行没有miss。
+原生最长关IRQ的CNTVCT墙钟读数3941us；TCG真实时钟22079us；icount10us。包含可能的宿主停顿，不能当作裸机WCET；这些结果也不支持硬实时保证。
+活跃复制引用的逻辑经过代码审查及现有回归；尚未对“复制中途强制终止同一进程”的交错单独做确定性故障注入证明。
+
+原因定位和因果限制
+原生失败第9轮日志记录定时器入口相对已写比较值迟到7732us，远超300/500us槽；被中断者包括纯忙循环game。已定位到迟到入口，未把宿主调度、虚拟化/定时器投递原因进一步分离。没有改时钟、扩大槽或过滤class a来制造通过。
+旧镜像在HVF下单轮GUI也零miss，所以原生加速的收益不能全部归因于代码优化。代码收益是移除显示长临界区、异常串口工作以及错误的中断恢复；其普遍最坏时延并未获证明。
+普通macOS宿主能暂停虚拟CPU，客户内核无法保证此时仍按墙钟执行。要给出可兑现的硬实时承诺，必须约束目标硬件/宿主和负载，验证中断及内核路径最坏时间，再做相应准入。当前版本不满足该证明条件。
+
+本地性
+所有改动保存在 integration/pr2-plus-pr1 独立本地工作树；原始 /Users/leiquan/Desktop/Code/quota-os 未修改。没有push、远端merge或GitHub写入。日志不依赖PR原有docs/结果。
+
+复现
+  bash tools/build-lvgl-macos.sh
+  bash tools/run-macos-gui.sh
+  python3 tools/realtime-rounds.py build/quotaos-lvgl.bin /tmp/quota-hvf --rounds 10 --modes host --accel hvf --cpu host --machine virt,gic-version=3 --longevity-seconds 50
+  python3 tools/realtime-rounds.py build/quotaos-lvgl.bin /tmp/quota-tcg --rounds 10
+运行配置分开验收，任何失败均保留。最终图形实例已打开并保留运行，实际帧见visible-native.png。

@@ -1,3 +1,9 @@
-Local PR2+PR1 integration, rebuilt on macOS. See RUN.txt and SHA256SUMS.
-Default image contains LVGL 9.3.0 and the PR2 EL0 isolation mode.
-Historical PR1/PR2 screenshots and logs under docs/ are not the integration test evidence.
+Local PR2+PR1 optimized image, rebuilt from source on macOS.
+Continuous LVGL 9.3.0 UI, no 45-second demo exit.
+Display pixel copies are preemptible; active pages stay pinned until copying completes.
+EL0 fault UART output is deferred to thread context.
+Nested IRQ critical sections preserve the prior DAIF state.
+No slot length, deadline, Tier2 minimum, guard or system reserve was widened.
+Mac launcher: tools/run-macos-gui.sh (HVF, host CPU, GICv3, real host time).
+See RUN.txt, SHA256SUMS and docs/local-realtime-optimization.txt for limitations.
+Historical docs/ PR logs are not the optimization test evidence.
