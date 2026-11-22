@@ -1,0 +1,3 @@
+Native HVF paired windows, unchanged fe4fdff image. Task Manager opens after the workload starts, so pointer event counts differ. Build activity overlapped part of the run. This is not a controlled estimate of UI overhead.
+closed: 8/10.
+open: 9/10.

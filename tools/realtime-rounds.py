@@ -46,7 +46,7 @@ class QMP:
 def contents(path):
     return path.read_text(errors='replace') if path.exists() else ''
 
-def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0):
+def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0, task_manager=False):
     out.mkdir(parents=True, exist_ok=True)
     sock = '/tmp/quota-rt-%d.sock' % os.getpid()
     Path(sock).unlink(missing_ok=True)
@@ -83,11 +83,26 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0):
                 q.call('input-send-event', {'events':[
                     {'type':'abs','data':{'axis':'x','value':x*32767//(sw-1)}},
                     {'type':'abs','data':{'axis':'y','value':y*32767//(sh-1)}}]})
-            move(x+w//2,y+h//2)
-            time.sleep(.12)
-            q.call('human-monitor-command',{'command-line':'mouse_button 1'})
-            time.sleep(.12)
-            q.call('human-monitor-command',{'command-line':'mouse_button 0'})
+            def press(px, py):
+                move(px, py)
+                time.sleep(.12)
+                q.call('human-monitor-command', {'command-line': 'mouse_button 1'})
+                time.sleep(.12)
+                q.call('human-monitor-command', {'command-line': 'mouse_button 0'})
+
+            press(x + w // 2, y + h // 2)
+            if task_manager:
+                if (sw, sh) != (1280, 800):
+                    raise AssertionError('Task Manager test requires the 1280x800 default layout')
+                time.sleep(.12)
+                press(430, 550)
+                wait_until = time.monotonic() + 1
+                while '[desktop] task manager opened' not in contents(log):
+                    if time.monotonic() >= wait_until:
+                        raise AssertionError('Task Manager did not open')
+                    time.sleep(.02)
+                if '[menu] done 9' in contents(log):
+                    raise AssertionError('Workload finished before Task Manager could be exercised')
             end = time.monotonic()+90
             events = 0
             pause = None
@@ -148,7 +163,7 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0):
                 raise AssertionError('missing T1/T2 results')
             vals = list(map(int,a.groups()+b.groups()))
             return dict(zip(['t1_miss','class_a','class_b','skipped','t2_short','t2_job_miss'],vals),
-                        input_moves=events, requested_pause_ms=pause_ms, host_stop_to_cont_ms=pause, completed=True, longevity_seconds=hold, longevity_pass=longevity_ok, passed=not any(vals) and (events > 0 or not pointer_traffic) and 'PANIC' not in t and longevity_ok is not False,
+                        input_moves=events, task_manager=task_manager, requested_pause_ms=pause_ms, host_stop_to_cont_ms=pause, completed=True, longevity_seconds=hold, longevity_pass=longevity_ok, passed=not any(vals) and (events > 0 or not pointer_traffic) and 'PANIC' not in t and longevity_ok is not False,
                         panic='PANIC' in t)
         finally:
             p.kill()
