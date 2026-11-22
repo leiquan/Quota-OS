@@ -24,7 +24,7 @@ static lv_obj_t *page_cover, *page_apps, *page_files, *page_shell;
 static lv_obj_t *shell_input, *shell_output, *source_entry, *source_icon, *source_caption, *note_icon;
 static lv_obj_t *shell_history, *shell_prompt, *source_dialog, *source_name, *source_error;
 static char shell_transcript[2048];
-static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata;
+static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata, *source_title, *source_metadata;
 static uint64_t save_since;
 static struct app_display_stats save_before;
 static lv_obj_t *task_body;
@@ -576,7 +576,7 @@ static void shell_help(char *out, unsigned capacity)
                     "./hello   Run in Tier 3", name);
     else
         lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
-                    "In Notes, choose C Example, then Save As… to save a .c file.\n"
+                    "In Notes, choose C Example, then Save As... to save a .c file.\n"
                     "Return here to compile and run it.");
 }
 
@@ -687,7 +687,7 @@ static void on_group(lv_event_t *e)
                 "    puts(\"Hello, Quota OS!\");\n"
                 "    return 0;\n"
                 "}");
-            lv_label_set_text(note_status, "Example inserted. Choose Save As…");
+            lv_label_set_text(note_status, "Example inserted. Choose Save As...");
         } else {
             lv_label_set_text(note_status, "Clear the editor to insert an example.");
         }
@@ -813,6 +813,27 @@ static lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, ui
     lv_label_set_text(o, text);
     lv_obj_set_style_text_color(o, lv_color_hex(color), 0);
     return o;
+}
+
+static lv_obj_t *files_row(lv_obj_t *parent, const char *name, uintptr_t action,
+                           lv_obj_t **title, lv_obj_t **metadata)
+{
+    lv_obj_t *row = lv_button_create(parent);
+    lv_obj_set_pos(row, 20, 96);
+    lv_obj_set_size(row, 458, 66);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_radius(row, 12, 0);
+    lv_obj_set_style_shadow_width(row, 0, 0);
+    lv_obj_set_style_bg_color(row, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(0xdbe3f0), 0);
+    lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_add_event_cb(row, on_group, LV_EVENT_CLICKED, (void *)action);
+    lv_obj_t *file_icon = desk_label(row, 18, 19, LV_SYMBOL_FILE, 0x327b90);
+    lv_obj_set_style_text_font(file_icon, &lv_font_montserrat_24, 0);
+    *title = desk_label(row, 60, 9, name, 0x243650);
+    *metadata = desk_label(row, 60, 36, "", 0x64748b);
+    desk_label(row, 428, 23, LV_SYMBOL_RIGHT, 0x75839a);
+    return row;
 }
 
 static lv_obj_t *desktop_file(lv_obj_t *screen, int x, int y, const char *name,
@@ -1504,7 +1525,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *save = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save", 214);
     lv_obj_set_pos(save, 398, 283);
     lv_obj_set_size(save, 112, 40);
-    lv_obj_t *save_source = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save As…", 232);
+    lv_obj_t *save_source = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save As...", 232);
     lv_obj_set_pos(save_source, 156, 283);
     lv_obj_set_width(save_source, 132);
     lv_obj_t *example = add_row(page_input, 283, 0xffffff, 0xdce4ef, "C Example", 236);
@@ -1608,27 +1629,13 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     select_monitor_tab(SYSTEM_TASK);
 
     page_files = desktop_window(screen, 180, 156, 500, 286, "Files");
-    desk_label(page_files, 24, 68, "On this device", 0x536782);
-    file_entry = lv_button_create(page_files);
-    lv_obj_set_pos(file_entry, 20, 96);
-    lv_obj_set_size(file_entry, 458, 78);
-    lv_obj_set_style_pad_all(file_entry, 0, 0);
-    lv_obj_set_style_radius(file_entry, 12, 0);
-    lv_obj_set_style_shadow_width(file_entry, 0, 0);
-    lv_obj_set_style_bg_color(file_entry, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_border_color(file_entry, lv_color_hex(0xdbe3f0), 0);
-    lv_obj_set_style_border_width(file_entry, 1, 0);
-    lv_obj_add_event_cb(file_entry, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)213);
-    lv_obj_t *file_icon = desk_label(file_entry, 18, 22, LV_SYMBOL_FILE, 0x327b90);
-    lv_obj_set_style_text_font(file_icon, &lv_font_montserrat_24, 0);
-    desk_label(file_entry, 64, 15, "Note.txt", 0x243650);
-    file_metadata = desk_label(file_entry, 64, 42, "", 0x64748b);
-    desk_label(file_entry, 428, 30, LV_SYMBOL_RIGHT, 0x75839a);
+    desk_label(page_files, 24, 68, "Desktop", 0x536782);
+    lv_obj_t *note_title;
+    file_entry = files_row(page_files, "Note.txt", 213, &note_title, &file_metadata);
+    source_entry = files_row(page_files, "", 233, &source_title, &source_metadata);
     file_empty = desk_label(page_files, 28, 116, "", 0x64748b);
     lv_obj_add_flag(file_entry, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
-    source_entry = add_row(page_files, 185, 0xffffff, 0xdbe3f0, "C source", 233);
-    lv_obj_set_pos(source_entry, 20, 185);
     source_icon = desktop_file(screen, 12, 66, "", ".c", 233, &source_caption);
     note_icon = desktop_file(screen, 12, 164, "Note.txt", "TXT", 213, NULL);
     monitor_visible(source_entry, 0);
@@ -1757,7 +1764,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             monitor_visible(note_icon, note_disk_text() != NULL);
             const char *name = note_disk_source_name();
             if (name) {
-                lv_label_set_text(lv_obj_get_child(source_entry, 0), name);
+                lv_obj_set_y(source_entry, note_disk_text() ? 168 : 96);
+                lv_label_set_text(source_title, name);
+                lv_label_set_text_fmt(source_metadata, "C source  /  %u bytes",
+                                      (unsigned)lv_strlen(note_disk_source()));
                 lv_label_set_text(source_caption, name);
             }
             monitor_visible(source_entry, name != NULL);
