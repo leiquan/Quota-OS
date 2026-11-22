@@ -1,6 +1,10 @@
 #!/bin/bash
 set -eu
 cd "$(dirname "$0")/.."
+if ! command -v qemu-system-aarch64 >/dev/null; then
+    echo "qemu-system-aarch64 is required. Install QEMU with ARM system emulation and retry." >&2
+    exit 127
+fi
 kernel=${QUOTA_KERNEL:-prebuilt/quotaos.bin}
 test -f "$kernel" || { echo "Kernel image not found: $kernel" >&2; exit 1; }
 disk=${QUOTA_NOTES_DISK:-"${XDG_DATA_HOME:-$HOME/.local/share}/quota-os/notes.raw"}

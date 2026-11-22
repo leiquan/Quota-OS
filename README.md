@@ -8,6 +8,8 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 
 ## Run the desktop
 
+[Download the desktop preview](https://github.com/leiquan/Quota-OS/releases/latest) for the standalone ARM64 image and launch commands. If you prefer a local checkout, use the launcher below.
+
 Install Git and QEMU with ARM system emulation (macOS: `brew install git qemu`; Ubuntu/Debian: `sudo apt install git qemu-system-arm qemu-system-gui`). From a graphical desktop, run:
 
 ```sh
