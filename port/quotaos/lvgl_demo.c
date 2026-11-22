@@ -22,12 +22,18 @@ static lv_obj_t *detail;
 static lv_obj_t *page_home;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover;
-static lv_obj_t *page_tasks;
-static lv_obj_t *task_rows;
+static lv_obj_t *task_body;
+static lv_obj_t *tab_live, *tab_tests, *notes_button, *about_button;
+static lv_obj_t *app_cards[3];
+static lv_obj_t *app_rate[3], *app_status[3];
+static lv_obj_t *clock_label;
+static uint64_t rtc_base;
+static int tests_selected;
+static lv_obj_t *task_rows[3];
 
 static void show_page(int which)
 {
-    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : page_tasks;
+    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : page_cover;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(win);
 }
@@ -148,8 +154,9 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
         int end = area->x2 + 1;
         int reserved = 0;
         if (mode) {
-            if ((y >= APP_DASH_Y && y < APP_DASH_Y + APP_METER_H) ||
-                (mode == 2 && y >= APP_VIDEO_Y && y < APP_VIDEO_Y + APP_METER_H))
+            if (y >= APP_DASH_Y && y < APP_DASH_Y + APP_DASH_H)
+                reserved = APP_DASH_W;
+            else if (mode == 2 && y >= APP_VIDEO_Y && y < APP_VIDEO_Y + APP_METER_H)
                 reserved = APP_METER_W;
             else if (y >= APP_MUSIC_Y && y < APP_MUSIC_Y + APP_MUSIC_SIZE)
                 reserved = APP_MUSIC_SIZE;
@@ -280,6 +287,26 @@ static void on_click(lv_event_t *e)
     printf("[lvgl] notes cleared\n");
 }
 
+static void select_monitor_tab(int tests)
+{
+    tests_selected = tests;
+    if (tests) {
+        lv_obj_add_flag(task_body, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(notes_button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(about_button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(menu_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(detail, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_remove_flag(task_body, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(notes_button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(about_button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(menu_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(detail, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_set_style_bg_color(tab_live, lv_color_hex(tests ? 0xffffff : 0xe0edff), 0);
+    lv_obj_set_style_bg_color(tab_tests, lv_color_hex(tests ? 0xe0edff : 0xffffff), 0);
+}
+
 static void on_group(lv_event_t *e)
 {
     int id = (int)(uintptr_t)lv_event_get_user_data(e);
@@ -307,9 +334,24 @@ static void on_group(lv_event_t *e)
         printf("[lvgl] click and key samples are taken from real events. Panel light is not measured.\n");
         return;
     }
-    if (id == 203) {
-        show_page(3);
+    if (id == 209) {
+        demo_menu_start(9);
+        select_monitor_tab(0);
         printf("[desktop] task manager opened\n");
+        return;
+    }
+    if (id == 203 || id == 204) {
+        show_page(0);
+        select_monitor_tab(id == 204);
+        printf("[desktop] %s\n", id == 203 ? "task manager opened" : "system tests opened");
+        return;
+    }
+    if (id >= 205 && id <= 207) {
+        if (app_cards[id - 205]) {
+            for (int i = 0; i < 3; i++)
+                lv_obj_set_style_outline_width(app_cards[i], i == id - 205 ? 2 : 0, 0);
+            printf("[desktop] app selected %d\n", id - 205 + 1);
+        }
         return;
     }
     if (id == 200) {
@@ -451,7 +493,7 @@ static lv_obj_t *dock_item(lv_obj_t *dock, int x, uint32_t color, const char *ic
     return b;
 }
 
-static void app_card(lv_obj_t *screen, int y, const char *title, const char *detail)
+static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail)
 {
     lv_obj_t *card = lv_obj_create(screen);
     lv_obj_set_pos(card, 860, y);
@@ -464,41 +506,101 @@ static void app_card(lv_obj_t *screen, int y, const char *title, const char *det
     lv_obj_t *heading = desk_label(card, 30, 16, title, 0x182338);
     lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
     desk_label(card, 30, 49, detail, 0x475a7a);
+    lv_obj_set_style_outline_color(card, lv_color_hex(0x8bf2cb), 0);
+    return card;
+}
+
+static int leap_year(unsigned year)
+{
+    return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+}
+
+static void refresh_clock(void)
+{
+    static uint32_t last = UINT32_MAX;
+    if (!rtc_base)
+        return;
+    uint32_t seconds = mmio_rd(rtc_base);
+    if (seconds == last)
+        return;
+    last = seconds;
+    unsigned days = seconds / 86400u, year = 1970, month = 0;
+    while (days >= 365u + leap_year(year))
+        days -= 365u + leap_year(year++);
+    static const unsigned month_days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    while (month < 11) {
+        unsigned n = month_days[month] + (month == 1 && leap_year(year));
+        if (days < n)
+            break;
+        days -= n;
+        month++;
+    }
+    unsigned time = seconds % 86400u;
+    lv_label_set_text_fmt(clock_label, "%04u-%02u-%02u  %02u:%02u:%02u UTC",
+                          year, month + 1, days + 1, time / 3600,
+                          time / 60 % 60, time % 60);
+}
+
+static void refresh_app_stats(uint64_t elapsed)
+{
+    static struct app_display_stats previous;
+    struct app_display_stats current;
+    app_display_read(&current);
+    if (elapsed) {
+        for (int i = 0; i < 3; i++) {
+            uint32_t frames = current.frames[i] - previous.frames[i];
+            unsigned fps = (unsigned)(((uint64_t)frames * 1000000u + elapsed / 2) / elapsed);
+            char rate[32];
+            lv_snprintf(rate, sizeof rate, "%u FPS (%s)", fps,
+                        clock_is_icount() ? "icount" : "guest clock");
+            if (strcmp(rate, lv_label_get_text(app_rate[i])))
+                lv_label_set_text(app_rate[i], rate);
+            const char *status = frames ? "Updating" : "No new frames";
+            if (i == 0)
+                status = current.speed_misses > previous.speed_misses ? "Deadline missed" :
+                         frames ? "No new misses" : "No new frames";
+            else if (i == 1 && app_desktop_mode() == 1)
+                status = "Not running";
+            else if (i == 1 && current.video_paused)
+                status = "Test pause";
+            else if (i == 2 && current.music_held)
+                status = "Demo hold (Tier 3)";
+            if (strcmp(status, lv_label_get_text(app_status[i])))
+                lv_label_set_text(app_status[i], status);
+        }
+    }
+    previous = current;
 }
 
 static void refresh_tasks(void)
 {
-    if (lv_obj_has_flag(page_tasks, LV_OBJ_FLAG_HIDDEN))
+    if (tests_selected || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
         return;
-    static char rows[3072];
-    static const char *const heading[] = {
-        "Tier 1  /  Fixed slots", "Tier 2  /  Reserved minimum", "Tier 3  /  Spare CPU"
-    };
-    size_t used = 0;
+    static char rows[4096];
     for (int tier = TIER1; tier <= TIER3; tier++) {
-        used += lv_snprintf(rows + used, sizeof rows - used, "%s\n", heading[tier - TIER1]);
-        int count = 0;
+        size_t used = 0;
+        rows[0] = '\0';
         for (int i = 0; i < MAX_TASKS; i++) {
             const struct task *t = sched_task_at(i);
             if (!t || t->tier != tier || t->state == TASK_EMPTY || t->state == TASK_DEAD)
                 continue;
             const char *state = t->state == TASK_RUNNING ? "Running" :
                                 t->state == TASK_READY ? "Ready" : "Waiting";
-            if (used + 64 >= sizeof rows)
-                return;
+            if (used + 96 >= sizeof rows)
+                break;
             if (tier == TIER2)
                 used += lv_snprintf(rows + used, sizeof rows - used,
-                    "  %s   %s   %lu us / 10 ms\n", t->name, state,
+                    "%s\n%s  /  %lu us per 10 ms\n\n", t->name, state,
                     (unsigned long)ticks_to_us(t->min_t));
             else
                 used += lv_snprintf(rows + used, sizeof rows - used,
-                    "  %s   %s\n", t->name, state);
-            count++;
+                    "%s\n%s\n\n", t->name, state);
         }
-        used += lv_snprintf(rows + used, sizeof rows - used, "%s\n", count ? "" : "  None\n");
+        lv_obj_t *label = task_rows[tier - TIER1];
+        const char *value = used ? rows : "No active tasks";
+        if (strcmp(value, lv_label_get_text(label)))
+            lv_label_set_text(label, value);
     }
-    if (strcmp(rows, lv_label_get_text(task_rows)))
-        lv_label_set_text(task_rows, rows);
 }
 
 int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
@@ -549,34 +651,52 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
     desk_label(top, 26, 13, "Quota OS", 0xffffff);
 
+    if (dtb_find_bases("arm,pl031", &rtc_base, 1) > 0) {
+        clock_label = desk_label(top, 0, 0, "", 0xdce8ff);
+        lv_obj_align(clock_label, LV_ALIGN_RIGHT_MID, -26, 0);
+        refresh_clock();
+    }
+
     int apps = app_desktop_mode();
     if (apps) {
-        app_card(screen, 116, "Dashboard", "Tier 1  /  100 updates per virtual second");
-        app_card(screen, 281, "Video", apps == 2 ?
+        app_cards[0] = app_card(screen, 116, "Speedometer", "Tier 1  /  Simulated speed (km/h)");
+        app_cards[1] = app_card(screen, 281, "Dashcam", apps == 2 ?
                  "Tier 2  /  25 simulated frames per second" : "Optional  /  Not running");
-        app_card(screen, 446, "Music", "Tier 3  /  EL0 simulated playback");
+        app_cards[2] = app_card(screen, 446, "Music Player", "Tier 3  /  EL0 simulated playback");
+        for (int i = 0; i < 3; i++) {
+            app_rate[i] = desk_label(app_cards[i], 184, 84, "Measuring FPS", 0x263552);
+            app_status[i] = desk_label(app_cards[i], 184, 109, "", 0x475a7a);
+        }
     }
     page_home = desktop_window(screen, 88, 124, 720, 460, "Activity Monitor");
     menu_list = lv_obj_create(page_home);
-    lv_obj_set_pos(menu_list, 0, 52);
-    lv_obj_set_size(menu_list, 220, 408);
+    lv_obj_set_pos(menu_list, 0, 100);
+    lv_obj_set_size(menu_list, 220, 360);
     lv_obj_set_style_bg_color(menu_list, lv_color_hex(0xeaf0fa), 0);
     lv_obj_set_style_border_width(menu_list, 0, 0);
     lv_obj_set_style_pad_all(menu_list, 12, 0);
     lv_obj_set_style_radius(menu_list, 0, 0);
     lv_obj_remove_flag(menu_list, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *inb = add_row(menu_list, 36, 0xffffff, 0xdbe3f0, "Notes", 200);
-    lv_obj_t *load9 = add_row(menu_list, 90, 0xe0edff, 0xc5d9fa, "Run workload", 9);
-    add_row(menu_list, 144, 0xffffff, 0xdbe3f0, "Stop workload", 103);
-    add_row(menu_list, 198, 0xffffff, 0xdbe3f0, "Service check", 5);
-    add_row(menu_list, 252, 0xffffff, 0xdbe3f0, "App reservation", 2);
-    lv_obj_t *covb = add_row(menu_list, 306, 0xffffff, 0xdbe3f0, "About this system", 201);
-    detail = desk_label(page_home, 252, 84, "No workload results", 0x263552);
+    lv_obj_t *load9 = add_row(menu_list, 20, 0xe0edff, 0xc5d9fa, "Run workload", 9);
+    add_row(menu_list, 74, 0xffffff, 0xdbe3f0, "Stop workload", 103);
+    add_row(menu_list, 128, 0xffffff, 0xdbe3f0, "Service check", 5);
+    add_row(menu_list, 182, 0xffffff, 0xdbe3f0, "App reservation", 2);
+    lv_obj_t *watch = add_row(menu_list, 236, 0xe0edff, 0xc5d9fa, "Run & view activity", 209);
+    notes_button = add_row(page_home, 55, 0xffffff, 0xdbe3f0, "Notes", 200);
+    lv_obj_set_pos(notes_button, 450, 55);
+    lv_obj_set_width(notes_button, 110);
+    about_button = add_row(page_home, 55, 0xffffff, 0xdbe3f0, "About", 201);
+    lv_obj_set_pos(about_button, 574, 55);
+    lv_obj_set_width(about_button, 110);
+    detail = desk_label(page_home, 252, 124, "No workload results", 0x263552);
     lv_obj_set_size(detail, 436, 338);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    lv_obj_t *tasks_button = add_row(page_home, 409, 0xe4ecff, 0xc5d9fa, "Task Manager", 203);
-    lv_obj_set_pos(tasks_button, 252, 409);
-    lv_obj_set_width(tasks_button, 180);
+    tab_live = add_row(page_home, 55, 0xe0edff, 0xc5d9fa, "Activity", 203);
+    lv_obj_set_pos(tab_live, 12, 55);
+    lv_obj_set_width(tab_live, 194);
+    tab_tests = add_row(page_home, 55, 0xffffff, 0xc5d9fa, "System Tests", 204);
+    lv_obj_set_pos(tab_tests, 216, 55);
+    lv_obj_set_width(tab_tests, 194);
     legend = lv_label_create(page_home);
     lv_obj_add_flag(legend, LV_OBJ_FLAG_HIDDEN);
 
@@ -617,20 +737,44 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_width(back, 440);
     lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
 
-    page_tasks = desktop_window(screen, app_desktop_mode() ? 250 : 575, 145, 570, 522, "Task Manager");
-    lv_obj_t *task_body = lv_obj_create(page_tasks);
-    lv_obj_set_pos(task_body, 12, 63);
-    lv_obj_set_size(task_body, 544, 444);
+    task_body = lv_obj_create(page_home);
+    lv_obj_set_pos(task_body, 12, 108);
+    lv_obj_set_size(task_body, 694, 336);
     lv_obj_set_style_bg_opa(task_body, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(task_body, 0, 0);
-    lv_obj_set_scroll_dir(task_body, LV_DIR_VER);
-    task_rows = desk_label(task_body, 0, 0, "", 0x263552);
-    lv_obj_set_width(task_rows, 498);
-    lv_obj_add_flag(page_tasks, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_pad_all(task_body, 0, 0);
+    lv_obj_remove_flag(task_body, LV_OBJ_FLAG_SCROLLABLE);
+    static const char *const tiers[] = {"Tier 1", "Tier 2", "Tier 3"};
+    static const char *const captions[] = {"Fixed slots", "Reserved CPU", "Spare CPU"};
+    static const uint32_t accent[] = {0x23785c, 0x395cc0, 0x7851a8};
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *card = lv_obj_create(task_body);
+        lv_obj_set_pos(card, i * 232, 0);
+        lv_obj_set_size(card, 216, 322);
+        lv_obj_set_style_radius(card, 12, 0);
+        lv_obj_set_style_pad_all(card, 0, 0);
+        lv_obj_set_style_border_width(card, 1, 0);
+        lv_obj_set_style_border_color(card, lv_color_hex(0xdbe3f0), 0);
+        lv_obj_set_style_bg_color(card, lv_color_hex(0xffffff), 0);
+        lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+        desk_label(card, 16, 14, tiers[i], accent[i]);
+        desk_label(card, 16, 39, captions[i], 0x475a7a);
+        lv_obj_t *list = lv_obj_create(card);
+        lv_obj_set_pos(list, 10, 72);
+        lv_obj_set_size(list, 194, 234);
+        lv_obj_set_style_pad_all(list, 5, 0);
+        lv_obj_set_style_bg_color(list, lv_color_hex(0xf3f6fb), 0);
+        lv_obj_set_style_border_width(list, 0, 0);
+        lv_obj_set_scroll_dir(list, LV_DIR_VER);
+        task_rows[i] = desk_label(list, 0, 0, "", 0x263552);
+        lv_obj_set_width(task_rows[i], 176);
+    }
+    select_monitor_tab(0);
 
     lv_obj_t *dock = lv_obj_create(screen);
-    lv_obj_set_pos(dock, ((int)w - 306) / 2, (int)h - 84);
-    lv_obj_set_size(dock, 306, 72);
+    int dock_width = apps ? 406 : 306;
+    lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - 84);
+    lv_obj_set_size(dock, dock_width, 72);
     lv_obj_set_style_pad_all(dock, 0, 0);
     lv_obj_set_style_radius(dock, 16, 0);
     lv_obj_set_style_bg_color(dock, lv_color_hex(0xc9c9e6), 0);
@@ -638,8 +782,14 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(dock, 1, 0);
     lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
     dock_item(dock, 12, 0x4a6bc2, LV_SYMBOL_BARS, "Monitor", 202);
-    dock_item(dock, 112, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
-    dock_item(dock, 212, 0x7160b5, LV_SYMBOL_LIST, "About", 201);
+    if (apps) {
+        dock_item(dock, 112, 0x23785c, LV_SYMBOL_CHARGE, "Speed", 205);
+        dock_item(dock, 212, 0x395cc0, LV_SYMBOL_VIDEO, "Dashcam", 206);
+        dock_item(dock, 312, 0x7851a8, LV_SYMBOL_AUDIO, "Music", 207);
+    } else {
+        dock_item(dock, 112, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
+        dock_item(dock, 212, 0x7160b5, LV_SYMBOL_LIST, "About", 201);
+    }
     build_cursor();
     lv_obj_t *cursor = lv_image_create(lv_layer_sys());
     lv_image_set_src(cursor, &cursor_dsc);
@@ -649,13 +799,22 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_update_layout(screen);
     {
         lv_area_t box;
+        lv_obj_get_coords(tab_tests, &box);
+        printf("[lvgl] tests box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+               (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
+        lv_obj_get_coords(tab_live, &box);
+        printf("[lvgl] activity box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+               (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
+        lv_obj_get_coords(watch, &box);
+        printf("[lvgl] watch box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+               (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(load9, &box);
         printf("[lvgl] load9 box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
-        lv_obj_get_coords(inb, &box);
+        lv_obj_get_coords(notes_button, &box);
         printf("[lvgl] input box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
-        lv_obj_get_coords(covb, &box);
+        lv_obj_get_coords(about_button, &box);
         printf("[lvgl] cover box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(back, &box);
@@ -689,6 +848,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         static uint64_t tasks_at;
         if (panel_now - tasks_at >= 500000) {
             refresh_tasks();
+            if (clock_label)
+                refresh_clock();
+            if (apps)
+                refresh_app_stats(tasks_at ? panel_now - tasks_at : 0);
             tasks_at = panel_now;
         }
         demo_menu_detail(&d);

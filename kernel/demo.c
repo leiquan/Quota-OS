@@ -1147,12 +1147,24 @@ static uint32_t *volatile app_surface;
 static uint32_t app_stride;
 static volatile uint32_t dashboard_frames, video_frames;
 static volatile int video_stalled;
+static uint32_t music_frames;
+static int music_held;
 static struct task *dashboard_demo;
 static struct running_app *video_demo;
 static int64_t music_demo;
 static int app_test_phase;
 static uint64_t app_test_period;
 static uint32_t d0, v0, m0, misses0, dn, vn, mn, dm;
+
+void app_display_read(struct app_display_stats *stats)
+{
+    stats->frames[0] = dashboard_frames;
+    stats->frames[1] = video_frames;
+    stats->frames[2] = music_frames;
+    stats->speed_misses = dashboard_demo ? dashboard_demo->misses : 0;
+    stats->video_paused = video_stalled;
+    stats->music_held = music_held;
+}
 
 int app_desktop_mode(void)
 {
@@ -1174,7 +1186,31 @@ void app_demo_dashboard_frame(void)
 {
     if (!app_surface)
         return;
-    app_meter(APP_DRAW_X, APP_DASH_Y, ++dashboard_frames, 0x35dfa0);
+    static const uint8_t masks[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66,
+                                    0x6d, 0x7d, 0x07, 0x7f, 0x6f};
+    static const uint8_t segments[7][4] = {
+        {3,0,12,3}, {14,3,3,10}, {14,15,3,10}, {3,25,12,3},
+        {0,15,3,10}, {0,3,3,10}, {3,12,12,3}
+    };
+    unsigned speed = 45 + (++dashboard_frames / 10) % 76;
+    uint32_t *fb = app_surface;
+    for (unsigned y = 0; y < APP_DASH_H; y++)
+        for (unsigned x = 0; x < APP_DASH_W; x++)
+            fb[(APP_DASH_Y + y) * app_stride + APP_DRAW_X + x] = 0x182338;
+    for (unsigned i = 0, divisor = 100; i < 3; i++, divisor /= 10) {
+        if (!i && speed < 100)
+            continue;
+        unsigned mask = masks[speed / divisor % 10];
+        for (unsigned j = 0; j < 7; j++) {
+            if (!(mask & (1u << j)))
+                continue;
+            const uint8_t *r = segments[j];
+            for (unsigned y = 0; y < r[3]; y++)
+                for (unsigned x = 0; x < r[2]; x++)
+                    fb[(APP_DASH_Y + r[1] + y) * app_stride +
+                       APP_DRAW_X + i * 20 + r[0] + x] = 0x35dfa0;
+        }
+    }
 }
 
 static void app_demo_video_frame(void)
@@ -1196,8 +1232,11 @@ void app_desktop_poll(void)
 {
     if (!app_surface)
         return;
-    disp_drain(2);
     uint64_t period = sched_period_now();
+    /* Defer only the music viewport to demonstrate a bounded Tier-3 queue. */
+    music_held = period % 100 >= 50;
+    if (!music_held)
+        music_frames += (uint32_t)disp_drain(2);
     if (!app_test_phase) {
         app_test_period = period;
         app_test_phase = 1;

@@ -86,29 +86,53 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0, task_manager=Fal
                 q.call('input-send-event', {'events':[
                     {'type':'abs','data':{'axis':'x','value':x*32767//(sw-1)}},
                     {'type':'abs','data':{'axis':'y','value':y*32767//(sh-1)}}]})
-            def press(px, py):
+            def press(px, py, delay=.12):
                 move(px, py)
-                time.sleep(.12)
+                time.sleep(delay)
                 q.call('human-monitor-command', {'command-line': 'mouse_button 1'})
-                time.sleep(.12)
+                time.sleep(delay)
                 q.call('human-monitor-command', {'command-line': 'mouse_button 0'})
 
-            if not task_manager or mode != 'icount':
-                press(x + w // 2, y + h // 2)
-            if task_manager:
+            def center(name):
+                box = re.search(rf'\[lvgl\] {name} box (\d+),(\d+) (\d+)x(\d+)', text)
+                if not box:
+                    return None
+                bx, by, bw, bh = map(int, box.groups())
+                return bx + bw // 2, by + bh // 2
+
+            tests_tab, watch_button = center("tests"), center("watch")
+            if tests_tab:
+                press(*tests_tab)
+                if task_manager:
+                    if not watch_button:
+                        raise AssertionError('Run & view activity button missing')
+                    press(*watch_button, delay=.055)
+                    ack = time.monotonic() + 1
+                    while '[desktop] task manager opened' not in contents(log):
+                        if time.monotonic() >= ack:
+                            raise AssertionError('Activity tab did not open')
+                        time.sleep(.005)
+                    clicked = contents(log)
+                    started = clicked.find('[menu] running 9')
+                    opened = clicked.find('[desktop] task manager opened')
+                    done = clicked.find('[menu] done 9')
+                    if started < 0 or opened < started or (done >= 0 and done < opened):
+                        raise AssertionError('Activity tab was not exercised during the workload')
+                else:
+                    press(x + w // 2, y + h // 2)
+            elif task_manager:
                 if (sw, sh) != (1280, 800):
                     raise AssertionError('Task Manager test requires the 1280x800 default layout')
-                time.sleep(.12)
-                press(430, 550)
-                wait_until = time.monotonic() + 1
-                while '[desktop] task manager opened' not in contents(log):
-                    if time.monotonic() >= wait_until:
-                        raise AssertionError('Task Manager did not open')
-                    time.sleep(.02)
                 if mode == 'icount':
+                    press(430, 550)
                     press(x + w // 2, y + h // 2)
-                elif '[menu] done 9' in contents(log):
-                    raise AssertionError('Workload finished before Task Manager could be exercised')
+                else:
+                    press(x + w // 2, y + h // 2)
+                    press(430, 550)
+                if '[desktop] task manager opened' not in contents(log):
+                    raise AssertionError('Task Manager did not open')
+            else:
+                press(x + w // 2, y + h // 2)
             end = time.monotonic()+90
             events = 0
             pause = None

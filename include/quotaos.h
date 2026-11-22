@@ -277,6 +277,8 @@ const struct app_manifest *resource_catalog(int *count);
 #define APP_DESK_EDGE 840
 #define APP_DRAW_X 890
 #define APP_DASH_Y 205
+#define APP_DASH_W 60
+#define APP_DASH_H 28
 #define APP_VIDEO_Y 370
 #define APP_MUSIC_Y 535
 #define APP_METER_W 128
@@ -284,6 +286,12 @@ const struct app_manifest *resource_catalog(int *count);
 #define APP_MUSIC_SIZE 32
 int app_desktop_mode(void);
 void app_desktop_poll(void);
+struct app_display_stats {
+    uint32_t frames[3];
+    uint32_t speed_misses;
+    int video_paused, music_held;
+};
+void app_display_read(struct app_display_stats *stats);
 void app_demo_dashboard_frame(void);
 void sched_init(void);
 struct task *sched_current(void);
