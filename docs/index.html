@@ -9,7 +9,7 @@
 <script src="site.js" defer></script>
 </head>
 <body>
-<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="Main navigation"><a href="#home">Home</a><a href="#model">Features</a><a href="#evidence">Test</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="zh.html" lang="zh-CN">中文</a></nav></header>
+<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="Main navigation"><a href="#home">Home</a><a href="#model">Features</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="zh.html" lang="zh-CN">中文</a></nav></header>
 <main>
 <section class="wrap hero" id="home">
 <p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
@@ -40,6 +40,17 @@
 cd Quota-OS
 bash tools/run-files.sh</code></pre>
 <p><a href="https://github.com/leiquan/Quota-OS#readme">Read the README and test records ↗</a></p>
+</section>
+<section class="wrap section" id="dev">
+<h2>Development</h2>
+<h3>Build the desktop from source</h3>
+<p>On macOS with Homebrew LLVM and LLD installed, run these commands from the repository root. QEMU ARM64 runs the resulting kernel with one Cortex-A35 core and 64 MiB of RAM.</p>
+<pre><code>bash tools/build-lvgl-macos.sh
+qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 64M \
+  -nic none -device ramfb -device virtio-tablet-device -device virtio-keyboard-device \
+  -icount shift=4,sleep=off -kernel build/quotaos-lvgl.bin -append apps-video</code></pre>
+<h3>C development inside Quota OS</h3>
+<p>In development. The intended workflow is to save C source in Notes, compile it in Shell, and run the executable as a quota-limited EL0 application.</p>
 </section>
 </main>
 <footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>

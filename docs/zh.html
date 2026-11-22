@@ -9,7 +9,7 @@
 <script src="site.js" defer></script>
 </head>
 <body>
-<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="主导航"><a href="#home">Home</a><a href="#model">Features</a><a href="#evidence">Test</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="index.html" lang="en">English</a></nav></header>
+<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="主导航"><a href="#home">Home</a><a href="#model">Features</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="index.html" lang="en">English</a></nav></header>
 <main>
 <section class="wrap hero" id="home">
 <p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
@@ -40,6 +40,17 @@
 cd Quota-OS
 bash tools/run-files.sh</code></pre>
 <p><a href="https://github.com/leiquan/Quota-OS#readme">查看 README 和完整测试记录 ↗</a></p>
+</section>
+<section class="wrap section" id="dev">
+<h2>开发</h2>
+<h3>从源码构建桌面</h3>
+<p>在装好 Homebrew LLVM 和 LLD 的 macOS 上，从仓库根目录执行以下命令。QEMU 使用单核 Cortex-A35 和 64 MiB 内存运行构建出的内核。</p>
+<pre><code>bash tools/build-lvgl-macos.sh
+qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 64M \
+  -nic none -device ramfb -device virtio-tablet-device -device virtio-keyboard-device \
+  -icount shift=4,sleep=off -kernel build/quotaos-lvgl.bin -append apps-video</code></pre>
+<h3>在 Quota OS 内开发 C 应用</h3>
+<p>开发中。目标是在 Notes 保存 C 源码，在 Shell 编译，再把产物作为受配额限制的 EL0 应用运行。</p>
 </section>
 </main>
 <footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>
