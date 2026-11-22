@@ -92,3 +92,10 @@ article p:last-child { margin-bottom: 0; }
   nav { flex-wrap: wrap; gap: 10px 16px; }
   .controls:not([hidden]) { gap: 6px; }
 }
+
+.platform-title { margin: 26px 0 10px; font-size: .9rem; color: #b9c7dd; }
+.platform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-block: 1px solid #29374c; }
+.platform div { padding: 16px 12px; }
+.platform dt { font-size: .76rem; color: #a9bedb; }
+.platform dd { margin: 5px 0 0; font-size: .9rem; line-height: 1.5; }
+@media (max-width: 640px) { .platform { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
