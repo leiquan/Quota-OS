@@ -1,6 +1,5 @@
-Simple desktop: wallpaper, menu bar, dock, Activity Monitor, Notes and About.
-Drag title bars; close/minimize hides windows; dock restores them.
-Continuous LVGL 9.3.0, 256KB admitted heap, 120KB partial draw buffer.
-Notes are memory-only. GUI remains Tier3/EL1.
-Ten GUI pressure rounds: native host clock 6/10 pass, icount 10/10 pass.
-No unconditional realtime guarantee. See docs/local-desktop.txt and SHA256SUMS.
+Continuous LVGL9.3.0 desktop,1280x800; screenshot in README.
+Static wallpaper, dock, Activity Monitor, draggable windows and session Notes.
+Font24 taken from the same pinned upstream LVGL commit as the existing tree.
+Resources and tests: docs/tests/desktop-1280/REPORT.txt.
+Hard realtime guarantee is unproven; previous failures remain historical evidence.

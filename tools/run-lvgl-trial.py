@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Boot the LVGL image on QEMU virt with ramfb and virtio input, click +1, type ab."""
 import json
+import re
 import os
 import socket
 import struct
@@ -87,10 +88,12 @@ def main():
         print(open(LOG, errors="replace").read())
         proc.kill()
         return 1
+    geometry = re.search(r'ramfb published (\d+)x(\d+)', text)
+    width, height = map(int, geometry.groups())
     def move_to(px, py):
         qmp(s, {"execute": "input-send-event", "arguments": {"events": [
-            {"type": "abs", "data": {"axis": "x", "value": px * 32767 // 639}},
-            {"type": "abs", "data": {"axis": "y", "value": py * 32767 // 479}},
+            {"type": "abs", "data": {"axis": "x", "value": px * 32767 // (width - 1)}},
+            {"type": "abs", "data": {"axis": "y", "value": py * 32767 // (height - 1)}},
         ]}})
         time.sleep(0.4)
     move_to(560, 40)
@@ -105,8 +108,8 @@ def main():
             print("QMP", reply.strip())
     def click(px, py):
         send([
-            {"type": "abs", "data": {"axis": "x", "value": px * 32767 // 639}},
-            {"type": "abs", "data": {"axis": "y", "value": py * 32767 // 479}},
+            {"type": "abs", "data": {"axis": "x", "value": px * 32767 // (width - 1)}},
+            {"type": "abs", "data": {"axis": "y", "value": py * 32767 // (height - 1)}},
         ])
         time.sleep(0.25)
         qmp(s, {"execute": "human-monitor-command",
@@ -176,7 +179,7 @@ def main():
         qmp(s, {"execute": "screendump", "arguments": {"filename": "/tmp/lvgl-input.ppm"}})
         print("input shot")
     qmp(s, {"execute": "human-monitor-command",
-            "arguments": {"command-line": "pmemsave 0x%x 1228800 %s" % (fb, RAW)}})
+            "arguments": {"command-line": "pmemsave 0x%x %d %s" % (fb, width * height * 4, RAW)}})
     text = open(LOG, "r", errors="replace").read()
     proc.kill()
     proc.wait(timeout=5)
@@ -189,8 +192,8 @@ def main():
         print("fb bytes", len(data))
         # XRGB8888 little-endian to PPM
         with open(PPM, "w") as out:
-            out.write("P3\n640 480\n255\n")
-            for i in range(0, min(len(data), 640 * 480 * 4), 4):
+            out.write("P3\n%d %d\n255\n" % (width, height))
+            for i in range(0, min(len(data), width * height * 4), 4):
                 b, g, r = data[i], data[i + 1], data[i + 2]
                 out.write("%d %d %d\n" % (r, g, b))
         print("wrote", PPM)

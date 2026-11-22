@@ -1,0 +1,385 @@
+{
+  "sha256": "a7265e4d32cd89fdbc6d24352fa59f3022025d0f7ecdc682f36894f59af8ee21",
+  "rounds": [
+    {
+      "round": 1,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 70,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 2,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 70,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 3,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 70,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 4,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 71,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 5,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 71,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 6,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 72,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 7,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 73,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 8,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 71,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 9,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 76,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 10,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 72,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 18,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    }
+  ],
+  "isolate-native": {
+    "exit_code": 0,
+    "done": true,
+    "restart16": true,
+    "classes_ok": true,
+    "empty": true,
+    "irq_contract": true,
+    "kill": {
+      "rounds": 100,
+      "ok": 100,
+      "late": 0,
+      "stale_reject": 100,
+      "us_min": 1,
+      "us_max": 8,
+      "passed": true
+    },
+    "fault": {
+      "rounds": 100,
+      "ok": 100,
+      "late": 0,
+      "stale_reject": 100,
+      "us_min": 2,
+      "us_max": 564,
+      "passed": true
+    },
+    "timing": {
+      "deadline_us": 500,
+      "before": 0,
+      "after": 0,
+      "irq_off_max_us": 24,
+      "passed": true
+    },
+    "functional_pass": true,
+    "passed": true
+  },
+  "isolate-icount": {
+    "exit_code": 0,
+    "done": true,
+    "restart16": true,
+    "classes_ok": true,
+    "empty": true,
+    "irq_contract": true,
+    "kill": {
+      "rounds": 100,
+      "ok": 100,
+      "late": 0,
+      "stale_reject": 100,
+      "us_min": 41,
+      "us_max": 73,
+      "passed": true
+    },
+    "fault": {
+      "rounds": 100,
+      "ok": 100,
+      "late": 0,
+      "stale_reject": 100,
+      "us_min": 81,
+      "us_max": 685,
+      "passed": true
+    },
+    "timing": {
+      "deadline_us": 500,
+      "before": 0,
+      "after": 0,
+      "irq_off_max_us": 10,
+      "passed": true
+    },
+    "functional_pass": true,
+    "passed": true
+  }
+}

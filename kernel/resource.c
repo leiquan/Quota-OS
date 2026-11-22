@@ -113,8 +113,8 @@ uint32_t system_reserve_kb(void)
 {
     extern char __image_start[], __image_end[];
     uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
-    /* Image plus the 640x480 surface. Stay at 16 MB when that already fits. */
-    uint64_t need = ((uint64_t)__image_end - base) + (640ull * 480ull * 4ull);
+    /* Image plus the configured display surface. Stay at 16 MB when that already fits. */
+    uint64_t need = ((uint64_t)__image_end - base) + (uint64_t)LVGL_FB_BYTES;
     uint32_t kb = (uint32_t)((need + 1023ull) / 1024ull);
     if (kb < KERNEL_RESERVE_KB)
         kb = KERNEL_RESERVE_KB;

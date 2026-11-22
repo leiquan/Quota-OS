@@ -57,13 +57,18 @@ def save_frame(s, ppm_path):
     return data
 
 def sample(data, x, y):
-    # QEMU screendump is binary P6, 15-byte header for 640x480.
-    hdr = len(data) - 640 * 480 * 3
-    if hdr < 3:
+    # QEMU emits a P6 header followed by packed RGB, at the guest geometry.
+    parts = data.split(b"\n", 3)
+    if len(parts) != 4 or parts[0] != b"P6" or parts[2] != b"255":
         return None
-    i = hdr + (y * 640 + x) * 3
-    if i + 3 > len(data):
+    width, height = map(int, parts[1].split())
+    if not (0 <= x < width and 0 <= y < height):
         return None
+    payload = parts[3]
+    if len(payload) != width * height * 3:
+        return None
+    i = (y * width + x) * 3
+    data = payload
     r, g, b = data[i], data[i + 1], data[i + 2]
     return (r << 16) | (g << 8) | b
 

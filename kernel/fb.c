@@ -5,8 +5,8 @@
  */
 #include "quotaos.h"
 
-#define FB_W 640u
-#define FB_H 480u
+#define FB_W DISPLAY_WIDTH
+#define FB_H DISPLAY_HEIGHT
 #define FB_BPP 4u
 
 extern char __image_start[], __image_end[];

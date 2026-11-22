@@ -1,0 +1,37 @@
+1280x800 desktop validation — 2026-11-22
+
+Image SHA256: a7265e4d32cd89fdbc6d24352fa59f3022025d0f7ecdc682f36894f59af8ee21
+Binary size: 691392 bytes
+Guest ramfb: 1280x800 XRGB8888; stride5120; framebuffer4096000 bytes.
+LVGL heap256KiB; fixed partial draw buffer240KiB; framebuffer4000KiB.
+Combined admitted GUI reservation4496KiB. RAM128MiB; system reserve16MiB.
+Tier1 CPU1500us/period and memory13312KiB unchanged. Tier2 minimums,
+20us guard and350us system CPU reserve were not enlarged.
+
+GUI: ten200-period windows per mode with ongoing actual virtio pointer input.
+Native: HVF, host CPU, GICv3, host clock — 10/10 observed windows passed;
+Tier1 misses0, Tier2 short periods0, Tier2 job misses0.
+Instruction time: TCG, Cortex-A72, GICv2, icount shift4 sleepoff — 10/10 passed,
+all three counters0. These are separate modes, not substitutes for each other.
+
+EL0: one run per mode, each100kills and100faults, stale handles rejected,
+five fault classes matched,16exec-kernel/restart probes passed, final pool empty.
+Native kill max8us/fault max564us, near-release probe misses0->0.
+Icount kill max73us/fault max685us, near-release probe misses0->0.
+
+Real GUI interaction: screenshot is1280x800; bottom-right pointer reached;
+Notes typed text, counter clicked, window dragged to690,282; close/dock restore
+passed; noPANIC. README image is an unretouched QEMU framebuffer capture.
+Static wallpaper only; no animation, blur or additional priority reservation.
+
+Limits: observed finite samples are not a proof of absolute or perpetual hard
+realtime. Earlier real-clock failures are retained under historical local test
+notes and have not been erased. Host scheduling and unbounded kernel/driver
+paths still prevent an unconditional guarantee. GUI remains a Tier3 EL1 task,
+not an isolated EL0 application. No physical hardware certification, long-run
+WCET proof, full legacy GUI script execution or new JSC test was performed.
+Legacy GUI scripts were syntax-checked and adjusted for dynamic display geometry.
+The top-level version016 and banner1298250 are retained by this build; the exact
+source changes and this image are delivered together in the new branch commit.
+
+Font24 source is from the same pinned upstream LVGL c033a98afddd65aaafeebea625382a94020fe4a7.

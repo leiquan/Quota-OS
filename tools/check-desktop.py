@@ -1,28 +1,23 @@
 #!/usr/bin/env python3
-"""Check the live desktop started with -qmp unix:/tmp/quota-desktop.sock,server=on,wait=off.
-Run from the repository root; evidence goes to this task outputs/desktop folder.
+"""Exercise the 1280x800 desktop via /tmp/quota-desktop-wide.sock.
+Run from the repo root after launching QEMU with that QMP socket.
 """
 from pathlib import Path
-import socket,json,time,re
-out=Path('../../outputs/desktop').resolve();s=socket.socket(socket.AF_UNIX);s.connect('/tmp/quota-desktop.sock');s.settimeout(4);f=s.makefile('rb');f.readline();seq=0
-def q(c,a=None):
- global seq
- seq+=1;s.sendall((json.dumps({'execute':c,'id':seq,**({'arguments':a} if a else {})})+'\n').encode())
- while True:
-  r=json.loads(f.readline())
-  if r.get('id')==seq:
-   if 'error' in r:raise RuntimeError(r)
-   return r['return']
-q('qmp_capabilities')
-def move(x,y):q('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':x*32767//639}},{'type':'abs','data':{'axis':'y','value':y*32767//479}}]})
-def button(n):q('human-monitor-command',{'command-line':'mouse_button '+str(n)})
+import json,re,runpy,time
+out=Path('../../outputs/desktop-1280').resolve();mod=runpy.run_path('tools/realtime-rounds.py');q=mod['QMP']('/tmp/quota-desktop-wide.sock');t=(out/'serial.log').read_text();m=re.search(r'ramfb published (\d+)x(\d+)',t);w,h=map(int,m.groups());assert(w,h)==(1280,800)
+def move(x,y):q.call('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':x*32767//(w-1)}},{'type':'abs','data':{'axis':'y','value':y*32767//(h-1)}}]})
+def button(n):q.call('human-monitor-command',{'command-line':'mouse_button '+str(n)})
 def click(x,y):
  move(x,y);time.sleep(.15);button(1);time.sleep(.15);button(0);time.sleep(.25)
-def shot(n):q('screendump',{'filename':str(out/(n+'.ppm'))})
-shot('desktop');click(320,438)
-for k in ['a','b']:q('human-monitor-command',{'command-line':'sendkey '+k});time.sleep(.2)
-click(167,308);shot('notes');move(350,104);time.sleep(.1);button(1);time.sleep(.1)
-for x,y in [(356,110),(362,116),(368,122),(374,128),(380,136)]:move(x,y);time.sleep(.12)
-button(0);time.sleep(.25);shot('notes-moved');t=(out/'serial.log').read_text();m=re.findall(r'\[desktop\] moved (\d+),(\d+)',t);assert m,'drag event missing';x,y=map(int,m[-1]);assert x>100 and y>87,(x,y)
-click(x+18,y+16);shot('notes-closed');click(320,438);shot('notes-restored');click(392,438);shot('about');click(123,102);click(x+18,y+16);click(40,79);shot('wallpaper');click(247,438);shot('desktop-final')
-t=(out/'serial.log').read_text();r={'notes_open':'[lvgl] input page' in t,'typing_ab':'key code 30 value 1 char 97' in t and 'key code 48 value 1 char 98' in t,'count1':'click count 1' in t,'dragged_to':[x,y],'hidden_events':t.count('[desktop] window hidden'),'restored':t.count('[lvgl] input page')>=2,'about':'[lvgl] coverage page' in t,'panic':'PANIC' in t,'running':q('query-status')};(out/'interaction-results.json').write_text(json.dumps(r,indent=2));print(json.dumps(r,indent=2));assert all(r[k] for k in ['notes_open','typing_ab','count1','restored','about']) and not r['panic'];s.close()
+def shot(name):q.call('screendump',{'filename':str(out/(name+'.ppm'))})
+move(w-1,h-1);time.sleep(.2);shot('desktop')
+click((w-306)//2+152,h-49)
+for key in 'a better place to work':
+ q.call('human-monitor-command',{'command-line':'sendkey '+('spc' if key==' ' else key)});time.sleep(.13)
+m=re.search(r'\[lvgl\] plus box (\d+),(\d+) (\d+)x(\d+)',t);x,y,bw,bh=map(int,m.groups());click(x+bw//2,y+bh//2)
+move(970,259);time.sleep(.1);button(1);time.sleep(.1)
+for xy in [(978,267),(986,275),(994,283),(1002,291),(1010,303)]:move(*xy);time.sleep(.1)
+button(0);time.sleep(.2);t=(out/'serial.log').read_text();m=re.findall(r'\[desktop\] moved (\d+),(\d+)',t);assert m,'drag missing';x,y=map(int,m[-1]);assert x>650 and y>238
+shot('windows');click(x+23,y+21);time.sleep(.2);click((w-306)//2+152,h-49);shot('restored')
+move(1205,680);time.sleep(.2);shot('readme-desktop')
+t=(out/'serial.log').read_text();r={'size':[w,h],'edge_pointer':bool(re.search(r'pointer 127[7-9],79[7-9]',t)),'notes_open':'[lvgl] input page' in t,'typed':'key code 48 value 1 char 98' in t,'count1':'click count 1' in t,'dragged':[x,y],'closed':'[desktop] window hidden' in t,'restored':t.count('[lvgl] input page')>=2,'panic':'PANIC' in t,'status':q.call('query-status')};(out/'interaction-results.json').write_text(json.dumps(r,indent=2));print(json.dumps(r,indent=2));assert all(r[k] for k in ['edge_pointer','notes_open','typed','count1','closed','restored']) and not r['panic'];q.close()

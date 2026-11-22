@@ -55,7 +55,7 @@ static int ndev;
 static struct quota_input queue[QCAP];
 static uint16_t qhead, qcount;
 static uint32_t qdrop;
-static uint32_t span_w = 640, span_h = 480;
+static uint32_t span_w = DISPLAY_WIDTH, span_h = DISPLAY_HEIGHT;
 
 static void dsb(void)
 {

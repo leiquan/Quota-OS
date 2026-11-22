@@ -7,6 +7,7 @@ default. Pass icount to add -icount shift=4,sleep=off.
   python3 tools/run-gui-stress.py <kernel> <logfile> [host|icount] [shot.ppm]
 """
 import json
+import re
 import os
 import socket
 import subprocess
@@ -101,6 +102,8 @@ def main():
         return None
 
     text = open(LOG, "r", errors="replace").read()
+    geometry = re.search(r'ramfb published (\d+)x(\d+)', text)
+    sw, sh = map(int, geometry.groups())
     load9 = box("load9", text)
     print("load9", load9, "mode", MODE)
     if not load9:
@@ -112,8 +115,8 @@ def main():
         qmp(s, {"execute": "input-send-event", "arguments": {"events": events}})
 
     send([
-        {"type": "abs", "data": {"axis": "x", "value": px * 32767 // 639}},
-        {"type": "abs", "data": {"axis": "y", "value": py * 32767 // 479}},
+        {"type": "abs", "data": {"axis": "x", "value": px * 32767 // (sw - 1)}},
+        {"type": "abs", "data": {"axis": "y", "value": py * 32767 // (sh - 1)}},
     ])
     time.sleep(0.25)
     qmp(s, {"execute": "human-monitor-command",

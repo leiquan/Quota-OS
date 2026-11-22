@@ -1,10 +1,9 @@
-LOCAL SIMPLE DESKTOP 2026-11-22
+1280x800 lightweight desktop — 2026-11-22
 Build: bash tools/build-lvgl-macos.sh
 Run: bash tools/run-macos-gui.sh prebuilt/quotaos.bin
-Apple Silicon: HVF, host CPU, GICv3, host clock.
-Windows: Activity Monitor, Notes, About. Drag title bar; red/yellow hide; dock restores.
-Notes are session memory only. No disk persistence.
-GUI remains Tier3/EL1. This is not hard realtime acceptance.
-Ten host-time GUI rounds: 6 pass, 4 fail. icount: 10 pass.
-See docs/local-desktop.txt and SHA256SUMS.
-No remote writes or pushes.
+Native Apple Silicon: HVF, host CPU, GICv3, host clock; RAM128MB.
+See README screenshot and docs/tests/desktop-1280/REPORT.txt.
+This finite ten-round result is not an unconditional realtime guarantee.
+GUI remains Tier3/EL1; Notes memory is session-only.
+Framebuffer4000KiB, draw240KiB, heap256KiB, fixed reservation4496KiB.
+Current hashes are in SHA256SUMS.

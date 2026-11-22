@@ -72,14 +72,17 @@ def gui(kernel, out, mode):
                     raise TimeoutError('LVGL boot')
                 time.sleep(.01)
             text = contents(log)
+            geometry = re.search(r'ramfb published (\d+)x(\d+)', text)
+            if not geometry: raise AssertionError('framebuffer geometry missing')
+            sw, sh = map(int, geometry.groups())
             m = re.search(r'\[lvgl\] load9 box (\d+),(\d+) (\d+)x(\d+)', text)
             if not m:
                 raise AssertionError('load9 button missing')
             x,y,w,h = map(int,m.groups())
             def move(x,y):
                 q.call('input-send-event', {'events':[
-                    {'type':'abs','data':{'axis':'x','value':x*32767//639}},
-                    {'type':'abs','data':{'axis':'y','value':y*32767//479}}]})
+                    {'type':'abs','data':{'axis':'x','value':x*32767//(sw-1)}},
+                    {'type':'abs','data':{'axis':'y','value':y*32767//(sh-1)}}]})
             move(x+w//2,y+h//2)
             time.sleep(.12)
             q.call('human-monitor-command',{'command-line':'mouse_button 1'})

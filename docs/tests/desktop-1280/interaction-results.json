@@ -1,0 +1,21 @@
+{
+  "size": [
+    1280,
+    800
+  ],
+  "edge_pointer": true,
+  "notes_open": true,
+  "typed": true,
+  "count1": true,
+  "dragged": [
+    690,
+    282
+  ],
+  "closed": true,
+  "restored": true,
+  "panic": false,
+  "status": {
+    "status": "running",
+    "running": true
+  }
+}
