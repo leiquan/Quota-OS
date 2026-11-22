@@ -8,7 +8,7 @@
  * Tier 1 设备规则：不能打断的设备一律不进 Tier 1；能打断的还要
  *   独占，或者同时满足：能切分、能强制停下（实测的下令到停住时间
  *   不超过设备描述的上限）、最坏耗时有上限（实测最长作业不超过声明）。
- * 实测值由系统在关中断、且确认下一个 Tier 1 保护区之前做得完的窗口里量，
+ * 实测值在实时服务启动前的引导阶段测量，运行期禁止长时间校验，
  * 不用设备自报。设备是软件模型（模拟设备），不是真实硬件。
  */
 #include "quotaos.h"
@@ -57,6 +57,7 @@ struct decl {
 
 #define MAX_DECL 16
 static struct decl reg[MAX_DECL];
+static int boot_verification;
 
 void decl_init(void)
 {
@@ -79,21 +80,11 @@ void decl_init(void)
 
 /* ---------- 模拟设备与实测 ---------- */
 
-/* 在关中断、并且下一个 Tier 1 保护区之前做得完的地方执行一次作业。
- * abort_t 不为 0 时，作业开始 abort_t tick 后发中止命令；返回下令到停住的 tick。 */
+/* Boot-only software-device calibration. No real-time task has been admitted.
+ * dev_measure refuses runtime calls, so this loop cannot mask an active service. */
 static uint64_t dev_exec(struct sim_dev *d, uint64_t abort_t, uint64_t *ran)
 {
     uint64_t job = us_to_ticks(dev_real_us(d, d->real_job_us));
-    uint64_t need = job + us_to_ticks(d->switch_us + DEV_RESET_US + DEV_CHUNK_US);
-    uint64_t t0;
-    for (;;) {
-        asm volatile("msr daifset, #2" ::: "memory");
-        t0 = ticks_now();
-        if (sched_next_guard(t0) > t0 + need)
-            break;
-        asm volatile("msr daifclr, #2" ::: "memory");
-        busy_ticks(us_to_ticks(DEV_CHUNK_US));
-    }
     busy_ticks(us_to_ticks(d->switch_us));
     uint64_t s = ticks_now();
     uint64_t chunk = us_to_ticks(DEV_CHUNK_US);
@@ -112,7 +103,6 @@ static uint64_t dev_exec(struct sim_dev *d, uint64_t abort_t, uint64_t *ran)
     }
     if (abort_t && !stop)
         stop = now > abort_at ? now - abort_at : 0;   /* 不能打断：做完才停 */
-    asm volatile("msr daifclr, #2" ::: "memory");
     if (ran)
         *ran = now - s;
     return stop;
@@ -120,6 +110,8 @@ static uint64_t dev_exec(struct sim_dev *d, uint64_t abort_t, uint64_t *ran)
 
 static void dev_measure(struct sim_dev *d)
 {
+    if (!boot_verification)
+        return; /* Unverified runtime devices remain Tier 3; do not block services. */
     uint64_t job = us_to_ticks(dev_real_us(d, d->real_job_us));
     d->job_max_t = 0;
     d->stop_max_t = 0;
@@ -138,7 +130,7 @@ static void dev_measure(struct sim_dev *d)
 static void measure_all(void)
 {
     for (int i = 0; i < NDEV; i++)
-        if (!devs[i].measured)
+        if (boot_verification && !devs[i].measured)
             dev_measure(&devs[i]);
 }
 
@@ -256,10 +248,10 @@ static int t1_device_rule(const char *who, int r)
         if (reg[i].live && reg[i].b[r] && strcmp(reg[i].who, who))
             other = 1;
     int bound_ok = d->stop_us <= T1_STOP_LIMIT_US;
-    int refuse = !d->preemptible || !bound_ok || (other && !d->divisible) || d->state != DEV_OK;
+    int refuse = !d->preemptible || !bound_ok || (other && !d->divisible) || d->state != DEV_OK || !d->measured;
     if (!refuse)
         return 0;
-    if (d->state == DEV_NEW)
+    if (d->state == DEV_NEW || !d->measured)
         wadd("  missing: 设备未验证 (new devices start in Tier 3)\n");
     if (d->state == DEV_DEMOTED)
         fault_reason(d);
@@ -293,11 +285,16 @@ static int admit(const char *who, int tier, const uint64_t *b)
     for (int r = R_DMA; r <= R_CAM && tier == TIER1; r++)
         if (b[r] && t1_device_rule(who, r))
             bad |= 1 << 8;
-    for (int r = R_DMA; r <= R_CAM && tier == TIER2; r++)
-        if (b[r] && devs[r - R_DMA].state == DEV_DEMOTED) {
+    for (int r = R_DMA; r <= R_CAM && tier == TIER2; r++) {
+        struct sim_dev *d = &devs[r - R_DMA];
+        if (b[r] && (d->state != DEV_OK || !d->measured)) {
             bad |= 1 << 8;
-            fault_reason(&devs[r - R_DMA]);
+            if (d->state == DEV_DEMOTED)
+                fault_reason(d);
+            else
+                wadd("  missing: device unverified; new devices stay in Tier 3\n");
         }
+    }
     for (int r = 0; r < NRES; r++) {
         if (!b[r])
             continue;
@@ -382,9 +379,9 @@ void decl_demo_device_tier1(void)
 {
     printf("\n=== 11 设备申请 Tier 1：不能打断的设备被拒 ===\n");
     printf("Three simulated devices (software models, not real hardware).\n");
-    printf("The system measures each one (%d full jobs, %d aborts) with IRQs\n",
+    printf("Boot calibration (%d full jobs, %d aborts) finishes before realtime admission.\n",
            DEV_TRIALS, DEV_TRIALS);
-    printf("masked, only where the job ends before the next tier-1 guard.\n");
+    printf("Unverified runtime devices remain Tier 3; no runtime long probe.\n");
     printf("Admission uses only the declared (factory) values; the measured\n");
     printf("ones are for verification.\n");
     measure_all();
@@ -413,6 +410,26 @@ void decl_qa_e1(int unused)
 {
     (void)unused;
     measure_all();
+    {
+        struct sim_dev *d = &devs[0];
+        int old_state = d->state, old_measured = d->measured;
+        d->state = DEV_NEW;
+        d->measured = 0;
+        int t1 = try_req("unverified-t1", TIER1, 0, 0, 100, 0, 0, 0) != 0;
+        int t2 = try_req("unverified-t2", TIER2, 0, 0, 100, 0, 0, 0) != 0;
+        d->state = DEV_OK; /* State alone is not a completed verification. */
+        int forged = try_req("unmeasured-t2", TIER2, 0, 0, 100, 0, 0, 0) != 0;
+        d->state = old_state;
+        d->measured = old_measured;
+        uint64_t saved_irq = irq_save(), after_irq;
+        int reentry = decl_prepare_devices();
+        asm volatile("mrs %0, daif" : "=r"(after_irq));
+        irq_restore(saved_irq);
+        int safe = reentry == -1 && (after_irq & 0x80ull) && d->state == old_state;
+        printf("E1 unverified t1=%d t2=%d unmeasured=%d runtime_probe_refused=%d\n",
+               t1, t2, forged, safe);
+        printf("E1 unverified %s\n", t1 && t2 && forged && safe ? "PASS" : "FAIL");
+    }
     /* 第 2 项：不能打断的设备申请 Tier 1，100 次都要被拒并写出缺的条件 */
     int n = 0, refused = 0, named = 0;
     for (uint64_t b = 100; b <= 10000; b += 100) {
@@ -548,10 +565,10 @@ int decl_health_fault(int dev, const char *what, uint64_t meas_t, uint64_t decl_
 }
 
 /* 新设备一律从 Tier 3 开始；系统自己量过、没超过声明才可能进 Tier 1。 */
-void decl_verify_devices(void)
+static void decl_verify_devices(void)
 {
     printf("[dev] %d new simulated devices start in Tier 3; verifying\n", NDEV);
-    printf("      (%d jobs, %d aborts each, IRQs masked, before the next guard)\n",
+    printf("      (%d jobs, %d aborts each, boot only; realtime services not started)\n",
            DEV_TRIALS, DEV_TRIALS);
     for (int i = 0; i < NDEV; i++) {
         struct sim_dev *d = &devs[i];
@@ -568,7 +585,20 @@ void decl_verify_devices(void)
         else
             d->state = DEV_OK;
     }
-    klog_flush();
+    /* Deferred output is drained by the Tier-3 shell after admission. */
+}
+
+int decl_prepare_devices(void)
+{
+    uint64_t flags;
+    asm volatile("mrs %0, daif" : "=r"(flags));
+    if (sched_current() || !(flags & 0x80ull) || boot_verification)
+        return -1;
+    decl_init();
+    boot_verification = 1;
+    decl_verify_devices();
+    boot_verification = 0;
+    return 0;
 }
 
 int decl_t1_left_on(int dev)

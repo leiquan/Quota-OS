@@ -1,0 +1,48 @@
+cycle-02: 启动前校验设备，拒绝未验证设备取得保底资源
+
+Image SHA256: 9c5d96a0abcbc4138dd20886087526db2bc1856de9ebfc3ab2ec97473eb65fe5
+
+Cases:
+logtest-native: {"completed": true, "failed_lines": [], "passed": true, "boot_order": true, "checks": {"partial_once": true, "second_once": true, "overflow24": true, "lost3": true, "pass_marker": true}}
+logtest-icount: {"completed": true, "failed_lines": [], "passed": true, "boot_order": true, "checks": {"partial_once": true, "second_once": true, "overflow24": true, "lost3": true, "pass_marker": true}}
+e1-icount: {"completed": true, "failed_lines": [], "passed": true, "boot_order": true, "unverified_rejected": true}
+e3-icount: {"completed": true, "failed_lines": [], "passed": true, "boot_order": true}
+e2h-icount: {"completed": true, "failed_lines": [], "passed": true, "boot_order": true}
+e4-icount: {"completed": true, "failed_lines": [], "passed": true, "boot_order": true}
+isolate-native: {"exit_code": 0, "done": true, "restart16": true, "classes_ok": true, "empty": true, "irq_contract": true, "kill": {"rounds": 100, "ok": 100, "late": 0, "stale_reject": 100, "us_min": 1, "us_max": 7, "passed": true}, "fault": {"rounds": 100, "ok": 100, "late": 0, "stale_reject": 100, "us_min": 2, "us_max": 18, "passed": true}, "timing": {"deadline_us": 500, "before": 6, "after": 16, "irq_off_max_us": 22, "passed": false}, "functional_pass": true, "passed": false}
+isolate-icount: {"exit_code": 0, "done": true, "restart16": true, "classes_ok": true, "empty": true, "irq_contract": true, "kill": {"rounds": 100, "ok": 100, "late": 0, "stale_reject": 100, "us_min": 41, "us_max": 594, "passed": true}, "fault": {"rounds": 100, "ok": 100, "late": 0, "stale_reject": 100, "us_min": 81, "us_max": 685, "passed": true}, "timing": {"deadline_us": 500, "before": 0, "after": 0, "irq_off_max_us": 10, "passed": true}, "functional_pass": true, "passed": true}
+
+GUI rounds (T1 miss / T2 short / T2 job miss):
+1 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+2 | native: [1, 0, 0] pass=False | icount: [0, 0, 0] pass=True
+3 | native: [38, 14, 15] pass=False | icount: [0, 0, 0] pass=True
+4 | native: [1, 0, 0] pass=False | icount: [0, 0, 0] pass=True
+5 | native: [7, 2, 4] pass=False | icount: [0, 0, 0] pass=True
+6 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+7 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+8 | native: [41, 13, 19] pass=False | icount: [0, 0, 0] pass=True
+9 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+10 | native: [1, 0, 1] pass=False | icount: [0, 0, 0] pass=True
+
+No deadline/slot/minimum/guard was widened. GUI is Tier3/EL1.
+Finite samples are not a perpetual realtime guarantee. All failures remain.
+
+Implementation notes:
+Long software-device calibration now executes before services_start/sched_start.
+It is explicitly a boot phase, not a hidden runtime operation or a cleared miss
+counter. Boot may take longer; no boot-latency guarantee is claimed. Once tasks
+exist, calibration reentry is rejected with the caller's IRQ state preserved.
+An unverified runtime device stays Tier3. Online asynchronous device validation
+is not implemented; it cannot obtain Tier1/2 reservations merely by state label.
+E1 acceptance now tests NEW Tier1/2 rejection, an OK-but-unmeasured Tier2 device,
+and refusal of calibration after startup; all checks passed.
+
+Runtime result limitation:
+Native GUI passed4/10, compared with7/10 in cycle01; the environment was not
+controlled, so no causal performance improvement is claimed. Native EL0
+functional checks passed, but its near-release probe gained10 display misses
+(6->16), so overall timing failed. Instruction-clock GUI passed10/10 and its
+EL0 near-release probe stayed0->0. All these failures remain public evidence.
+The unconditional 'never stall' boot banner was replaced by a statement of the
+resource model and the need for validation. GUI is still EL1: memory fault
+containment and an absolute realtime guarantee remain unfinished.

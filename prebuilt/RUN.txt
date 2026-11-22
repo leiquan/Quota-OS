@@ -9,3 +9,5 @@ Framebuffer4000KiB, draw240KiB, heap256KiB, fixed reservation4496KiB.
 Current hashes are in SHA256SUMS.
 
 Latest optimization cycle: cycle-01; see docs/tests/optimization/cycle-01/REPORT.txt
+
+Latest optimization cycle: cycle-02; see docs/tests/optimization/cycle-02/REPORT.txt

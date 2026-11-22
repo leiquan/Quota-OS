@@ -1,0 +1,200 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 2 pool 16 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x40142000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (b5f881d)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x44000000 physical RAM span 128 MB (probed)
+[boot] DTB at 0x44000000
+[boot] DTB snapshot 7820 bytes (header said 1048576)
+[boot] DTB memory 134217728 bytes
+[boot] system reserve 350 us/period, 16384 KB;
+       tier-1 1500 us/period, 13312 KB; guard 80 us/period
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 7 own colors, padding 11776 KB
+[boot] kernel image+bss 2096 KB of the 16384 KB system reserve
+[boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
+[boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
+[boot] clock: icount (counter driven by instruction count)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 396/400 us, stop 7/20 us (measured/declared)
+[dev] sim-blk: job 1991/2000 us, stop 1770/2000 us (measured/declared)
+[dev] sim-cam: job 291/300 us, stop 8/30 us (measured/declared)
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 display-vsync and timer-server bound to their slots
+[boot] slot table from tick 3750000, period 625000 ticks, guard 1250 ticks
+[boot] shell task running
+
+=== 14 设备超时：强制中止，设备降到 Tier 3 ===
+sim-dma reset to its factory state and re-verified: verified.
+display-vsync holds sim-dma Tier 1 (policy degrade).
+hud-overlay asks Tier 1 (per 10000 us):
+  sim-dma 500 us
+OK: admitted, policy if the device is demoted: alarm
+sim-dma now under-reports: declares 400 us per job, really
+takes 1.5x the request. cam-app (tier 2, device budget 3000 us)
+and bg-caller (tier 3) send 50..400 us jobs through the gate.
+[health] sim-dma timeout: measured 404 us > declared 400 us, period 0
+  job aborted; stop took 7 us (declared bound 20 us)
+[health] sim-dma 实测超出声明 (timeout): measured 404 us > declared 400 us,
+  period 0; sim-dma demoted to Tier 3
+[health] display-vsync: sim-dma Tier 1 revoked (实测超出声明);
+  policy degrade -> Tier 3
+[health] hud-overlay: sim-dma Tier 1 revoked (实测超出声明);
+  policy alarm -> Tier 3, ALARM
+[health] sim-dma timeout: measured 404 us > declared 400 us, period 0
+  job aborted; stop took 7 us (declared bound 20 us)
+device jobs: submitted 5284, completed 3252, timed out 2031
+  (timed-out jobs are aborted and discarded); first timeout in
+  period 0
+gate refused: device budget 0, would reach the next tier-1
+  guard 3557, device in Tier 3 and caller not Tier 3 63605
+abort -> stopped: 2031 aborts, max 7 us (declared bound 20 us,
+  CPU guard 20 us); over the bound 0, over the guard 0
+device jobs or aborts ending after the next tier-1 guard: 0
+device busy when a tier-1 guard began: 0
+device time charged to callers: 102074384 ticks
+cam-app calls ok 0 / refused 63605; bg-caller ok 3252 / refused 5587
+Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
+  task           slot   jobs  miss  start_min  start_max  jitter  lat_max
+  display-vsync     0   1000     0         46         46       0     5061
+  timer-server      1   1000     0         46         46       0     2561
+  display-vsync last release: period 1001, tick 629437500,
+    epoch+k*P+offset 629437500
+  timer-server last release: period 1001, tick 629593750,
+    epoch+k*P+offset 629593750
+misses: class a (clock jump) 0, class b (kernel) 0, skipped periods 0
+done lat_max is completions only. not_started 0 unfinished 0
+open lower bound 0 us (observation - ideal release, not a completion)
+skipped counter 0 counts every open job, not only tier 1.
+tier-1 reason=skipped 0, and each of those is also a T1 miss.
+T1CHAIN n=0 dropped=0. Stored only when a tier-1 job misses.
+T1CHAIN no extra stores on a job that completes inside its slot.
+T1CHAIN pk advances only when a kernel entry sees CNTVCT past the period end.
+T1CHAIN entry-cval is CNTVCT minus the compare value this guest wrote.
+T1CHAIN a timer source was taken with guest IRQs unmasked at the interrupted instruction.
+kernel per period: max 14691 avg 12416 ticks, reserve 21875, over 0
+timer IRQ entry - CVAL: min 3 max 3 ticks (n=8206)
+kernel entry -> eret (no slot wait): min 765 max 3018 ticks
+slot guard: path max 1598 ticks, slack min 747 ticks of 1250 (n=2000)
+wait loop exit late by 0/1/2/>2 ticks: 757/544/699/0
+clock jumps: 0, total 0 us
+deadline already past at eret: 0 times, max 0 ticks;
+  pick time -> eret max 557 ticks (margin 700); tier-2 budget
+  overrun max 10 ticks (17 times)
+  budget left < exit tail, deadline moved to 12 ticks: 30 times
+Tier 1 declarations left on sim-dma: 0
+cam-app asks Tier 1 (per 10000 us):
+  sim-dma 1000 us
+REFUSED: (device not allowed in Tier 1)
+  missing: 实测超出声明 (timeout measured 404 us > declared 400 us,
+    period 0; device demoted to Tier 3)
+E3 item1 under-reporting preemptible device: tier-1 misses 0,
+  device busy at a guard 0, ends after a guard 0, timeouts 2031
+E3 item1 PASS
+E3 item3 timed-out device in Tier 3: yes; later Tier 1 refused
+  naming 实测超出声明: yes
+E3 item3 PASS
+E3 item6 aborts 2031 (+ verification aborts of preemptible devices):
+  over the declared bound 0, over the guard 0, verification ok
+E3 item6 PASS
+E3 item7 log line with device, measured, declared, period: yes
+E3 item7 PASS
+E3 policy: tier-1 apps on sim-dma handled together 2 (expected 2),
+  still Tier 1 on it 0
+E3 policy PASS
+
+=== 1 资源总览 / resource overview ===
+RAM 131072 KB. CPU period 10000 us. 1 tick = 16 ns.
+
+[Devices] simulated (software models)
+  sim-dma: DEMOTED to Tier 3
+  sim-blk: verified
+  sim-cam: verified
+  NOTICE: sim-dma 实测超出声明 (timeout): measured 404 us >
+    declared 400 us, period 0; Tier 1 on it refused.
+    display-vsync: now Tier 3 on sim-dma
+    hud-overlay: now Tier 3 on sim-dma (ALARM)
+
+[系统预留] kernel, fixed, never lent
+  CPU 350 us/period = 21875 ticks
+  measured since boot: max 14691 ticks/period (period 343 of 1001)
+  that period ran menu 14; kernel ticks by entry (count):
+    timer IRQ 8874 (8), slot guard wait 4253 (2),
+    device IRQ 0 (0), svc IPC/dev 0 (0), svc other 1564 (2);
+    of which period-boundary work 1190, waits for a deadline 489
+    reserve 21875, margin 7184
+  memory 16384 KB
+
+[Tier 1] one fixed slot per task; unused time stays idle
+  task           slot offset_us len_us max_used_us waste_us mem_kb
+  display-vsync     0      1000    500          80      420   2048
+  timer-server      1      3500    300          40      260   1024
+  gic-server        2      6000    300           0      300   2048
+  blk-driver        3      8000    400           0      400   4096
+  net-driver        -         -      -           -        -   4096
+  total CPU 1500 us/period, memory 13312 KB
+
+[Tier 2] admitted apps (minimum is guaranteed, suggested is spare only)
+  (none)
+  minimum sum: CPU 0 / 8070 us, memory 0 / 89600 KB
+  admission: reserve 350 + tier-1 1500 + tier-2 min 0
+    + guard 80 = 1930 <= 10000 us
+
+[Tier 3] everyone else, round robin 1000 us, leftover only
+  CPU not promised to anyone: 8070 us/period
+pressure: off
+
+=== 15 中断风暴：多出来的中断被限流并计数 ===
+sim-dma raises its IRQ line every 16 us (62500 per second).
+Declared limit 40 IRQs per period; the line is masked inside
+tier-1 guards and slots, and past the limit or the driver's own
+300 us budget until the next period.
+IRQs raised by the device (its own counter) 625442, handled 19020,
+  not delivered (limited) 606422; most handled in one period 20
+  (limit 40); line masked for the rest of a period 1001 times
+device IRQs taken inside a tier-1 guard or slot: 0
+cam-app (tier 2, min 3000 us): lowest per period 3000 us
+Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
+  task           slot   jobs  miss  start_min  start_max  jitter  lat_max
+  display-vsync     0   1000     0         46         46       0     5061
+  timer-server      1   1000     0         46         46       0     2561
+  display-vsync last release: period 2002, tick 1255062500,
+    epoch+k*P+offset 1255062500
+  timer-server last release: period 2002, tick 1255218750,
+    epoch+k*P+offset 1255218750
+misses: class a (clock jump) 0, class b (kernel) 0, skipped periods 0
+done lat_max is completions only. not_started 0 unfinished 0
+open lower bound 0 us (observation - ideal release, not a completion)
+skipped counter 0 counts every open job, not only tier 1.
+tier-1 reason=skipped 0, and each of those is also a T1 miss.
+T1CHAIN n=0 dropped=0. Stored only when a tier-1 job misses.
+T1CHAIN no extra stores on a job that completes inside its slot.
+T1CHAIN pk advances only when a kernel entry sees CNTVCT past the period end.
+T1CHAIN entry-cval is CNTVCT minus the compare value this guest wrote.
+T1CHAIN a timer source was taken with guest IRQs unmasked at the interrupted instruction.
+kernel per period: max 17228 avg 16285 ticks, reserve 21875, over 0
+timer IRQ entry - CVAL: min 3 max 3 ticks (n=13000)
+kernel entry -> eret (no slot wait): min 781 max 3064 ticks
+slot guard: path max 751 ticks, slack min 496 ticks of 1250 (n=2000)
+wait loop exit late by 0/1/2/>2 ticks: 1/1000/999/0
+clock jumps: 0, total 0 us
+deadline already past at eret: 0 times, max 0 ticks;
+  pick time -> eret max 539 ticks (margin 700); tier-2 budget
+  overrun max 3 ticks (1000 times)
+  budget left < exit tail, deadline moved to 12 ticks: 0 times
+E3 item5 storm: tier-1 misses 0, limited 606422, max per period 20
+E3 item5 PASS
+QA DONE

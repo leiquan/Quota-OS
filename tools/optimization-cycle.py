@@ -22,6 +22,14 @@ def serial_case(kernel,out,boot,mode):
     text=data.decode('utf-8','replace').replace('\r','')
     failed=[l for l in text.splitlines() if re.search(r'\bFAIL\b|PANIC',l)]
     result={'completed':'QA DONE' in text,'failed_lines':failed,'passed':'QA DONE' in text and not failed}
+    phases=['[boot] calibration stage;', '[boot] calibration complete;', '[boot] shell task running']
+    positions=[text.find(x) for x in phases]
+    result['boot_order']=all(x>=0 for x in positions) and positions==sorted(positions)
+    result['passed'] &= result['boot_order']
+    if boot=='e1':
+        result['unverified_rejected']='E1 unverified PASS' in text
+        result['passed'] &= result['unverified_rejected']
+
     if boot=='logtest':
         checks={'partial_once':text.count('[klog-test] partial record')==1,'second_once':text.count('[klog-test] second record')==1,'overflow24':len(re.findall(r'^\[klog-test\] overflow \d+$',text,re.M))==24,'lost3':text.count('[log] 3 more lines not kept')==1,'pass_marker':'[klog-test] PASS' in text}
         result['checks']=checks;result['passed'] &= all(checks.values())

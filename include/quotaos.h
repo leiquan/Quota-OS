@@ -1,4 +1,4 @@
-/* Quota OS：基于三级资源声明的微内核，保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。 */
+/* Quota OS: fixed Tier1 slots, admitted Tier2 minima, best-effort Tier3. */
 #pragma once
 
 /* 版本号：每个提交加 1，三位补零。启动横幅和 README 抬头都显示它。 */
@@ -378,7 +378,7 @@ void demo_menu_detail(struct menu_detail *d);
 
 void decl_init(void);
 struct sim_dev *decl_dev(int i);
-void decl_verify_devices(void);
+int decl_prepare_devices(void); /* Boot only, before any sched task exists. */
 int decl_health_fault(int dev, const char *what, uint64_t meas_t, uint64_t decl_t);
 void decl_notice(void);
 int decl_t1_left_on(int dev);

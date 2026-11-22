@@ -11,7 +11,7 @@ void kmain(uint64_t dtb)
     proc_init();
     printf("\nQuota OS microkernel\n");
     printf("Version: %s (%s)\n", QUOTAOS_VERSION, QUOTAOS_COMMIT);
-    printf("基于三级资源声明的微内核，\n保证一级任务永远不卡顿、二级任务运行不卡顿，三级任务则不保证。\n");
+    printf("基于三级资源声明的微内核，\n一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。\n");
     {
         uint64_t cel, sctlr, spsel;
         asm volatile("mrs %0, CurrentEL" : "=r"(cel));
@@ -41,6 +41,12 @@ void kmain(uint64_t dtb)
     printf("[boot] simulated device IRQ line: EL1 physical timer, PPI 30\n");
 
     sched_init();
+    printf("[boot] calibration stage; realtime services not admitted yet\n");
+    if (decl_prepare_devices() != 0) {
+        printf("PANIC: invalid device calibration phase\n");
+        for (;;) asm volatile("wfi");
+    }
+    printf("[boot] calibration complete; admitting realtime services\n");
     services_start();
     printf("[boot] tier-1 display-vsync and timer-server bound to their slots\n");
     sched_start(shell_main);

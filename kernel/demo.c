@@ -1145,8 +1145,7 @@ void demo_menu_status(char *buf, int cap)
 void shell_main(void)
 {
     printf("[boot] shell task running\n");
-    decl_init();
-    decl_verify_devices();
+    klog_flush(); /* Boot records are printed without blocking realtime IRQs. */
     const char *args = dtb_bootargs();
     if (strcmp(args, "logtest") == 0) {
         printf("[klog-test] %s\n", klog_selftest() ? "PASS" : "FAIL");
