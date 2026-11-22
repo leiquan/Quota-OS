@@ -1,0 +1,19 @@
+Quota OS 简单桌面（2026-11-22）
+
+已实现并实际运行：静态抽象壁纸、顶部状态栏、底部程序坞；活动监视器、记事本、关于三个窗口；标题栏拖动、关闭/最小化隐藏、程序坞恢复。笔记保留在当前QEMU会话内存中，没有磁盘保存功能。
+活动监视器保留原负载与准入操作，实际计数来自内核。显示绘制仍在三级执行，状态面板最多每100ms刷新一次；没有扩大一级槽、二级最低值或调整截止期。
+
+交互测试通过：打开记事本，键盘输入ab，点击+1，拖到130,119，关闭并恢复，打开关于，关闭窗口查看桌面。真实记录在interaction-results.json、serial.log和PNG/PPM截图；没有PANIC。
+
+十轮GUI压力，每轮200周期、连续virtio指针输入：
+HVF / host CPU / GICv3 / 真实时钟：6/10通过。合计一级miss25，二级short7，二级作业miss10。
+TCG / Cortex-A72 / GICv2 / icount：10/10通过，以上三项均为0。
+全部轮次与原始命令在round-01至round-10，汇总pressure-summary.json。不排除失败，也不把icount结果替代真实时钟保证。环境和运行时波动未控制，不能据此将结果变化全归因于桌面改造。
+此前要求的一二级绝对不卡顿仍未达到；本次是桌面功能交付，不是硬实时验收通过。LVGL仍为EL1三级任务，不声称已隔离成EL0。此次没有重新执行EL0、e4、长时间硬实时或真机测试；此前结果不能作为本次桌面镜像的新测试。
+
+运行：bash tools/run-macos-gui.sh prebuilt/quotaos.bin
+构建：bash tools/build-lvgl-macos.sh
+独立本地分支 integration/pr2-plus-pr1；当前原始目录 /Users/leiquan/Desktop/Code/quota-os 的未提交改动未覆盖。没有push或修改远端。
+
+镜像SHA256：cf457f109f5cb5cd2207d7a0577ca9cb73fb050a6ac10d36b7305f721d9132fb
+镜像大小：662488 bytes

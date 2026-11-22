@@ -1,22 +1,10 @@
-LOCAL OPTIMIZATION 2026-11-22
-Base integration: 5807cc8 (PR2 9c9ab92 + PR1 55704ca)
-The banner names that base. Current hashes: SHA256SUMS.
-
-Apple Silicon build:
-  bash tools/build-lvgl-macos.sh
-Apple Silicon GUI, host time with native virtualization:
-  bash tools/run-macos-gui.sh prebuilt/quotaos.bin
-This uses HVF, host CPU and GICv3. HVF does not support this setup's GICv2.
-GUI is continuous; the old 45-second exit was removed.
-LVGL is still an EL1 Tier3 task. EL0 isolation is a separate mode.
-
-Ten-round native host-time GUI+isolation check:
-  python3 tools/realtime-rounds.py prebuilt/quotaos.bin /tmp/quota-hvf-results --rounds 10 --modes host --accel hvf --cpu host --machine virt,gic-version=3 --longevity-seconds 50
-Reference TCG host+icount checks:
-  python3 tools/realtime-rounds.py prebuilt/quotaos.bin /tmp/quota-tcg-results --rounds 10
-
-TEST STATUS: not an unconditional hard-real-time acceptance pass.
-The final native GUI set includes a failed round with deadline misses.
-TCG host time also misses deadlines; icount is a separate simulation result.
-Details and all final sample definitions: docs/local-realtime-optimization.txt
-No remote pushes or GitHub writes were performed.
+LOCAL SIMPLE DESKTOP 2026-11-22
+Build: bash tools/build-lvgl-macos.sh
+Run: bash tools/run-macos-gui.sh prebuilt/quotaos.bin
+Apple Silicon: HVF, host CPU, GICv3, host clock.
+Windows: Activity Monitor, Notes, About. Drag title bar; red/yellow hide; dock restores.
+Notes are session memory only. No disk persistence.
+GUI remains Tier3/EL1. This is not hard realtime acceptance.
+Ten host-time GUI rounds: 6 pass, 4 fail. icount: 10 pass.
+See docs/local-desktop.txt and SHA256SUMS.
+No remote writes or pushes.

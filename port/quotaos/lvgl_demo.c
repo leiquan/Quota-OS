@@ -26,19 +26,9 @@ static lv_obj_t *page_cover;
 
 static void show_page(int which)
 {
-    if (which == 0) {
-        lv_obj_remove_flag(page_home, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
-    } else if (which == 1) {
-        lv_obj_add_flag(page_home, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(page_input, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(page_home, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
-    }
+    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : page_cover;
+    lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(win);
 }
 static unsigned clicks;
 
@@ -320,15 +310,15 @@ static void on_group(lv_event_t *e)
 static lv_obj_t *add_row(lv_obj_t *parent, int y, uint32_t bg, uint32_t edge, const char *text, int id)
 {
     lv_obj_t *item = lv_button_create(parent);
-    int32_t cw = lv_obj_get_content_width(parent);
-    if (cw < 40)
-        cw = 230;
+    int32_t cw = parent == menu_list ? 163 : 380;
     lv_obj_set_pos(item, 0, y);
     lv_obj_set_size(item, cw, 32);
     lv_obj_set_style_bg_color(item, lv_color_hex(bg), 0);
     lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(item, lv_color_hex(edge), 0);
-    lv_obj_set_style_border_width(item, 2, 0);
+    lv_obj_set_style_border_width(item, 1, 0);
+    lv_obj_set_style_shadow_width(item, 0, 0);
+    lv_obj_set_style_radius(item, 8, 0);
     lv_obj_set_style_text_color(item, lv_color_hex(0x101820), 0);
     lv_obj_add_event_cb(item, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)id);
     lv_obj_t *il = lv_label_create(item);
@@ -338,15 +328,98 @@ static lv_obj_t *add_row(lv_obj_t *parent, int y, uint32_t bg, uint32_t edge, co
     return item;
 }
 
-static lv_obj_t *add_head(lv_obj_t *parent, int y, uint32_t bg, const char *text)
+static lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, uint32_t color)
 {
-    lv_obj_t *lab = lv_label_create(parent);
-    lv_obj_set_pos(lab, 0, y);
-    lv_obj_set_style_bg_color(lab, lv_color_hex(bg), 0);
-    lv_obj_set_style_bg_opa(lab, LV_OPA_COVER, 0);
-    lv_obj_set_style_text_color(lab, lv_color_hex(0x101820), 0);
-    lv_label_set_text(lab, text);
-    return lab;
+    lv_obj_t *o = lv_label_create(parent);
+    lv_obj_set_pos(o, x, y);
+    lv_label_set_text(o, text);
+    lv_obj_set_style_text_color(o, lv_color_hex(color), 0);
+    return o;
+}
+
+static void window_control(lv_event_t *e)
+{
+    lv_obj_t *win = lv_event_get_user_data(e);
+    lv_obj_add_flag(win, LV_OBJ_FLAG_HIDDEN);
+    printf("[desktop] window hidden\n");
+}
+
+static void window_drag(lv_event_t *e)
+{
+    lv_obj_t *win = lv_event_get_user_data(e);
+    lv_obj_move_foreground(win);
+    if (lv_event_get_code(e) == LV_EVENT_RELEASED) {
+        printf("[desktop] moved %ld,%ld\n", (long)lv_obj_get_x(win), (long)lv_obj_get_y(win));
+        return;
+    }
+    if (lv_event_get_code(e) != LV_EVENT_PRESSING)
+        return;
+    lv_point_t v;
+    lv_indev_get_vect(lv_indev_active(), &v);
+    int x = lv_obj_get_x(win) + v.x;
+    int y = lv_obj_get_y(win) + v.y;
+    int max_x = 640 - lv_obj_get_width(win);
+    if (x < 0) x = 0;
+    if (x > max_x) x = max_x;
+    if (y < 30) y = 30;
+    if (y > 408 - lv_obj_get_height(win)) y = 408 - lv_obj_get_height(win);
+    lv_obj_set_pos(win, x, y);
+}
+
+static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, const char *title)
+{
+    lv_obj_t *win = lv_obj_create(screen);
+    lv_obj_set_pos(win, x, y);
+    lv_obj_set_size(win, w, h);
+    lv_obj_set_style_pad_all(win, 0, 0);
+    lv_obj_set_style_radius(win, 12, 0);
+    lv_obj_set_style_bg_color(win, lv_color_hex(0xf5f7fc), 0);
+    lv_obj_set_style_border_color(win, lv_color_hex(0xb4bfd9), 0);
+    lv_obj_set_style_border_width(win, 1, 0);
+    lv_obj_remove_flag(win, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *bar = lv_obj_create(win);
+    lv_obj_set_pos(bar, 0, 0);
+    lv_obj_set_size(bar, w, 34);
+    lv_obj_set_style_pad_all(bar, 0, 0);
+    lv_obj_set_style_radius(bar, 0, 0);
+    lv_obj_set_style_border_width(bar, 0, 0);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(0xe6ebf5), 0);
+    lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(bar, window_drag, LV_EVENT_PRESSED, win);
+    lv_obj_add_event_cb(bar, window_drag, LV_EVENT_PRESSING, win);
+    lv_obj_add_event_cb(bar, window_drag, LV_EVENT_RELEASED, win);
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *dot = lv_button_create(bar);
+        lv_obj_set_pos(dot, 12 + i * 20, 10);
+        lv_obj_set_size(dot, 13, 13);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(dot, 0, 0);
+        lv_obj_set_style_shadow_width(dot, 0, 0);
+        lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xf5bd4f : 0xef6b73), 0);
+        lv_obj_add_event_cb(dot, window_control, LV_EVENT_CLICKED, win);
+    }
+    lv_obj_t *label = desk_label(bar, 64, 9, title, 0x263552);
+    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    return win;
+}
+
+static lv_obj_t *dock_item(lv_obj_t *dock, int x, uint32_t color, const char *icon, const char *name, int id)
+{
+    lv_obj_t *b = lv_button_create(dock);
+    lv_obj_set_pos(b, x, 5);
+    lv_obj_set_size(b, 62, 44);
+    lv_obj_set_style_radius(b, 10, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(color), 0);
+    lv_obj_add_event_cb(b, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)id);
+    lv_obj_t *l = lv_label_create(b);
+    lv_label_set_text(l, icon);
+    lv_obj_align(l, LV_ALIGN_TOP_MID, 0, -3);
+    lv_obj_t *n = lv_label_create(b);
+    lv_label_set_text(n, name);
+    lv_obj_align(n, LV_ALIGN_BOTTOM_MID, 0, 5);
+    lv_obj_set_style_text_color(n, lv_color_hex(0xffffff), 0);
+    return b;
 }
 
 int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
@@ -374,141 +447,111 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_indev_set_read_cb(keypad, keypad_read);
 
     lv_obj_t *screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
-    lv_obj_set_style_text_color(screen, lv_color_hex(0x101820), 0);
-    build_cursor();
-    lv_obj_t *cursor = lv_image_create(screen);
-    lv_image_set_src(cursor, &cursor_dsc);
-    lv_indev_set_cursor(pointer, cursor);
-    printf("[lvgl] white background, dark text\n");
-    printf("[lvgl] software cursor %dx%d black fill white outline hotspot 0,0\n", CUR_W, CUR_H);
-
-    lv_obj_t *title = lv_label_create(screen);
-    lv_label_set_text(title, "Quota OS menu");
-    lv_obj_set_pos(title, 8, 2);
-    lv_obj_set_style_text_color(title, lv_color_hex(0x101820), 0);
-
-    legend = lv_label_create(screen);
-    lv_obj_set_pos(legend, 8, 20);
-    lv_obj_set_width(legend, 620);
-    lv_obj_set_style_text_color(legend, lv_color_hex(0x101820), 0);
-    {
-        char leg[160];
-        demo_menu_legend(leg, (int)sizeof leg);
-        lv_label_set_text(legend, leg);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x182b57), 0);
+    lv_obj_set_style_bg_grad_color(screen, lv_color_hex(0x6c4d92), 0);
+    lv_obj_set_style_bg_grad_dir(screen, LV_GRAD_DIR_VER, 0);
+    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *hill = lv_obj_create(screen);
+        lv_obj_set_size(hill, 720, 380);
+        lv_obj_set_pos(hill, -150 + i * 170, 170 + i * 66);
+        lv_obj_set_style_radius(hill, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(hill, 0, 0);
+        lv_obj_set_style_bg_color(hill, lv_color_hex(i == 0 ? 0x345388 : i == 1 ? 0x555eaa : 0x9b76b0), 0);
+        lv_obj_remove_flag(hill, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     }
+    lv_obj_t *top = lv_obj_create(screen);
+    lv_obj_set_pos(top, 0, 0);
+    lv_obj_set_size(top, 640, 28);
+    lv_obj_set_style_pad_all(top, 0, 0);
+    lv_obj_set_style_radius(top, 0, 0);
+    lv_obj_set_style_border_width(top, 0, 0);
+    lv_obj_set_style_bg_color(top, lv_color_hex(0x101d39), 0);
+    lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
+    desk_label(top, 14, 7, LV_SYMBOL_HOME "  Quota", 0xffffff);
+    desk_label(top, 140, 7, "Desktop", 0xbac9e9);
+    desk_label(top, 476, 7, LV_SYMBOL_WIFI "  Local system", 0xd7e4fa);
+    desk_label(screen, 25, 38, "A little space to focus.", 0xd8def3);
 
-    page_home = lv_obj_create(screen);
-    lv_obj_set_pos(page_home, 0, 36);
-    lv_obj_set_size(page_home, 640, 444);
-    lv_obj_set_style_bg_opa(page_home, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(page_home, 0, 0);
-    lv_obj_remove_flag(page_home, LV_OBJ_FLAG_SCROLLABLE);
-
+    page_home = desktop_window(screen, 22, 63, 596, 336, "Activity Monitor");
     menu_list = lv_obj_create(page_home);
-    lv_obj_set_pos(menu_list, 4, 0);
-    lv_obj_set_size(menu_list, 250, 400);
-    lv_obj_set_style_bg_color(menu_list, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_bg_opa(menu_list, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(menu_list, lv_color_hex(0x101820), 0);
-    lv_obj_set_style_border_width(menu_list, 1, 0);
-    lv_obj_set_style_pad_all(menu_list, 2, 0);
+    lv_obj_set_pos(menu_list, 0, 34);
+    lv_obj_set_size(menu_list, 185, 302);
+    lv_obj_set_style_bg_color(menu_list, lv_color_hex(0xeaf0fa), 0);
+    lv_obj_set_style_border_width(menu_list, 0, 0);
+    lv_obj_set_style_pad_all(menu_list, 10, 0);
+    lv_obj_set_style_radius(menu_list, 0, 0);
     lv_obj_remove_flag(menu_list, LV_OBJ_FLAG_SCROLLABLE);
-    /* Blue draw, green stress, orange admission, red fault. Text states stay on the row. */
-    add_head(menu_list, 0, 0xdbeafe, "Draw");
-    add_row(menu_list, 18, 0xdbeafe, 0x1d4ed8, "scroll once", 100);
-    lv_obj_t *inb = add_row(menu_list, 52, 0xdbeafe, 0x1d4ed8, "input page", 200);
-    add_head(menu_list, 90, 0xdcfce7, "Stress");
-    add_row(menu_list, 108, 0xdcfce7, 0x166534, "tier-1 window", 5);
-    lv_obj_t *load9 = add_row(menu_list, 142, 0xdcfce7, 0x166534, "tier-3 load", 9);
-    add_row(menu_list, 176, 0xdcfce7, 0x166534, "stop", 103);
-    add_head(menu_list, 214, 0xffedd5, "Admit");
-    add_row(menu_list, 232, 0xffedd5, 0xc2410c, "install Pixel Racer", 2);
-    add_row(menu_list, 266, 0xffedd5, 0xc2410c, "admit until full", 3);
-    add_row(menu_list, 300, 0xffedd5, 0xc2410c, "reject too big", 4);
-    add_head(menu_list, 338, 0xfee2e2, "Fault");
-    lv_obj_t *covb = add_row(menu_list, 356, 0xfee2e2, 0xb91c1c, "coverage", 201);
-
-    detail = lv_label_create(page_home);
-    lv_obj_set_pos(detail, 258, 0);
-    lv_obj_set_size(detail, 370, 430);
+    desk_label(menu_list, 2, 0, "WORKSPACE", 0x64748b);
+    lv_obj_t *inb = add_row(menu_list, 24, 0xffffff, 0xdbe3f0, "Notes", 200);
+    lv_obj_t *load9 = add_row(menu_list, 64, 0xe0edff, 0xc5d9fa, "Run workload", 9);
+    add_row(menu_list, 104, 0xffffff, 0xdbe3f0, "Stop workload", 103);
+    add_row(menu_list, 144, 0xffffff, 0xdbe3f0, "System window", 5);
+    add_row(menu_list, 184, 0xffffff, 0xdbe3f0, "Open Pixel Racer", 2);
+    lv_obj_t *covb = add_row(menu_list, 224, 0xffffff, 0xdbe3f0, "About this system", 201);
+    detail = desk_label(page_home, 207, 59, "Welcome to Quota OS", 0x263552);
+    lv_obj_set_size(detail, 364, 248);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    lv_label_set_text(detail, "no result yet\nT1 miss not measured\np99 not measured\npages not measured");
-    lv_obj_set_style_text_color(detail, lv_color_hex(0x101820), 0);
-    lv_obj_set_style_bg_color(detail, lv_color_hex(0xf8fafc), 0);
-    lv_obj_set_style_bg_opa(detail, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(detail, lv_color_hex(0x101820), 0);
-    lv_obj_set_style_border_width(detail, 1, 0);
-    lv_obj_set_style_pad_all(detail, 6, 0);
+    legend = lv_label_create(page_home);
+    lv_obj_add_flag(legend, LV_OBJ_FLAG_HIDDEN);
 
-    page_input = lv_obj_create(screen);
-    lv_obj_set_pos(page_input, 0, 36);
-    lv_obj_set_size(page_input, 640, 444);
-    lv_obj_set_style_bg_color(page_input, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_bg_opa(page_input, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(page_input, 0, 0);
-    lv_obj_remove_flag(page_input, LV_OBJ_FLAG_SCROLLABLE);
-    add_row(page_input, 8, 0xffffff, 0x101820, "back", 202);
+    page_input = desktop_window(screen, 100, 87, 440, 270, "Notes");
+    desk_label(page_input, 22, 53, "Make a little room for your ideas.", 0x64748b);
+    field = lv_textarea_create(page_input);
+    lv_obj_set_pos(field, 20, 84);
+    lv_obj_set_size(field, 398, 98);
+    lv_textarea_set_one_line(field, false);
+    lv_textarea_set_placeholder_text(field, "Start typing...");
+    lv_obj_set_style_radius(field, 8, 0);
+    lv_obj_set_style_border_color(field, lv_color_hex(0xd9e1ee), 0);
+    lv_obj_set_style_border_width(field, 1, 0);
+    lv_obj_set_style_text_color(field, lv_color_hex(0x263552), 0);
     lv_obj_t *btn = lv_button_create(page_input);
-    lv_obj_set_pos(btn, 8, 52);
-    lv_obj_set_size(btn, 140, 40);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0xdbeafe), 0);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(btn, lv_color_hex(0x1d4ed8), 0);
-    lv_obj_set_style_border_width(btn, 2, 0);
+    lv_obj_set_pos(btn, 20, 203);
+    lv_obj_set_size(btn, 95, 35);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x5275d8), 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_add_event_cb(btn, on_click, LV_EVENT_CLICKED, NULL);
     lv_obj_t *bl = lv_label_create(btn);
     lv_label_set_text(bl, "+1");
-    lv_obj_set_style_text_color(bl, lv_color_hex(0x101820), 0);
     lv_obj_center(bl);
-    count_label = lv_label_create(page_input);
-    lv_label_set_text(count_label, "Count: 0");
-    lv_obj_set_pos(count_label, 160, 60);
-    lv_obj_set_style_text_color(count_label, lv_color_hex(0x101820), 0);
-    field = lv_textarea_create(page_input);
-    lv_obj_set_pos(field, 8, 108);
-    lv_obj_set_size(field, 400, 40);
-    lv_textarea_set_one_line(field, true);
-    lv_textarea_set_placeholder_text(field, "type here");
-    lv_obj_set_style_bg_color(field, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_bg_opa(field, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(field, lv_color_hex(0x101820), 0);
-    lv_obj_set_style_border_width(field, 2, 0);
-    lv_obj_set_style_text_color(field, lv_color_hex(0x101820), 0);
-    {
-        lv_group_t *group = lv_group_create();
-        lv_group_add_obj(group, field);
-        lv_indev_set_group(keypad, group);
-    }
+    count_label = desk_label(page_input, 135, 213, "Count: 0", 0x64748b);
+    lv_group_t *group = lv_group_create();
+    lv_group_add_obj(group, field);
+    lv_indev_set_group(keypad, group);
     lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
 
-    page_cover = lv_obj_create(screen);
-    lv_obj_set_pos(page_cover, 0, 36);
-    lv_obj_set_size(page_cover, 640, 444);
-    lv_obj_set_style_bg_color(page_cover, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_bg_opa(page_cover, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(page_cover, 0, 0);
-    lv_obj_remove_flag(page_cover, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *back = add_row(page_cover, 4, 0xffffff, 0x101820, "back", 202);
-    {
-        lv_obj_t *cov = lv_label_create(page_cover);
-        lv_obj_set_pos(cov, 8, 44);
-        lv_obj_set_width(cov, 620);
-        lv_obj_set_style_text_color(cov, lv_color_hex(0x101820), 0);
-        lv_label_set_text(cov,
-            "Not connected. Serial menu still runs them.\n"
-            "6 tier-1 slot cut: spin task in a tier-1 slot\n"
-            "10 runaway: same, unbounded loop is not started\n"
-            "13 budget token: sched_bench blocks the shell\n"
-            "14 device timeout: sched_bench blocks the shell\n"
-            "15 interrupt storm: sched_bench blocks the shell\n"
-            "16 bandwidth cap: sched_bench blocks the shell\n"
-            "18 IPC hold: four sched_bench windows block the shell\n"
-            "Unbounded runaway and a RAM crash are not started.");
-    }
+    page_cover = desktop_window(screen, 105, 85, 430, 290, "About Quota OS");
+    desk_label(page_cover, 24, 55, LV_SYMBOL_HOME "  Quota OS", 0x374e90);
+    desk_label(page_cover, 24, 91, "A small desktop. A clear set of priorities.", 0x263552);
+    lv_obj_t *about = desk_label(page_cover, 24, 125,
+        "Open Notes to write, or Activity Monitor to\n"
+        "run a workload and inspect its results.\n\n"
+        "This is a prototype desktop. Notes are kept\n"
+        "in memory for this session.", 0x64748b);
+    lv_obj_set_width(about, 385);
+    lv_obj_t *back = add_row(page_cover, 233, 0xe4ecff, 0xc5d9fa, "Activity Monitor", 202);
+    lv_obj_set_pos(back, 24, 233);
+    lv_obj_set_width(back, 380);
     lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
 
+    lv_obj_t *dock = lv_obj_create(screen);
+    lv_obj_set_pos(dock, 201, 415);
+    lv_obj_set_size(dock, 238, 57);
+    lv_obj_set_style_pad_all(dock, 0, 0);
+    lv_obj_set_style_radius(dock, 16, 0);
+    lv_obj_set_style_bg_color(dock, lv_color_hex(0xc9c9e6), 0);
+    lv_obj_set_style_border_color(dock, lv_color_hex(0xe1e2f7), 0);
+    lv_obj_set_style_border_width(dock, 1, 0);
+    lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
+    dock_item(dock, 13, 0x4a6bc2, LV_SYMBOL_SETTINGS, "Monitor", 202);
+    dock_item(dock, 87, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
+    dock_item(dock, 161, 0x7160b5, LV_SYMBOL_LIST, "About", 201);
+    build_cursor();
+    lv_obj_t *cursor = lv_image_create(lv_layer_sys());
+    lv_image_set_src(cursor, &cursor_dsc);
+    lv_indev_set_cursor(pointer, cursor);
+    printf("[desktop] ready: windows, drag title bars, close/minimize, dock restore\n");
     lv_obj_update_layout(screen);
     {
         lv_area_t box;
@@ -536,83 +579,50 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     static char leg_shown[160];
     static char text[480];
     static struct menu_detail d;
+    uint64_t panel_at = 0;
     shown[0] = 0;
     leg_shown[0] = 0;
     /* The UI is a service, not a 45-second demonstration. IRQs remain enabled
      * and the scheduler still charges all rendering/input to Tier 3. */
     for (;;) {
-        int i;
-        uint64_t cmax = 0, kmax = 0, smax = 0;
         take_inputs();
         lv_timer_handler();
+        uint64_t panel_now = now_us();
+        if (panel_at && panel_now - panel_at < 100000)
+            continue;
+        panel_at = panel_now;
         demo_menu_detail(&d);
-        for (i = 0; i < n_click; i++)
-            if (click_dt[i] > cmax)
-                cmax = click_dt[i];
-        for (i = 0; i < n_key; i++)
-            if (key_dt[i] > kmax)
-                kmax = key_dt[i];
-        for (i = 0; i < n_scroll; i++)
-            if (scroll_dt[i] > smax)
-                smax = scroll_dt[i];
         if (d.running) {
             lv_snprintf(text, sizeof text,
-                        "menu %d running %u/%u\n"
-                        "T1 miss not measured yet\n"
-                        "class a counts when the window ends\n"
-                        "p99 not measured yet\n"
-                        "pages not measured\n"
-                        "panel light not measured",
-                        d.id, d.progress, d.total);
+                "WORKLOAD IN PROGRESS\n\n"
+                "%u of %u periods\n\n"
+                "The desktop remains available.\n"
+                "Results appear when this window ends.", d.progress, d.total);
         } else if (d.have_window) {
-            char p99line[72];
-            if (d.p99_ok)
-                lv_snprintf(p99line, sizeof p99line, "%lu us nearest-rank ceil(0.99*n)", d.p99_us);
+            char t2[48];
+            if (d.t2_ok)
+                lv_snprintf(t2, sizeof t2, "%u / %u", d.t2_short, d.job_miss);
             else
-                lv_snprintf(p99line, sizeof p99line, "not measured n<20 or capped");
+                lv_snprintf(t2, sizeof t2, "not sampled");
             lv_snprintf(text, sizeof text,
-                        "menu %d done %u/%u\n"
-                        "T1 miss %u\n"
-                        "class a %lu  b %lu  skipped %lu\n"
-                        "class a counts, not a pass\n"
-                        "%s\n"
-                        "done max %lu us n=%u%s\n"
-                        "p99 %s\n"
-                        "not_started %u unfinished %u\n"
-                        "open bound %lu us not a completion\n"
-                        "shell %u us/period\n"
-                        "quota T1 1500us 13312KB\n"
-                        "pages not measured\n"
-                        "panel light not measured",
-                        d.id, d.progress, d.total,
-                        d.t1_miss, d.class_a, d.class_b, d.skipped,
-                        clock_is_icount() ? "icount" : "host clock, not a pass",
-                        d.lat_max_us, d.samples, d.capped ? " capped" : "",
-                        p99line,
-                        d.not_started, d.unfinished, d.open_bound_us,
-                        d.shell_us);
-            if (d.t2_ok) {
-                char extra[80];
-                int used = 0;
-                int k = 0;
-                lv_snprintf(extra, sizeof extra, "\ntier2 short %u  job miss %u", d.t2_short, d.job_miss);
-                while (text[used])
-                    used++;
-                while (extra[k] && used + 1 < (int)sizeof text)
-                    text[used++] = extra[k++];
-                text[used] = 0;
-            }
+                "WORKLOAD COMPLETE\n\n"
+                "Priority 1 missed deadlines       %u\n"
+                "Priority 2 short / missed       %s\n\n"
+                "Completed response max       %lu us\n"
+                "Completed samples                %u\n"
+                "Not started / unfinished       %u / %u\n\n"
+                "%s",
+                d.t1_miss, t2, d.lat_max_us,
+                d.samples, d.not_started, d.unfinished,
+                d.t1_miss || d.t2_short || d.job_miss ? "Timing requirements were not met." : "No misses in this observed window.");
         } else {
             lv_snprintf(text, sizeof text,
-                        "no window yet\n"
-                        "T1 miss not measured\n"
-                        "p99 not measured\n"
-                        "pages not measured\n"
-                        "panel light not measured\n"
-                        "fb click n=%u max %lu us\n"
-                        "fb key n=%u max %lu us\n"
-                        "fb scroll n=%u max %lu us",
-                        (unsigned)n_click, cmax, (unsigned)n_key, kmax, (unsigned)n_scroll, smax);
+                "YOUR SYSTEM, AT A GLANCE\n\n"
+                "Fixed windows for essential services.\n"
+                "Minimum resources for admitted apps.\n"
+                "The desktop uses the remaining time.\n\n"
+                "Run a workload to see measured results.\n"
+                "Open Notes from the dock to get started.");
         }
         if (strcmp(text, shown) != 0) {
             lv_label_set_text(detail, text);
