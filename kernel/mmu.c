@@ -3,8 +3,7 @@
  * This is not a set of protected user processes, and it is not completed
  * three-tier isolation. Device pages stay device memory.
  *
- * 4 KB pages cover the kernel data, the system-reserve tail (framebuffer),
- * and the WebKit structure/arena window. Everything else in RAM is a 2 MB
+ * 4 KB pages cover the test page and the system-reserve tail (framebuffer). Everything else in RAM is a 2 MB
  * block, so the page tables leave room for the framebuffer.
  */
 #include "quotaos.h"
@@ -24,8 +23,8 @@ static uint64_t l0[512] __attribute__((aligned(4096)));
 static uint64_t l1[512] __attribute__((aligned(4096)));
 static uint64_t l2_lo[512] __attribute__((aligned(4096)));
 static uint64_t l2_ram[512] __attribute__((aligned(4096)));
-/* Blocks 6-7 and 32-63. 34 tables, not 64. */
-static uint64_t l3_storage[35][512] __attribute__((aligned(4096)));
+/* Two reserve-tail blocks and at most one additional test-page block. */
+static uint64_t l3_storage[3][512] __attribute__((aligned(4096)));
 static uint64_t *l3_for[64];
 static int mmu_on;
 static volatile int expect_fault;
@@ -115,9 +114,9 @@ void mmu_init(void)
     for (int blk = 0; blk < 64; blk++) {
         uint64_t va = 0x40000000ull + ((uint64_t)blk << 21);
         uint64_t l2i = (va >> 21) & 511ull;
-        /* Data, reserve tail, structure heap, and malloc arena. */
+        /* Reserve tail and permission-test page. */
         uint64_t test = (uintptr_t)mmu_test_page;
-        int pages = (blk >= 6 && blk <= 7) || blk >= 32 ||
+        int pages = (blk >= 6 && blk <= 7) ||
                     (test >= va && test < va + 0x200000ull);
         if (!pages) {
             l2_ram[l2i] = va | PTE_VALID | PTE_AF | ATTR_NORMAL | SH_INNER | PTE_UXN;

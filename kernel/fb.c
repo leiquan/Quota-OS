@@ -1,7 +1,6 @@
 /*
  * QEMU ramfb. The surface sits in the 16 MB system reserve, under the
  * page pool, so it is not lent and it is not a Tier-1 colored page.
- * Publishing it is a device self-test. It is not a WebKit paint.
  */
 #include "quotaos.h"
 
@@ -10,11 +9,6 @@
 #define FB_BPP 4u
 
 extern char __image_start[], __image_end[];
-
-__attribute__((weak)) uint64_t jsc_arena_end(void)
-{
-    return (uint64_t)__image_end;
-}
 
 static uint64_t reserve_cursor;
 static uint32_t *fb_pixels;
@@ -43,11 +37,10 @@ int kernel_reserve_alloc(uint64_t bytes, uint64_t align, uint64_t *pa)
     }
     if (align == 0 || (align & (align - 1)) != 0)
         return -1;
+    if (bytes > reserve_cursor)
+        return -1;
     uint64_t a = (reserve_cursor - bytes) & ~(align - 1);
-    uint64_t floor = jsc_arena_end();
-    if (floor < (uint64_t)__image_end)
-        floor = (uint64_t)__image_end;
-    if (a < floor)
+    if (a < (uint64_t)__image_end)
         return -1;
     reserve_cursor = a;
     *pa = a;
@@ -176,54 +169,5 @@ int fb_reserved_range(uint64_t *start, uint64_t *bytes)
         *start = (uint64_t)fb_pixels;
     if (bytes)
         *bytes = fb_bytes;
-    return 0;
-}
-
-int fb_device_self_test(uint32_t **pixels_out, uint32_t *w, uint32_t *h, uint32_t *stride)
-{
-    uint64_t pa, fwreg[4];
-    uint32_t bytes = FB_W * FB_H * FB_BPP;
-    if (!fb_pixels) {
-        if (kernel_reserve_alloc(bytes, 4096, &pa) != 0) {
-            printf("[fb] system reserve has no room for %u bytes\n", bytes);
-            return -1;
-        }
-        fb_pixels = (uint32_t *)pa;
-        fb_bytes = bytes;
-    }
-    pa = (uint64_t)fb_pixels;
-    bytes = fb_bytes;
-    for (uint32_t y = 0; y < FB_H; y++) {
-        uint32_t color = 0x000000ffu;
-        if (y >= 120)
-            color = 0x0000ff00u;
-        if (y >= 240)
-            color = 0x00ff0000u;
-        if (y >= 360)
-            color = 0x00ffffffu;
-        for (uint32_t x = 0; x < FB_W; x++)
-            fb_pixels[y * FB_W + x] = color;
-    }
-    uint32_t sum = 0;
-    for (uint32_t i = 0; i < FB_W * FB_H; i++)
-        sum += fb_pixels[i];
-    printf("[fb] reserve surface %ux%u at 0x%lx\n", FB_W, FB_H, pa);
-    printf("[fb] self-test checksum 0x%x (not a WebKit paint)\n", sum);
-    int n = dtb_find_bases("qemu,fw-cfg-mmio", fwreg, 1);
-    if (n < 1) {
-        printf("[fb] no qemu,fw-cfg-mmio in DTB\n");
-        return -1;
-    }
-    if (ramfb_publish(fwreg[0], pa, FB_W, FB_H, FB_W * FB_BPP) != 0)
-        return -1;
-    printf("[fb] ramfb published from fw_cfg 0x%lx\n", fwreg[0]);
-    if (pixels_out)
-        *pixels_out = fb_pixels;
-    if (w)
-        *w = FB_W;
-    if (h)
-        *h = FB_H;
-    if (stride)
-        *stride = FB_W * FB_BPP;
     return 0;
 }

@@ -2,12 +2,11 @@
 # LVGL guest. Upstream tree: third_party/lvgl (v9.3.0, see PIN.txt).
 # Writes build/quotaos-lvgl.bin. After a QEMU check, that file is installed
 # as prebuilt/quotaos.bin and copied to prebuilt/quotaos-lvgl.bin.
-# Does not touch prebuilt/quotaos-serial.bin, quotaos-jsc.bin, or history.
+# Does not touch prebuilt/quotaos-serial.bin or history.
 set -euo pipefail
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 CC=${CC:-aarch64-linux-gnu-gcc}
-CXX=${CXX:-aarch64-linux-gnu-g++}
 OBJCOPY=${OBJCOPY:-aarch64-linux-gnu-objcopy}
 NM=${NM:-aarch64-linux-gnu-nm}
 RUNTIME_LIB=${RUNTIME_LIB:--lgcc}
@@ -25,7 +24,6 @@ srcs=(
     kernel/dtb.c kernel/gic.c kernel/timer.c kernel/resource.c kernel/mmu.c
     kernel/sched.c kernel/demo.c kernel/apps/vehicle.c kernel/apps/c_demo.c kernel/decl.c kernel/ipc.c kernel/dev.c
     kernel/color.c kernel/e4.c kernel/note_disk.c kernel/fb.c kernel/input.c kernel/lvgl_boot.c
-    kernel/webkit.c kernel/wkalloc.c kernel/cxxrt.cpp kernel/cxxtest.cpp
     kernel/proc.c kernel/isolate.c
 )
 $CC -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none \
@@ -35,14 +33,7 @@ objs=()
 for f in "${srcs[@]}"; do
     obj="build/${f%.*}.o"
     mkdir -p "$(dirname "$obj")"
-    if [[ $f == *.cpp ]]; then
-        $CXX $EXTRA_CFLAGS -std=c++20 -Wall -Wextra -Werror -O2 -ffreestanding \
-            -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack-protector \
-            -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align \
-            -fno-asynchronous-unwind-tables -I include -I build -c -o "$obj" "$f"
-    else
-        $CC "${CFLAGS[@]}" -c -o "$obj" "$f"
-    fi
+    $CC "${CFLAGS[@]}" -c -o "$obj" "$f"
     objs+=("$obj")
 done
 LVFLAGS=($EXTRA_CFLAGS -std=gnu11 -O2 -ffreestanding -fno-stack-protector -fno-builtin

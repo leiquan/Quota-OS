@@ -1159,11 +1159,6 @@ void shell_main(void)
         printf("QA DONE\n");
         for (;;) asm volatile("wfi");
     }
-    if (strcmp(args, "webkit") == 0) {
-        webkit_autostart();
-        for (;;)
-            asm volatile("wfi");
-    }
     if (strcmp(args, "e1") == 0) {
         decl_demo_device_tier1();
         decl_demo_overcommit();
@@ -1214,7 +1209,7 @@ void shell_main(void)
     if (strcmp(args, "qa-long") == 0)
         run_qa(1);
     /* Empty bootargs are the owner's UTM default. That path is LVGL.
-     * The serial menu is only -append serial. e4, webkit, qa stay explicit. */
+     * The serial menu is only -append serial. e4, qa stay explicit. */
     if (strcmp(args, "serial") != 0) {
         if (args[0] == 0)
             printf("[boot] no bootarg, starting LVGL\n");
