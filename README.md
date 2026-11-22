@@ -76,7 +76,7 @@ The four runnable workloads are sampled for at least 100 guest periods and then 
 
 Apps stays first in the Dock. Open windows and running vehicle apps occupy the other slots. Minimized windows keep their icon and dot. When all other apps close, up to five recent apps from this desktop session appear in most-recently-used order.
 
-Open **Apps → Files** to browse the dedicated note volume. Each file row displays the name, type and byte count. Selecting the row opens the document in Notes. This first version supports one UTF-8 document of up to 495 bytes.
+Open **Apps → Files** to browse the same files shown on the desktop. Each file row displays the name, type and byte count. Selecting the row opens the document in Notes. The desktop can hold one plain-text note (up to 495 bytes) and one C source file (up to 463 bytes).
 
 ![Files listing the saved document on the device](docs/screenshots/files.png)
 
@@ -98,7 +98,7 @@ The launcher uses the prebuilt kernel and creates a dedicated image at `~/.local
 
 ## Develop a C application in Quota OS
 
-Start with the Notes disk attached using `bash tools/run-files.sh`. In Notes, choose **C Example** to insert the program below, or type it yourself. Choose **Save As…**, enter `demo.c`, and press Enter. The saved source appears on the desktop and in Files.
+Start with the Notes disk attached using `bash tools/run-files.sh`. In Notes, choose **C Example** to insert the program below, or type it yourself. Choose **Save As...**, enter `demo.c`, and press Enter. The saved source appears on the desktop and in Files.
 
 ```c
 int main(void) {
