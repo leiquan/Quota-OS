@@ -178,13 +178,15 @@ static void app_demo_video_frame(void)
                 int center = 64 + bend * (APP_METER_H - y) / APP_METER_H;
                 int old = 64 + old_bend * (APP_METER_H - y) / APP_METER_H;
                 int edge = 6 + y;
-                for (int k = 0; k < 3; k++) {
-                    row[old-edge+k] = row[old+edge+k] = row[old+k] = 0x101820;
+                if (center != old) {
+                    row[old-edge] = row[old-edge+1] = 0x101820;
+                    row[old+edge] = row[old+edge+1] = 0x101820;
+                    row[old] = row[old+1] = row[old+2] = 0x101820;
                 }
                 row[center-edge] = row[center-edge+1] = 0x88d8e7;
                 row[center+edge] = row[center+edge+1] = 0x88d8e7;
-                if (((unsigned)y - frame * 2) & 8)
-                    row[center] = row[center+1] = row[center+2] = 0xffdf8d;
+                uint32_t stripe = (((unsigned)y - frame * 2) & 8) ? 0xffdf8d : 0x101820;
+                row[center] = row[center+1] = row[center+2] = stripe;
             }
             asm volatile("dsb st" ::: "memory");
             uint64_t flags = irq_save();
