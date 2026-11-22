@@ -10,11 +10,11 @@ License: [Apache-2.0](LICENSE)
 
 ## 分级应用演示
 
-![车载桌面、三级活动和实时指标](docs/screenshots/vehicle-activity.png)
+![Apps 与车载桌面](docs/screenshots/apps.png)
 
 [系统测试标签截图](docs/screenshots/vehicle-tests.png)
 
-Dock 的三个应用图标可高亮对应卡片。活动管理器的 Activity 标签显示调度器中实际存在的任务，System Tests 标签集中显示负载、服务和准入测试。顶栏的 UTC 日期与时间来自 QEMU RTC。
+Dock 首位的 Apps 列出镜像内置应用。System 的 System Task 标签显示内核调度任务，System Info 显示资源统计，System Tests 提供系统测试。顶栏的 UTC 日期与时间来自 QEMU RTC。
 
 [车载桌面验收记录](docs/tests/optimization/vehicle-desktop/REPORT.md)
 

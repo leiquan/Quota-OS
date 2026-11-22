@@ -20,7 +20,7 @@ static lv_obj_t *menu_list;
 static lv_obj_t *detail;
 static lv_obj_t *page_home;
 static lv_obj_t *page_input;
-static lv_obj_t *page_cover;
+static lv_obj_t *page_cover, *page_apps;
 static lv_obj_t *task_body;
 static lv_obj_t *tabs[3], *info_panel, *info_text;
 static lv_obj_t *app_cards[3];
@@ -29,13 +29,22 @@ static lv_obj_t *clock_label;
 static uint64_t rtc_base;
 enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_TESTS };
 static enum monitor_page monitor_tab;
-static lv_obj_t *minimized_dots[2];
-static lv_obj_t *task_rows[3];
+static lv_obj_t *minimized_dots[3];
+static lv_obj_t *task_lists[3];
+static lv_obj_t *task_items[MAX_TASKS];
+static lv_obj_t *empty_tasks[3];
+static const char app_speed[] = "Speedometer";
+static const char app_video[] = "Dashcam";
+static const char app_music[] = "Music Player";
+static const char app_monitor[] = "System";
+enum { DOCK_STEP = 132, DOCK_ITEM_WIDTH = 120 };
 
 static void show_page(int which)
 {
-    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : page_cover;
+    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : page_apps;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
+    if (which == 3 && minimized_dots[2])
+        lv_obj_add_flag(minimized_dots[2], LV_OBJ_FLAG_HIDDEN);
     if (which < 2 && minimized_dots[which])
         lv_obj_add_flag(minimized_dots[which], LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(win);
@@ -327,7 +336,20 @@ static void on_group(lv_event_t *e)
         printf("[desktop] %s\n", id == 203 ? "task manager opened" : "system tests opened");
         return;
     }
+    if (id == 210) {
+        show_page(3);
+        printf("[desktop] Apps opened\n");
+        return;
+    }
+    if (id == 211) {
+        lv_obj_add_flag(page_home, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
     if (id >= 205 && id <= 207) {
+        lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
         if (app_cards[id - 205]) {
             for (int i = 0; i < 3; i++)
                 lv_obj_set_style_outline_width(app_cards[i], i == id - 205 ? 2 : 0, 0);
@@ -388,7 +410,8 @@ static void hide_window(lv_event_t *e, int minimized)
     lv_obj_t *win = lv_event_get_user_data(e);
     lv_obj_add_flag(win, LV_OBJ_FLAG_HIDDEN);
     lv_obj_t *marker = win == page_home ? minimized_dots[0] :
-                       win == page_input ? minimized_dots[1] : NULL;
+                       win == page_input ? minimized_dots[1] :
+                       win == page_apps ? minimized_dots[2] : NULL;
     if (marker)
         monitor_visible(marker, minimized);
     printf("[desktop] window hidden\n");
@@ -471,7 +494,7 @@ static lv_obj_t *dock_item(lv_obj_t *dock, int x, uint32_t color, const char *ic
 {
     lv_obj_t *b = lv_button_create(dock);
     lv_obj_set_pos(b, x, 7);
-    lv_obj_set_size(b, 80, 56);
+    lv_obj_set_size(b, DOCK_ITEM_WIDTH, 56);
     lv_obj_set_style_radius(b, 10, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_bg_color(b, lv_color_hex(color), 0);
@@ -605,7 +628,7 @@ static void refresh_system_info(void)
 static lv_obj_t *dock_minimized_dot(lv_obj_t *dock, int item_x)
 {
     lv_obj_t *dot = lv_obj_create(dock);
-    lv_obj_set_pos(dot, item_x + 37, 64);
+    lv_obj_set_pos(dot, item_x + (DOCK_ITEM_WIDTH - 6) / 2, 64);
     lv_obj_set_size(dot, 6, 6);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(dot, lv_color_hex(0x202e52), 0);
@@ -615,22 +638,30 @@ static lv_obj_t *dock_minimized_dot(lv_obj_t *dock, int item_x)
     return dot;
 }
 
+static const char *task_display_name(const char *name)
+{
+    if (!strcmp(name, "dashboard")) return app_speed;
+    if (!strcmp(name, "video")) return app_video;
+    if (!strcmp(name, "music")) return app_music;
+    if (!strcmp(name, "shell")) return "Desktop Shell";
+    if (!strcmp(name, "timer-server")) return "Timer Service";
+    if (!strcmp(name, "display-vsync")) return "Display Service";
+    return name;
+}
+
 static void refresh_tasks(void)
 {
     if (monitor_tab != SYSTEM_TASK || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
         return;
-    static char rows[4096];
     for (int tier = TIER1; tier <= TIER3; tier++) {
-        size_t used = 0;
-        rows[0] = '\0';
+        int visible = 0;
+        lv_obj_t *list = task_lists[tier - TIER1];
         for (int i = 0; i < MAX_TASKS; i++) {
             const struct task *t = sched_task_at(i);
             if (!t || t->tier != tier || t->state == TASK_EMPTY || t->state == TASK_DEAD)
                 continue;
             const char *state = t->state == TASK_RUNNING ? "Running" :
                                 t->state == TASK_READY ? "Ready" : "Waiting";
-            if (used + 192 >= sizeof rows)
-                break;
             uint64_t flags = irq_save();
             unsigned long cpu = ticks_to_us(t->last_used_t);
             unsigned long grant = ticks_to_us(t->last_grant_t);
@@ -672,14 +703,36 @@ static void refresh_tasks(void)
                 lv_snprintf(memory, sizeof memory, "RAM %u KiB reserved", mem_grant);
             else
                 lv_snprintf(memory, sizeof memory, "RAM use unavailable");
-            used += lv_snprintf(rows + used, sizeof rows - used,
-                "%s  |  %s\nCPU %lu us used\n%s\n%s\n\n",
-                t->name, state, cpu, allocation, memory);
+            char text[192];
+            lv_snprintf(text, sizeof text, "%s\n%s  /  CPU %lu us\n%s\n%s",
+                task_display_name(t->name), state, cpu, allocation, memory);
+            lv_obj_t *item = task_items[i];
+            if (!item) {
+                task_items[i] = item = lv_label_create(list);
+                lv_obj_set_width(item, lv_pct(100));
+                lv_obj_set_style_pad_all(item, 8, 0);
+                lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
+                lv_obj_set_style_bg_color(item, lv_color_hex(0xffffff), 0);
+                lv_obj_set_style_radius(item, 6, 0);
+                lv_obj_set_style_border_width(item, 1, 0);
+                lv_obj_set_style_border_color(item, lv_color_hex(0xdbe3f0), 0);
+                lv_obj_set_style_text_color(item, lv_color_hex(0x263552), 0);
+            } else if (lv_obj_get_parent(item) != list) {
+                lv_obj_set_parent(item, list);
+            }
+            lv_obj_remove_flag(item, LV_OBJ_FLAG_HIDDEN);
+            if (strcmp(text, lv_label_get_text(item)))
+                lv_label_set_text(item, text);
+            visible++;
         }
-        lv_obj_t *label = task_rows[tier - TIER1];
-        const char *value = used ? rows : "No active tasks";
-        if (strcmp(value, lv_label_get_text(label)))
-            lv_label_set_text(label, value);
+        monitor_visible(empty_tasks[tier - TIER1], !visible);
+    }
+    for (int i = 0; i < MAX_TASKS; i++) {
+        if (!task_items[i])
+            continue;
+        const struct task *t = sched_task_at(i);
+        if (!t || t->state == TASK_EMPTY || t->state == TASK_DEAD)
+            lv_obj_add_flag(task_items[i], LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -749,16 +802,16 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
 
     int apps = app_desktop_mode();
     if (apps) {
-        app_cards[0] = app_card(screen, 116, "Speedometer", "Tier 1  /  Simulated speed (km/h)");
-        app_cards[1] = app_card(screen, 281, "Dashcam", apps == 2 ?
+        app_cards[0] = app_card(screen, 116, app_speed, "Tier 1  /  Simulated speed (km/h)");
+        app_cards[1] = app_card(screen, 281, app_video, apps == 2 ?
                  "Tier 2  /  25 simulated frames per second" : "Optional  /  Not running");
-        app_cards[2] = app_card(screen, 446, "Music Player", "Tier 3  /  EL0 simulated playback");
+        app_cards[2] = app_card(screen, 446, app_music, "Tier 3  /  EL0 simulated playback");
         for (int i = 0; i < 3; i++) {
             app_rate[i] = desk_label(app_cards[i], 184, 84, "Measuring FPS", 0x263552);
             app_status[i] = desk_label(app_cards[i], 184, 109, "", 0x475a7a);
         }
     }
-    page_home = desktop_window(screen, 88, 124, 720, 460, "Activity Monitor");
+    page_home = desktop_window(screen, 88, 124, 720, 460, app_monitor);
     menu_list = lv_obj_create(page_home);
     lv_obj_set_pos(menu_list, 0, 100);
     lv_obj_set_size(menu_list, 220, 360);
@@ -830,7 +883,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         (unsigned)w, (unsigned)h);
     lv_obj_t *about = desk_label(page_cover, 28, 111, about_text, 0x64748b);
     lv_obj_set_width(about, 440);
-    lv_obj_t *back = add_row(page_cover, 233, 0xe4ecff, 0xc5d9fa, "Activity Monitor", 202);
+    lv_obj_t *back = add_row(page_cover, 233, 0xe4ecff, 0xc5d9fa, app_monitor, 202);
     lv_obj_set_pos(back, 28, 280);
     lv_obj_set_width(back, 440);
     lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
@@ -865,13 +918,31 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         lv_obj_set_style_bg_color(list, lv_color_hex(0xf3f6fb), 0);
         lv_obj_set_style_border_width(list, 0, 0);
         lv_obj_set_scroll_dir(list, LV_DIR_VER);
-        task_rows[i] = desk_label(list, 0, 0, "", 0x263552);
-        lv_obj_set_width(task_rows[i], 176);
+        lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(list, 5, 0);
+        task_lists[i] = list;
+        empty_tasks[i] = desk_label(list, 0, 0, "No active tasks", 0x64748b);
     }
     select_monitor_tab(SYSTEM_TASK);
 
+    page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
+    const struct { const char *name; int action; int available; } installed[] = {
+        {"Desktop", 211, 1}, {app_monitor, 202, 1}, {"Apps", 210, 1},
+        {"Notes", 200, 1}, {app_speed, 205, apps},
+        {app_video, 206, apps == 2}, {app_music, 207, apps}
+    };
+    for (unsigned i = 0; i < sizeof installed / sizeof installed[0]; i++) {
+        lv_obj_t *entry = add_row(page_apps, 0, 0xffffff, 0xdbe3f0,
+                                  installed[i].name, installed[i].action);
+        lv_obj_set_size(entry, 236, 56);
+        lv_obj_set_pos(entry, 20 + (int)(i % 2) * 260,
+                       74 + (int)(i / 2) * 76);
+        if (!installed[i].available)
+            lv_obj_add_state(entry, LV_STATE_DISABLED);
+    }
+    lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
     lv_obj_t *dock = lv_obj_create(screen);
-    int dock_width = apps ? 506 : 206;
+    int dock_width = (apps ? 6 : 3) * DOCK_STEP + 12;
     lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - 84);
     lv_obj_set_size(dock, dock_width, 72);
     lv_obj_set_style_pad_all(dock, 0, 0);
@@ -880,18 +951,18 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_color(dock, lv_color_hex(0xe1e2f7), 0);
     lv_obj_set_style_border_width(dock, 1, 0);
     lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
-    dock_item(dock, 12, 0x4a6bc2, LV_SYMBOL_BARS, "Monitor", 202);
-    minimized_dots[0] = dock_minimized_dot(dock, 12);
-    lv_obj_t *notes_icon;
+    dock_item(dock, 12, 0x426a83, LV_SYMBOL_LIST, "Apps", 210);
+    minimized_dots[2] = dock_minimized_dot(dock, 12);
+    dock_item(dock, 12 + DOCK_STEP, 0x4a6bc2, LV_SYMBOL_BARS, app_monitor, 202);
+    minimized_dots[0] = dock_minimized_dot(dock, 12 + DOCK_STEP);
     if (apps) {
-        dock_item(dock, 112, 0x23785c, LV_SYMBOL_CHARGE, "Speed", 205);
-        dock_item(dock, 212, 0x395cc0, LV_SYMBOL_VIDEO, "Dashcam", 206);
-        dock_item(dock, 312, 0x7851a8, LV_SYMBOL_AUDIO, "Music", 207);
-        notes_icon = dock_item(dock, 412, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
-    } else {
-        notes_icon = dock_item(dock, 112, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
+        dock_item(dock, 12 + 2 * DOCK_STEP, 0x23785c, LV_SYMBOL_CHARGE, app_speed, 205);
+        dock_item(dock, 12 + 3 * DOCK_STEP, 0x395cc0, LV_SYMBOL_VIDEO, app_video, 206);
+        dock_item(dock, 12 + 4 * DOCK_STEP, 0x7851a8, LV_SYMBOL_AUDIO, app_music, 207);
     }
-    minimized_dots[1] = dock_minimized_dot(dock, apps ? 412 : 112);
+    int notes_x = 12 + (apps ? 5 : 2) * DOCK_STEP;
+    lv_obj_t *notes_icon = dock_item(dock, notes_x, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
+    minimized_dots[1] = dock_minimized_dot(dock, notes_x);
     build_cursor();
     lv_obj_t *cursor = lv_image_create(lv_layer_sys());
     lv_image_set_src(cursor, &cursor_dsc);
