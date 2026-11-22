@@ -273,6 +273,17 @@ int resource_running_count(void);
 struct running_app *resource_running(int index);
 const struct app_manifest *resource_catalog(int *count);
 
+/* App-demo framebuffer rectangles. LVGL must preserve their pixel writes. */
+#define APP_DESK_EDGE 840
+#define APP_DRAW_X 890
+#define APP_DASH_Y 205
+#define APP_VIDEO_Y 370
+#define APP_MUSIC_Y 535
+#define APP_METER_W 128
+#define APP_METER_H 8
+#define APP_MUSIC_SIZE 32
+int app_desktop_mode(void);
+void app_desktop_poll(void);
 void app_demo_dashboard_frame(void);
 void sched_init(void);
 struct task *sched_current(void);

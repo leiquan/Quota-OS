@@ -1147,6 +1147,17 @@ static uint32_t *volatile app_surface;
 static uint32_t app_stride;
 static volatile uint32_t dashboard_frames, video_frames;
 static volatile int video_stalled;
+static struct task *dashboard_demo;
+static struct running_app *video_demo;
+static int64_t music_demo;
+static int app_test_phase;
+static uint64_t app_test_period;
+static uint32_t d0, v0, m0, misses0, dn, vn, mn, dm;
+
+int app_desktop_mode(void)
+{
+    return app_surface ? (video_demo ? 2 : 1) : 0;
+}
 
 static void app_meter(uint32_t x, uint32_t y, uint32_t frame, uint32_t color)
 {
@@ -1154,8 +1165,8 @@ static void app_meter(uint32_t x, uint32_t y, uint32_t frame, uint32_t color)
     if (!fb)
         return;
     unsigned filled = 8 + (frame % 29) * 4;
-    for (unsigned row = 0; row < 8; row++)
-        for (unsigned col = 0; col < 128; col++)
+    for (unsigned row = 0; row < APP_METER_H; row++)
+        for (unsigned col = 0; col < APP_METER_W; col++)
             fb[(y + row) * app_stride + x + col] = col < filled ? color : 0x182338;
 }
 
@@ -1163,7 +1174,7 @@ void app_demo_dashboard_frame(void)
 {
     if (!app_surface)
         return;
-    app_meter(48, 70, ++dashboard_frames, 0x35dfa0);
+    app_meter(APP_DRAW_X, APP_DASH_Y, ++dashboard_frames, 0x35dfa0);
 }
 
 static void app_demo_video_frame(void)
@@ -1174,18 +1185,48 @@ static void app_demo_video_frame(void)
         if (period != last) {
             last = period;
             if (!video_stalled && period % 4 == 0)
-                app_meter(48, 160, ++video_frames, 0x559dff);
+                app_meter(APP_DRAW_X, APP_VIDEO_Y, ++video_frames, 0x559dff);
         }
         asm volatile("" ::: "memory");
     }
 }
 
-static void app_demo_wait(uint64_t periods)
+/* Called by the Tier-3 desktop once per iteration. No waiting in GUI code. */
+void app_desktop_poll(void)
 {
-    uint64_t first = sched_period_now();
-    while (sched_period_now() - first < periods) {
-        disp_drain(2);
-        asm volatile("svc #0" ::: "memory");
+    if (!app_surface)
+        return;
+    disp_drain(2);
+    uint64_t period = sched_period_now();
+    if (!app_test_phase) {
+        app_test_period = period;
+        app_test_phase = 1;
+    } else if (app_test_phase == 1 && period - app_test_period >= 15) {
+        video_stalled = 1;
+        app_test_period = period;
+        app_test_phase = 2;
+    } else if (app_test_phase == 2 && period - app_test_period >= 2) {
+        d0 = dashboard_frames;
+        v0 = video_frames;
+        m0 = proc_submits(music_demo);
+        misses0 = dashboard_demo->misses;
+        app_test_period = period;
+        app_test_phase = 3;
+    } else if (app_test_phase == 3 && period - app_test_period >= 100) {
+        dn = dashboard_frames - d0;
+        vn = video_frames - v0;
+        mn = proc_submits(music_demo) - m0;
+        dm = dashboard_demo->misses - misses0;
+        video_stalled = 0;
+        app_test_period = period;
+        app_test_phase = 4;
+    } else if (app_test_phase == 4 && period - app_test_period >= 12) {
+        int ok = dn == 100 && vn == 0 && dm == 0 && mn > 0 &&
+                 (!video_demo || (v0 > 0 && video_frames > v0));
+        printf("[apps] during 100 periods: dashboard_frames=%u misses=%u video_frames=%u music_submits=%u\n",
+               dn, dm, vn, mn);
+        printf("[apps] %s\nQA DONE\n", ok ? "PASS" : "FAIL");
+        app_test_phase = 5;
     }
 }
 
@@ -1199,9 +1240,8 @@ static void app_demo_run(int with_video)
     }
     fb_geometry(&w, &h);
     app_stride = w;
-    app_surface = (uint32_t *)(uintptr_t)pa;
     struct task *dashboard = sched_find("dashboard");
-    int64_t music = proc_spawn("music", 0, 0, 0, pa, 0, 48, 245, 32, 32);
+    int64_t music = proc_spawn("music", 0, 0, 0, pa, 0, APP_DRAW_X, APP_MUSIC_Y, APP_MUSIC_SIZE, APP_MUSIC_SIZE);
     struct task *music_task = sched_find("music");
     struct running_app *video = 0;
     if (with_video) {
@@ -1221,26 +1261,17 @@ static void app_demo_run(int with_video)
     }
     printf("[apps] dashboard tier=%d slot=%d; music tier=%d EL0; video=%d\n",
            dashboard->tier, dashboard->slot, music_task->tier, video != 0);
-    app_demo_wait(15);
-    video_stalled = 1;
-    app_demo_wait(2);
-    uint32_t d0 = dashboard_frames, v0 = video_frames, misses = dashboard->misses;
-    uint32_t music0 = proc_submits(music);
-    app_demo_wait(100);
-    uint32_t dn = dashboard_frames - d0, vn = video_frames - v0;
-    uint32_t dm = dashboard->misses - misses, mn = proc_submits(music) - music0;
-    video_stalled = 0;
-    app_demo_wait(12);
-    int ok = dashboard->tier == TIER1 && music_task->tier == TIER3 &&
-             dn == 100 && vn == 0 && dm == 0 && mn > 0 &&
-             (!video || (video->task->tier == TIER2 && v0 > 0 && video_frames > v0));
-    printf("[apps] during 100 periods: dashboard_frames=%u misses=%u video_frames=%u music_submits=%u\n",
-           dn, dm, vn, mn);
-    printf("[apps] %s\nQA DONE\n", ok ? "PASS" : "FAIL");
-    for (;;) {
-        disp_drain(2);
-        asm volatile("svc #0" ::: "memory");
+    if (dashboard->tier != TIER1 || music_task->tier != TIER3 ||
+        (video && video->task->tier != TIER2)) {
+        printf("[apps] FAIL incorrect tier\nQA DONE\n");
+        return;
     }
+    dashboard_demo = dashboard;
+    video_demo = video;
+    music_demo = music;
+    app_surface = (uint32_t *)(uintptr_t)pa;
+    lvgl_autostart();
+    printf("[apps] FAIL desktop returned\nQA DONE\n");
 }
 
 void shell_main(void)

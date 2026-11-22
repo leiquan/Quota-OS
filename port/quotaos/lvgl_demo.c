@@ -142,9 +142,28 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
     int32_t h = lv_area_get_height(area);
     uint32_t stride_px = fb_stride / 4u;
     uint32_t bytes;
+    int mode = app_desktop_mode();
     for (int32_t y = area->y1; y <= area->y2; y++) {
-        uint32_t *dst = fb_px + (uint32_t)y * stride_px + (uint32_t)area->x1;
-        memcpy(dst, px, (size_t)w * 4u);
+        uint32_t *dst = fb_px + (uint32_t)y * stride_px;
+        int end = area->x2 + 1;
+        int reserved = 0;
+        if (mode) {
+            if ((y >= APP_DASH_Y && y < APP_DASH_Y + APP_METER_H) ||
+                (mode == 2 && y >= APP_VIDEO_Y && y < APP_VIDEO_Y + APP_METER_H))
+                reserved = APP_METER_W;
+            else if (y >= APP_MUSIC_Y && y < APP_MUSIC_Y + APP_MUSIC_SIZE)
+                reserved = APP_MUSIC_SIZE;
+        }
+        if (reserved && area->x1 < APP_DRAW_X + reserved && end > APP_DRAW_X) {
+            if (area->x1 < APP_DRAW_X)
+                memcpy(dst + area->x1, px, (size_t)(APP_DRAW_X - area->x1) * 4u);
+            int right = APP_DRAW_X + reserved;
+            if (right < end)
+                memcpy(dst + right, px + (right - area->x1) * 4u,
+                       (size_t)(end - right) * 4u);
+        } else {
+            memcpy(dst + area->x1, px, (size_t)w * 4u);
+        }
         px += w * 4;
     }
     bytes = (uint32_t)w * (uint32_t)h * 4u;
@@ -362,7 +381,7 @@ static void window_drag(lv_event_t *e)
     lv_indev_get_vect(lv_indev_active(), &v);
     int x = lv_obj_get_x(win) + v.x;
     int y = lv_obj_get_y(win) + v.y;
-    int max_x = (int)fb_w - lv_obj_get_width(win);
+    int max_x = (app_desktop_mode() ? APP_DESK_EDGE : (int)fb_w) - lv_obj_get_width(win);
     if (x < 0) x = 0;
     if (x > max_x) x = max_x;
     if (y < 44) y = 44;
@@ -430,6 +449,21 @@ static lv_obj_t *dock_item(lv_obj_t *dock, int x, uint32_t color, const char *ic
     lv_obj_align(n, LV_ALIGN_BOTTOM_MID, 0, 2);
     lv_obj_set_style_text_color(n, lv_color_hex(0xffffff), 0);
     return b;
+}
+
+static void app_card(lv_obj_t *screen, int y, const char *title, const char *detail)
+{
+    lv_obj_t *card = lv_obj_create(screen);
+    lv_obj_set_pos(card, 860, y);
+    lv_obj_set_size(card, 380, 140);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_set_style_radius(card, 14, 0);
+    lv_obj_set_style_border_width(card, 0, 0);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0xf1f5fc), 0);
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *heading = desk_label(card, 30, 16, title, 0x182338);
+    lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
+    desk_label(card, 30, 49, detail, 0x475a7a);
 }
 
 static void refresh_tasks(void)
@@ -515,6 +549,13 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
     desk_label(top, 26, 13, "Quota OS", 0xffffff);
 
+    int apps = app_desktop_mode();
+    if (apps) {
+        app_card(screen, 116, "Dashboard", "Tier 1  /  100 updates per virtual second");
+        app_card(screen, 281, "Video", apps == 2 ?
+                 "Tier 2  /  25 simulated frames per second" : "Optional  /  Not running");
+        app_card(screen, 446, "Music", "Tier 3  /  EL0 simulated playback");
+    }
     page_home = desktop_window(screen, 88, 124, 720, 460, "Activity Monitor");
     menu_list = lv_obj_create(page_home);
     lv_obj_set_pos(menu_list, 0, 52);
@@ -539,7 +580,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     legend = lv_label_create(page_home);
     lv_obj_add_flag(legend, LV_OBJ_FLAG_HIDDEN);
 
-    page_input = desktop_window(screen, 650, 238, 540, 358, "Notes");
+    page_input = desktop_window(screen, app_desktop_mode() ? 260 : 650, 238, 540, 358, "Notes");
     desk_label(page_input, 28, 70, "Notes are cleared on restart.", 0x64748b);
     field = lv_textarea_create(page_input);
     lv_obj_set_pos(field, 28, 108);
@@ -564,7 +605,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_indev_set_group(keypad, group);
     lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
 
-    page_cover = desktop_window(screen, 390, 205, 500, 348, "About Quota OS");
+    page_cover = desktop_window(screen, app_desktop_mode() ? 310 : 390, 205, 500, 348, "About Quota OS");
     desk_label(page_cover, 28, 70, "Version " QUOTAOS_VERSION "    ARM64", 0x374e90);
     lv_obj_t *about = desk_label(page_cover, 28, 111,
         "1280 x 800 display\n"
@@ -576,7 +617,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_width(back, 440);
     lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
 
-    page_tasks = desktop_window(screen, 575, 145, 570, 522, "Task Manager");
+    page_tasks = desktop_window(screen, app_desktop_mode() ? 250 : 575, 145, 570, 522, "Task Manager");
     lv_obj_t *task_body = lv_obj_create(page_tasks);
     lv_obj_set_pos(task_body, 12, 63);
     lv_obj_set_size(task_body, 544, 444);
@@ -640,6 +681,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     for (;;) {
         take_inputs();
         lv_timer_handler();
+        app_desktop_poll();
         uint64_t panel_now = now_us();
         if (panel_at && panel_now - panel_at < 100000)
             continue;

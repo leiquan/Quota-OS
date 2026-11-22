@@ -36,7 +36,7 @@ for round_no in range(1, args.rounds + 1):
                 proc.wait(timeout=5)
         raw = log.read_bytes()
         ok = (b"[boot] clock: icount" in raw and b"QA DONE" in raw
-              and b"[apps] PASS" in raw and b"PANIC" not in raw)
+              and b"[lvgl] ready" in raw and b"[apps] PASS" in raw and b"PANIC" not in raw)
         passed += ok
         print(round_no, mode, "PASS" if ok else "FAIL", flush=True)
 raise SystemExit(0 if passed == args.rounds * 2 else 1)
