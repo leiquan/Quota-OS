@@ -26,6 +26,8 @@ Speed updates its digital readout and linear pointer from the reserved Tier 1 di
 
 ![Quota OS desktop showing the Speed gauge, simulated dashcam lanes and music frame history](docs/screenshots/vehicle-instruments.png)
 
+[Watch the QEMU capture](docs/screenshots/instruments-live.gif) · [Run the measured LVGL build](https://github.com/leiquan/Quota-OS/tree/7e594c7)
+
 [100 desktop-stall cold boots with these instruments](docs/tests/cortex-a35/instrument-regression.tar.gz)
 
 The LVGL frontend lives in `port/quotaos/desktop/`. Hardware access belongs to `kernel/drivers/`; the scheduler and admission code stay in `kernel/`. The serial and graphical builds read the same core source list from `kernel/sources.list`.
