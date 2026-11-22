@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Quota OS 是一款以资源配额为核心的 ARM64 实验操作系统。">
+<title>Quota OS — 以资源配额为核心的操作系统</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="主导航"><a href="#model">三级配额</a><a href="#evidence">实测</a><a href="https://github.com/leiquan/Quota-OS">GitHub ↗</a></nav></header>
+<main>
+<section class="wrap hero">
+<p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
+<h1>让关键任务<br><span>按时拿到资源。</span></h1>
+<p class="intro">Quota OS 是一款以资源配额为核心的实验操作系统。内核为关键任务预留执行时间，按容量接纳应用，并将剩余资源交给普通任务共享。</p>
+<p class="actions"><a class="primary" href="#run">运行 Quota OS</a><a href="https://github.com/leiquan/Quota-OS">查看源码 ↗</a></p>
+<figure><img src="screenshots/apps.png" width="1280" height="800" alt="Quota OS 桌面，显示 Apps 目录、速度表、行车记录仪和音乐播放器"><figcaption>LVGL 桌面 · 1280 × 800 · QEMU ARM64</figcaption></figure>
+</section>
+<section class="wrap section" id="model">
+<h2>三种资源承诺</h2>
+<div class="grid">
+<article><p class="eyebrow">TIER 1</p><h3>厂商预留</h3><p>速度表和系统定时服务使用固定 CPU 时间槽。即使桌面任务忙等，关键任务仍按槽表获得执行机会。</p></article>
+<article><p class="eyebrow">TIER 2</p><h3>用户指定</h3><p>行车记录仪声明最低需求。用户同意且容量足够才启动，内核按周期兑现已准入的最低配额。</p></article>
+<article><p class="eyebrow">TIER 3</p><h3>共享资源</h3><p>音乐播放和桌面交互共享剩余 CPU。内核限制总池，池内应用各自承担竞争和延迟。</p></article>
+</div>
+</section>
+<section class="wrap section" id="evidence">
+<h2>桌面忙等时，速度表继续更新</h2>
+<div class="stats"><div><strong>100 / 100</strong><span>速度表提交帧数 / 采样周期</span></div><div><strong>0</strong><span>速度表截止期错过</span></div><div><strong>0</strong><span>三级总池越线</span></div></div>
+<p>这组结果来自 QEMU TCG 的 <code>icount</code> 桌面忙等测试，采样的是来宾帧缓冲提交。GPU 队列、宿主窗口呈现和物理屏幕延迟仍待验证。</p>
+<p><a href="https://github.com/leiquan/Quota-OS/blob/main/docs/tests/adaptive-reserve/stall.log">查看原始串口日志 ↗</a></p>
+<img class="detail" src="screenshots/desktop-1280x800.png" loading="lazy" width="1280" height="800" alt="系统信息页显示 CPU 占用、内核预留和三级配额事件">
+</section>
+<section class="wrap section" id="run">
+<h2>在 QEMU 中运行</h2><p>安装 ARM64 版 QEMU 后，在终端运行下面三条命令。</p>
+<pre><code>git clone https://github.com/leiquan/Quota-OS.git
+cd Quota-OS
+bash tools/run-files.sh</code></pre>
+<p><a href="https://github.com/leiquan/Quota-OS#readme">查看 README 和完整测试记录 ↗</a></p>
+</section>
+</main>
+<footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>
+</body>
+</html>
