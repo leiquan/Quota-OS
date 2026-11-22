@@ -946,17 +946,23 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
         lv_obj_t *dot = lv_button_create(bar);
         lv_obj_set_pos(dot, 4 + i * 52, 2);
         lv_obj_set_size(dot, 48, 48);
-        lv_obj_set_style_radius(dot, 10, 0);
+        lv_obj_set_style_radius(dot, 12, 0);
         lv_obj_set_style_border_width(dot, 0, 0);
         lv_obj_set_style_shadow_width(dot, 0, 0);
-        lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xe0e8f2 : 0xf5e5e9), 0);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_STATE_PRESSED);
         lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xd2dfef : 0xf0cbd3), LV_STATE_PRESSED);
         lv_obj_t *glyph = desk_label(dot, 0, 0, i ? LV_SYMBOL_MINUS : LV_SYMBOL_CLOSE,
                                      i ? 0x334563 : 0x982c40);
+        lv_obj_set_style_radius(glyph, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(glyph, lv_color_hex(i ? 0xf3dfac : 0xf4c6ca), 0);
+        lv_obj_set_style_bg_opa(glyph, LV_OPA_COVER, 0);
+        lv_obj_set_style_pad_all(glyph, 6, 0);
         lv_obj_center(glyph);
         lv_obj_add_event_cb(dot, i ? window_minimize : window_close, LV_EVENT_CLICKED, win);
     }
-    lv_obj_t *label = desk_label(bar, 120, 18, title, 0x263552);
+    lv_obj_t *label = desk_label(bar, 0, 0, title, 0x263552);
+    lv_obj_center(label);
     lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
     return win;
 }
@@ -1525,6 +1531,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *save = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save", 214);
     lv_obj_set_pos(save, 398, 283);
     lv_obj_set_size(save, 112, 40);
+    lv_obj_set_style_bg_color(save, lv_color_hex(0x254e88), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(save, 0), lv_color_white(), 0);
     lv_obj_t *save_source = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save As...", 232);
     lv_obj_set_pos(save_source, 156, 283);
     lv_obj_set_width(save_source, 132);
@@ -1534,7 +1542,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *btn = lv_button_create(page_input);
     lv_obj_set_pos(btn, 28, 283);
     lv_obj_set_size(btn, 112, 40);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0x5275d8), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xe4eaf3), 0);
+    lv_obj_set_style_text_color(btn, lv_color_hex(0x31445c), 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_add_event_cb(btn, on_click, LV_EVENT_CLICKED, NULL);
     lv_obj_t *bl = lv_label_create(btn);

@@ -6,6 +6,18 @@ Quota OS is an experimental single-core ARM64 operating system built around reso
 
 Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
 
+## Run the desktop
+
+Install Git and QEMU with ARM system emulation (macOS: `brew install git qemu`; Ubuntu/Debian: `sudo apt install git qemu-system-arm qemu-system-gui`). From a graphical desktop, run:
+
+```sh
+git clone https://github.com/leiquan/Quota-OS.git
+cd Quota-OS
+bash tools/run-files.sh
+```
+
+The launcher boots the included ARM64 image and creates a persistent Notes disk on first use. No cross-compiler is required.
+
 ## Tasks and application control
 
 System groups scheduler tasks by tier. Each row shows CPU use in the sampled 10 ms period and the applicable reservation, grant or shared pool. Right-click or long-press a demo task to inspect its controls. The kernel protects Tier 1 tasks. Stopping the dashcam or music player releases its reservations, and restarting it goes through admission again.
