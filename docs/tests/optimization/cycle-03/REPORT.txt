@@ -1,0 +1,7 @@
+Native HVF/GICv3 controls on the cycle-02 kernel, ten windows per case.
+
+cursor: 4/10 passed, maximum logged timer lateness 35487 us.
+quiet: 7/10 passed, maximum logged timer lateness 72480 us.
+qmp-stop: 5/10 passed, maximum logged timer lateness 51117 us.
+
+Cursor motion is not necessary for the failure. A deliberate QMP stop can produce the same symptom, but QMP can affect guest time and the stop is keyed to the running marker, not an exact guest period. Natural failures cannot be attributed to host descheduling from this comparison. The missing measurement is per-vCPU host scheduling and timer delivery correlated with guest timestamps.

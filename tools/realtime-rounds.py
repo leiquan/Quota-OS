@@ -46,7 +46,7 @@ class QMP:
 def contents(path):
     return path.read_text(errors='replace') if path.exists() else ''
 
-def gui(kernel, out, mode):
+def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0):
     out.mkdir(parents=True, exist_ok=True)
     sock = '/tmp/quota-rt-%d.sock' % os.getpid()
     Path(sock).unlink(missing_ok=True)
@@ -90,13 +90,23 @@ def gui(kernel, out, mode):
             q.call('human-monitor-command',{'command-line':'mouse_button 0'})
             end = time.monotonic()+90
             events = 0
+            pause = None
             while '[menu] done 9' not in contents(log):
                 if time.monotonic()>end or p.poll() is not None:
                     raise TimeoutError('GUI stress completion')
                 # Continual real virtio pointer traffic redraws the software
                 # cursor while Tier2 minima and 32 Tier3 hogs compete.
-                move(280+(events*29)%340,45+(events*13)%390)
-                events += 1
+                if pause_ms and pause is None and '[menu] running 9' in contents(log):
+                    q.call('stop')
+                    stopped = time.monotonic_ns()
+                    try:
+                        time.sleep(pause_ms / 1000)
+                    finally:
+                        q.call('cont')
+                    pause = (time.monotonic_ns() - stopped) / 1_000_000
+                if pointer_traffic:
+                    move(280+(events*29)%340,45+(events*13)%390)
+                    events += 1
                 time.sleep(.025)
             # Include the final statistics panel, not just its serial marker.
             time.sleep(.12)
@@ -138,7 +148,7 @@ def gui(kernel, out, mode):
                 raise AssertionError('missing T1/T2 results')
             vals = list(map(int,a.groups()+b.groups()))
             return dict(zip(['t1_miss','class_a','class_b','skipped','t2_short','t2_job_miss'],vals),
-                        input_moves=events, completed=True, longevity_seconds=hold, longevity_pass=longevity_ok, passed=not any(vals) and events>0 and 'PANIC' not in t and longevity_ok is not False,
+                        input_moves=events, requested_pause_ms=pause_ms, host_stop_to_cont_ms=pause, completed=True, longevity_seconds=hold, longevity_pass=longevity_ok, passed=not any(vals) and (events > 0 or not pointer_traffic) and 'PANIC' not in t and longevity_ok is not False,
                         panic='PANIC' in t)
         finally:
             p.kill()
