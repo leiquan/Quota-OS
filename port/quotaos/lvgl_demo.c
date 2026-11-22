@@ -22,7 +22,7 @@ static lv_obj_t *page_home;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover, *page_apps, *page_files, *page_shell;
 static lv_obj_t *shell_input, *shell_output, *source_entry, *source_icon;
-static lv_obj_t *shell_history, *source_dialog, *source_name, *source_error;
+static lv_obj_t *shell_history, *shell_prompt, *source_dialog, *source_name, *source_error;
 static char shell_transcript[2048];
 static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata;
 static uint64_t save_since;
@@ -539,6 +539,17 @@ static void poll_trial(void)
     trial_result(number, result);
 }
 
+static void shell_refresh(void)
+{
+    lv_label_set_text(shell_output, shell_transcript);
+    lv_obj_update_layout(shell_history);
+    int bottom = lv_obj_get_height(shell_output) + 10;
+    lv_obj_set_y(shell_prompt, bottom + 4);
+    lv_obj_set_y(shell_input, bottom);
+    lv_obj_update_layout(shell_history);
+    lv_obj_scroll_to_view(shell_input, LV_ANIM_OFF);
+}
+
 static void shell_append(const char *line)
 {
     unsigned used = 0, added = 0;
@@ -553,9 +564,7 @@ static void shell_append(const char *line)
     memcpy(shell_transcript + used, line, added);
     shell_transcript[used + added] = '\n';
     shell_transcript[used + added + 1] = 0;
-    lv_label_set_text(shell_output, shell_transcript);
-    lv_obj_update_layout(shell_history);
-    lv_obj_scroll_to_y(shell_history, lv_obj_get_height(shell_output), LV_ANIM_OFF);
+    shell_refresh();
 }
 
 static const char shell_help[] =
@@ -580,6 +589,8 @@ static void on_group(lv_event_t *e)
         checks.active = checks.selected = 0;
     }
     if (id == 230) {
+        monitor_visible(page_apps, 0);
+        dock_state(APP_LAUNCHER, CLOSED);
         show_page(5);
         lv_group_focus_obj(shell_input);
         printf("[shell] opened\n");
@@ -605,7 +616,7 @@ static void on_group(lv_event_t *e)
         }
         else if (!strcmp(command, "clear")) {
             shell_transcript[0] = 0;
-            lv_label_set_text(shell_output, "");
+            shell_refresh();
             lv_textarea_set_text(shell_input, "");
             return;
         } else if (!strcmp(command, compile)) {
@@ -1527,45 +1538,36 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     monitor_visible(source_entry, 0);
     monitor_visible(source_icon, 0);
     page_shell = desktop_window(screen, 160, 148, 670, 390, "Shell");
-    lv_obj_t *terminal = lv_obj_create(page_shell);
-    lv_obj_set_pos(terminal, 12, 58);
-    lv_obj_set_size(terminal, 646, 310);
-    lv_obj_set_style_bg_color(terminal, lv_color_hex(0x111b2c), 0);
-    lv_obj_set_style_radius(terminal, 10, 0);
-    lv_obj_set_style_border_width(terminal, 0, 0);
-    lv_obj_remove_flag(terminal, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     shell_history = lv_obj_create(page_shell);
-    lv_obj_set_pos(shell_history, 22, 68);
-    lv_obj_set_size(shell_history, 626, 232);
-    lv_obj_set_style_bg_opa(shell_history, LV_OPA_TRANSP, 0);
+    lv_obj_set_pos(shell_history, 10, 54);
+    lv_obj_set_size(shell_history, 650, 324);
+    lv_obj_set_style_bg_color(shell_history, lv_color_hex(0x101216), 0);
     lv_obj_set_style_border_width(shell_history, 0, 0);
-    lv_obj_set_style_pad_all(shell_history, 0, 0);
+    lv_obj_set_style_radius(shell_history, 4, 0);
+    lv_obj_set_style_pad_all(shell_history, 12, 0);
     lv_obj_set_scroll_dir(shell_history, LV_DIR_VER);
-    shell_output = desk_label(shell_history, 2, 4, "", 0xe4edf9);
+    shell_output = desk_label(shell_history, 0, 0, "", 0xe4edf9);
     lv_obj_set_width(shell_output, 610);
     lv_label_set_long_mode(shell_output, LV_LABEL_LONG_WRAP);
+    shell_prompt = desk_label(shell_history, 0, 0, "quota>", 0xe4edf9);
+    shell_input = lv_textarea_create(shell_history);
+    lv_textarea_set_one_line(shell_input, true);
+    lv_textarea_set_max_length(shell_input, 80);
+    lv_obj_set_x(shell_input, 58);
+    lv_obj_set_size(shell_input, 554, 26);
+    lv_obj_set_style_pad_all(shell_input, 4, 0);
+    lv_obj_set_style_text_color(shell_input, lv_color_hex(0xe4edf9), 0);
+    lv_obj_set_style_bg_opa(shell_input, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(shell_input, 0, 0);
+    lv_obj_set_style_outline_width(shell_input, 0, LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_width(shell_input, 0, LV_STATE_FOCUS_KEY);
+    lv_group_add_obj(group, shell_input);
+    lv_obj_add_event_cb(shell_input, on_group, LV_EVENT_READY, (void *)(uintptr_t)231);
     shell_append("Quota OS Shell  |  /Desktop\n\n"
         "help     Show commands\n"
         "ls       List desktop files\n"
         "cc FILE.c -o hello   Compile C source\n"
         "./hello               Run in Tier 3");
-    lv_obj_t *prompt = desk_label(page_shell, 24, 326, "quota>", 0x9ce3ce);
-    lv_obj_set_style_text_font(prompt, &lv_font_montserrat_14, 0);
-    shell_input = lv_textarea_create(page_shell);
-    lv_textarea_set_one_line(shell_input, true);
-    lv_textarea_set_max_length(shell_input, 80);
-    lv_textarea_set_placeholder_text(shell_input, "Command");
-    lv_obj_set_pos(shell_input, 88, 314);
-    lv_obj_set_size(shell_input, 440, 42);
-    lv_obj_set_style_text_font(shell_input, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(shell_input, lv_color_hex(0xe4edf9), 0);
-    lv_obj_set_style_bg_color(shell_input, lv_color_hex(0x1b2a40), 0);
-    lv_obj_set_style_border_color(shell_input, lv_color_hex(0x526984), 0);
-    lv_group_add_obj(group, shell_input);
-    lv_obj_add_event_cb(shell_input, on_group, LV_EVENT_READY, (void *)(uintptr_t)231);
-    lv_obj_t *run = add_row(page_shell, 314, 0xe0edff, 0xc5d9fa, "Enter", 231);
-    lv_obj_set_pos(run, 540, 314);
-    lv_obj_set_size(run, 108, 42);
     monitor_visible(page_shell, 0);
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
     static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL};

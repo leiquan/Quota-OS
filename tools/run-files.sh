@@ -1,6 +1,8 @@
 #!/bin/bash
 set -eu
 cd "$(dirname "$0")/.."
+kernel=${QUOTA_KERNEL:-prebuilt/quotaos.bin}
+test -f "$kernel" || { echo "Kernel image not found: $kernel" >&2; exit 1; }
 disk=${QUOTA_NOTES_DISK:-"${XDG_DATA_HOME:-$HOME/.local/share}/quota-os/notes.raw"}
 mkdir -p "$(dirname "$disk")"
 if [ ! -e "$disk" ]; then
@@ -11,4 +13,4 @@ exec qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 64M -nic
     -global virtio-mmio.force-legacy=false -device ramfb -device virtio-tablet-device \
     -device virtio-keyboard-device -drive "if=none,id=notes,format=raw,file=$disk" \
     -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES -icount shift=4,sleep=off \
-    -kernel prebuilt/quotaos.bin -append apps-video -serial stdio -monitor none "$@"
+    -kernel "$kernel" -append apps-video -serial stdio -monitor none "$@"

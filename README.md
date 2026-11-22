@@ -107,7 +107,7 @@ int main(void) {
 }
 ```
 
-Open **Apps → Shell**. Submit each command with **Enter**.
+Open **Apps → Shell**. Type each command at the `quota>` prompt and press **Enter**. The terminal retains a scrollable record of commands and results.
 
 ```sh
 cc demo.c -o hello
