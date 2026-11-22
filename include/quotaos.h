@@ -354,7 +354,7 @@ uint64_t sched_foreign_window(void);
 uint64_t sched_next_guard(uint64_t now);
 void task_set_entry(struct task *t, void (*entry)(void));
 /* EL0 初始帧。user_sp 写入帧的 pad，出口时装进 SP_EL0。spsr 为 EL0t、IRQ 开。 */
-void task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
+int task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
                   uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
                   uint64_t a4, uint64_t a5);
 /* 把任务标成 DEAD 并刷新就绪表。不改 DAIF，调用者自己管中断屏蔽。 */

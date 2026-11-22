@@ -481,10 +481,12 @@ void task_set_entry(struct task *t, void (*entry)(void))
     set_entry(t, entry);
 }
 
-void task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
+int task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
                   uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
                   uint64_t a4, uint64_t a5)
 {
+    if (!t || (t->tier != TIER2 && t->tier != TIER3))
+        return -1;
     struct irq_frame *f = (struct irq_frame *)t->sp;
     f->elr = elr;
     f->spsr = 0x340;
@@ -495,6 +497,7 @@ void task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
     f->r[3] = a3;
     f->r[4] = a4;
     f->r[5] = a5;
+    return 0;
 }
 
 static void kill_locked(struct task *t);

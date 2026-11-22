@@ -274,6 +274,9 @@ static int vehicle_lifecycle_check(void)
     if (!timer || vehicle_app_set_running(TIER1, 0) >= 0 || task_kill(timer) >= 0 ||
         sched_slot_owner(0) != dashboard_demo || sched_slot_owner(1) != timer)
         return 0;
+    if (task_arm_el0(dashboard_demo, 0, 0, 0, 0, 0, 0, 0, 0) >= 0)
+        return 0;
+    printf("[lifecycle] Tier 1 EL0 launch rejected\n");
     if (vehicle_app_set_running(TIER2, 0) || sched_find("video") ||
         resource_cpu_min_sum_us() + 600 != cpu || resource_mem_min_sum_kb() + 16 != mem)
         return 0;
