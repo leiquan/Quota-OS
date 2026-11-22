@@ -11,26 +11,6 @@ extern char __image_start[], __image_end[];
 extern void (*__init_array_start[])(void);
 extern void (*__init_array_end[])(void);
 
-static uint8_t jsc_stack[1u << 20] __attribute__((aligned(16)));
-
-int jsc_call_on_stack(int (*fn)(void))
-{
-    uint64_t top = ((uint64_t)jsc_stack + sizeof jsc_stack) & ~15ull;
-    register uint64_t result asm("x0") = (uint64_t)fn;
-    register uint64_t top_reg asm("x1") = top;
-    asm volatile(
-        "stp x29, x30, [sp, #-16]!\n"
-        "mov x9, sp\n"
-        "mov sp, x1\n"
-        "blr x0\n"
-        "mov sp, x9\n"
-        "ldp x29, x30, [sp], #16\n"
-        : "+r"(result), "+r"(top_reg)
-        :
-        : "x9", "memory", "cc");
-    return (int)result;
-}
-
 static uint8_t *arena;
 static size_t arena_size;
 static size_t arena_used;

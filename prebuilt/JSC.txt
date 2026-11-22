@@ -34,8 +34,8 @@ Expect:
 Stock virt has no ramfb, so the log also says etc/ramfb is not in fw_cfg.
 That is not a WebKit paint. No display device is added here.
 
-sha256 quotaos-jsc.bin e12747256945585006d43211fb59ed95ec05da14b9ca57f3b7390a05b62769ed
-sha256 quotaos-jsc.elf 5e9e016a1764b557ce7f5ad2888f1ecdfd039d51ac587f7ce65795dc205d7e56
+sha256 quotaos-jsc.bin b9b301d7940219bb2752f4ed5d59fc26f33f9905f38e75e143280544f46a37e3
+sha256 quotaos-jsc.elf 19b4239326fb0fbf756572376cb5ce6d8aa34400f22ceb161b4a56146ed79903
 size quotaos-jsc.bin 13063200
 
 The 64 MB block at 0x44000000 is one parent reservation. Its children are
@@ -44,3 +44,11 @@ the structure heap 0x44000000-0x46000000 and the malloc arena
 overlap each other. A guest test fills the arena, checks the structure-heap
 canary, and stops at the last page. Log: docs/v016/jsc/webkit-color.raw.
 The earlier image's log remains docs/v016/jsc/webkit-ownership.raw.
+
+The current image retains the original engine objects and banner. Its 40-byte
+stack switch was reassembled from kernel/jsc_stack.S at the existing ELF symbol
+address. The resulting flat image differs only inside that function. The full
+source link includes the same assembly via tools/link-jsc-guest.sh.
+Run bash tools/run-webkit.sh for ramfb output. The verified capture contains
+640 x 480 pixels of RGB (200, 0, 0). The serial log reaches guest returned 0
+and [webkit] done. See docs/tests/webkit-stack/.

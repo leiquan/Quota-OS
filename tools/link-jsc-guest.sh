@@ -16,6 +16,7 @@ aarch64-linux-gnu-objcopy -O binary build/user/paint.elf build/user/paint.bin
 short=$(git rev-parse --short=7 HEAD)
 printf '#define QUOTAOS_COMMIT "%s"\n' "$short" > build/commit.h
 echo "banner parent $short"
+$CC -c kernel/jsc_stack.S -o build/kernel/jsc_stack.o
 for f in kernel/main.c kernel/resource.c kernel/color.c kernel/fb.c kernel/webkit.c kernel/wkalloc.c kernel/sched.c kernel/uart.c kernel/jsc_sys.c kernel/jsc_icu_stubs.c kernel/mmu.c kernel/proc.c; do
     $CC "${KFLAGS[@]}" -c -o "build/${f%.c}.o" "$f"
 done
