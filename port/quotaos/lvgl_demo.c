@@ -943,23 +943,20 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     lv_obj_add_event_cb(bar, window_drag, LV_EVENT_PRESSING, win);
     lv_obj_add_event_cb(bar, window_drag, LV_EVENT_RELEASED, win);
     for (int i = 0; i < 2; i++) {
-        lv_obj_t *dot = lv_button_create(bar);
-        lv_obj_set_pos(dot, 4 + i * 52, 2);
-        lv_obj_set_size(dot, 48, 48);
-        lv_obj_set_style_radius(dot, 12, 0);
-        lv_obj_set_style_border_width(dot, 0, 0);
-        lv_obj_set_style_shadow_width(dot, 0, 0);
-        lv_obj_set_style_bg_opa(dot, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_STATE_PRESSED);
-        lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xd2dfef : 0xf0cbd3), LV_STATE_PRESSED);
-        lv_obj_t *glyph = desk_label(dot, 0, 0, i ? LV_SYMBOL_MINUS : LV_SYMBOL_CLOSE,
+        lv_obj_t *control = lv_button_create(bar);
+        lv_obj_set_pos(control, 4 + i * 52, 2);
+        lv_obj_set_size(control, 48, 48);
+        lv_obj_set_style_radius(control, 8, 0);
+        lv_obj_set_style_border_width(control, 0, 0);
+        lv_obj_set_style_shadow_width(control, 0, 0);
+        lv_obj_set_style_bg_color(control, lv_color_hex(i ? 0xe0e8f2 : 0xf5e5e9), 0);
+        lv_obj_set_style_bg_opa(control, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_opa(control, LV_OPA_COVER, LV_STATE_PRESSED);
+        lv_obj_set_style_bg_color(control, lv_color_hex(i ? 0xd2dfef : 0xf0cbd3), LV_STATE_PRESSED);
+        lv_obj_t *glyph = desk_label(control, 0, 0, i ? LV_SYMBOL_MINUS : LV_SYMBOL_CLOSE,
                                      i ? 0x334563 : 0x982c40);
-        lv_obj_set_style_radius(glyph, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(glyph, lv_color_hex(i ? 0xf3dfac : 0xf4c6ca), 0);
-        lv_obj_set_style_bg_opa(glyph, LV_OPA_COVER, 0);
-        lv_obj_set_style_pad_all(glyph, 6, 0);
         lv_obj_center(glyph);
-        lv_obj_add_event_cb(dot, i ? window_minimize : window_close, LV_EVENT_CLICKED, win);
+        lv_obj_add_event_cb(control, i ? window_minimize : window_close, LV_EVENT_CLICKED, win);
     }
     lv_obj_t *label = desk_label(bar, 0, 0, title, 0x263552);
     lv_obj_center(label);
