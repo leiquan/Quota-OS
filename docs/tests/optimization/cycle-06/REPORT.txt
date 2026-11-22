@@ -1,0 +1,20 @@
+Desktop waits for timer interrupts between polls on a live clock. Instruction-clock behavior is unchanged. Tier budgets and deadlines are unchanged.
+
+Image SHA256 382a2e303b5649623cf23dd7fa1fc3abfa7dc81808a7d07da5464fdd5d89e33c
+Native Task Manager open: 8/10
+Native Task Manager closed: 6/10
+GUI native: 5/10
+GUI icount: 10/10
+logtest-native: pass
+logtest-icount: pass
+e1-icount: pass
+e3-icount: pass
+e2h-icount: pass
+e4-icount: pass
+isolate-native: pass
+isolate-icount: pass
+
+Sample counts alone do not establish a timing improvement or worst-case guarantee.
+
+The tested candidate and raw logs are published on codex/wfi-timing-experiment.
+The candidate is not used for the desktop branch image because native results still failed.

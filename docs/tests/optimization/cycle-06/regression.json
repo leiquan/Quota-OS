@@ -1,0 +1,498 @@
+{
+  "sha256": "382a2e303b5649623cf23dd7fa1fc3abfa7dc81808a7d07da5464fdd5d89e33c",
+  "cases": {
+    "logtest-native": {
+      "completed": true,
+      "failed_lines": [],
+      "passed": true,
+      "boot_order": true,
+      "checks": {
+        "partial_once": true,
+        "second_once": true,
+        "overflow24": true,
+        "lost3": true,
+        "pass_marker": true
+      }
+    },
+    "logtest-icount": {
+      "completed": true,
+      "failed_lines": [],
+      "passed": true,
+      "boot_order": true,
+      "checks": {
+        "partial_once": true,
+        "second_once": true,
+        "overflow24": true,
+        "lost3": true,
+        "pass_marker": true
+      }
+    },
+    "e1-icount": {
+      "completed": true,
+      "failed_lines": [],
+      "passed": true,
+      "boot_order": true,
+      "unverified_rejected": true
+    },
+    "e3-icount": {
+      "completed": true,
+      "failed_lines": [],
+      "passed": true,
+      "boot_order": true
+    },
+    "e2h-icount": {
+      "completed": true,
+      "failed_lines": [],
+      "passed": true,
+      "boot_order": true
+    },
+    "e4-icount": {
+      "completed": true,
+      "failed_lines": [],
+      "passed": true,
+      "boot_order": true
+    },
+    "isolate-native": {
+      "exit_code": 0,
+      "done": true,
+      "restart16": true,
+      "classes_ok": true,
+      "empty": true,
+      "irq_contract": true,
+      "kill": {
+        "rounds": 100,
+        "ok": 100,
+        "late": 0,
+        "stale_reject": 100,
+        "us_min": 1,
+        "us_max": 4,
+        "passed": true
+      },
+      "fault": {
+        "rounds": 100,
+        "ok": 100,
+        "late": 0,
+        "stale_reject": 100,
+        "us_min": 2,
+        "us_max": 8,
+        "passed": true
+      },
+      "timing": {
+        "deadline_us": 500,
+        "before": 11,
+        "after": 11,
+        "irq_off_max_us": 13,
+        "passed": true
+      },
+      "functional_pass": true,
+      "passed": true
+    },
+    "isolate-icount": {
+      "exit_code": 0,
+      "done": true,
+      "restart16": true,
+      "classes_ok": true,
+      "empty": true,
+      "irq_contract": true,
+      "kill": {
+        "rounds": 100,
+        "ok": 100,
+        "late": 0,
+        "stale_reject": 100,
+        "us_min": 41,
+        "us_max": 73,
+        "passed": true
+      },
+      "fault": {
+        "rounds": 100,
+        "ok": 100,
+        "late": 0,
+        "stale_reject": 100,
+        "us_min": 81,
+        "us_max": 685,
+        "passed": true
+      },
+      "timing": {
+        "deadline_us": 500,
+        "before": 0,
+        "after": 0,
+        "irq_off_max_us": 10,
+        "passed": true
+      },
+      "functional_pass": true,
+      "passed": true
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "native": {
+        "t1_miss": 18,
+        "class_a": 18,
+        "class_b": 0,
+        "skipped": 7,
+        "t2_short": 5,
+        "t2_job_miss": 6,
+        "input_moves": 74,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": false,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 2,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 73,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 3,
+      "native": {
+        "t1_miss": 2,
+        "class_a": 2,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 1,
+        "input_moves": 73,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": false,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 4,
+      "native": {
+        "t1_miss": 3,
+        "class_a": 3,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 1,
+        "t2_job_miss": 1,
+        "input_moves": 74,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": false,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 5,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 72,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 6,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 73,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 7,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 75,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 8,
+      "native": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 72,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 18,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 9,
+      "native": {
+        "t1_miss": 3,
+        "class_a": 3,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 1,
+        "input_moves": 75,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": false,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 14,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    },
+    {
+      "round": 10,
+      "native": {
+        "t1_miss": 1,
+        "class_a": 1,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 76,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": false,
+        "panic": false
+      },
+      "icount": {
+        "t1_miss": 0,
+        "class_a": 0,
+        "class_b": 0,
+        "skipped": 0,
+        "t2_short": 0,
+        "t2_job_miss": 0,
+        "input_moves": 15,
+        "task_manager": false,
+        "requested_pause_ms": 0,
+        "host_stop_to_cont_ms": null,
+        "completed": true,
+        "longevity_seconds": 0,
+        "longevity_pass": null,
+        "passed": true,
+        "panic": false
+      }
+    }
+  ]
+}
