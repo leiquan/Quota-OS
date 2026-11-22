@@ -1,0 +1,122 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 2 pool 16 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x40146000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (eb89fc5)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x44000000 physical RAM span 128 MB (probed)
+[boot] DTB at 0x44000000
+[boot] DTB snapshot 7828 bytes (header said 1048576)
+[boot] DTB memory 134217728 bytes
+[boot] system reserve 350 us/period, 16384 KB;
+       tier-1 1500 us/period, 13312 KB; guard 80 us/period
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 7 own colors, padding 11776 KB
+[boot] kernel image+bss 2112 KB of the 16384 KB system reserve
+[boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
+[boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
+[boot] clock: icount (counter driven by instruction count)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 396/400 us, stop 7/20 us (measured/declared)
+[dev] sim-blk: job 1991/2000 us, stop 1770/2000 us (measured/declared)
+[dev] sim-cam: job 291/300 us, stop 8/30 us (measured/declared)
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 display-vsync and timer-server bound to their slots
+[boot] slot table from tick 3750000, period 625000 ticks, guard 1250 ticks
+[boot] shell task running
+[fb] reserved 4096000 bytes at 0x40c18000 inside the system reserve
+[fb] ramfb published 1280x800 stride 5120 at 0x40c18000 from fw_cfg 0x9020000
+[map] pid=4 handle=0x10001 gen=1 asid=1 ttbr=0x100004020b000 draw_pa=0x401fd000
+[map] pte code=0x401fbfc3 stack=0x600000401fcf43 draw=0x600000401fdf43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x401fbfc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x0 ap_el0=0
+[apps] dashboard tier=1 slot=0; music tier=3 EL0; video=1
+[lvgl] autostart on the Tier-3 shell task
+[lvgl] this task does not mask IRQs and it is not a tier-1 slot.
+[lvgl] one kernel task. It is not an EL0 process. Three-tier hardware isolation is not claimed.
+[admit] lvgl heap 256 KB draw 240 KB framebuffer 4000 KB, fixed, pool expand 0
+[admit] oversubscription probe 1
+REFUSED: device does not meet minimum requirements
+  minimum memory 4294967295 KB > 89600 KB for apps
+  (RAM 131072 KB - system reserve - tier-1 - color padding)
+No app can be closed to make room: this device is too small.
+[admit] lvgl-demo accepted 4496 KB. cpu_min is 0. The shell stays tier 3.
+[fb] ramfb published 1280x800 stride 5120 at 0x40c18000 from fw_cfg 0x9020000
+[input] virtio-mmio nodes 32 queue cap 32
+[input] keyboard "QEMU Virtio Keyboard" base 0xa003c00 queue 8 abs 0 range x 0..0 y 0..0
+[input] pointer "QEMU Virtio Tablet" base 0xa003e00 queue 8 abs 1 range x 0..32767 y 0..32767
+[lvgl] upstream 9.3.0 heap 262144 draw 245760
+[desktop] ready: windows, drag title bars, close/minimize, dock restore
+[desktop] size 1280x800
+[lvgl] tests box 391,180 136x38
+[lvgl] activity box 101,180 136x38
+[lvgl] watch box 101,473 194x38
+[lvgl] load9 box 101,257 194x38
+[lvgl] input box 911,710 120x67
+[lvgl] cover box 10,0 108x40
+[lvgl] back box 339,486 440x38
+[lvgl] clear box 289,522 112x40
+[menu] serial 6 10 13 14 15 16 18 stay on the coverage page
+[lvgl] ready
+[apps] during 100 periods: dashboard_frames=100 misses=0 video_frames=0 music_submits=95
+[apps] PASS
+QA DONE
+[input] raw ptr type 3 code 0 value 8070
+[input] raw ptr type 3 code 1 value 8119
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 314,197 down 0
+[input] raw ptr type 1 code 272 value 1
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 314,197 down 1
+[lvgl] fb commit click 6034 us n=1 (not panel light)
+[input] raw ptr type 1 code 272 value 0
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 314,197 down 0
+[menu] button 208
+[desktop] system info opened
+[input] raw ptr type 3 code 0 value 11759
+[input] raw ptr type 3 code 1 value 8119
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 458,197 down 0
+[input] raw ptr type 1 code 272 value 1
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 458,197 down 1
+[lvgl] fb commit click 6076 us n=2 (not panel light)
+[lvgl] pointer 458,197 down 0
+[menu] button 204
+[desktop] system tests opened
+[lvgl] pointer 164,197 down 0
+[lvgl] pointer 164,197 down 1
+[lvgl] fb commit click 5485 us n=3 (not panel light)
+[lvgl] pointer 164,197 down 0
+[menu] button 203
+[desktop] task manager opened
+[lvgl] pointer 309,734 down 0
+[lvgl] pointer 309,734 down 1
+[lvgl] fb commit click 8066 us n=4 (not panel light)
+[lvgl] pointer 309,734 down 0
+[menu] button 210
+[desktop] Apps opened
+[lvgl] pointer 402,229 down 0
+[lvgl] pointer 402,229 down 1
+[lvgl] fb commit click 8342 us n=5 (not panel light)
+[lvgl] pointer 402,229 down 0
+[menu] button 202
+[lvgl] home
+[lvgl] pointer 309,734 down 0
+[lvgl] pointer 309,734 down 1
+[lvgl] fb commit click 8495 us n=6 (not panel light)
+[lvgl] pointer 309,734 down 0
+[menu] button 210
+[desktop] Apps opened

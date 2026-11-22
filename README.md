@@ -14,7 +14,7 @@ License: [Apache-2.0](LICENSE)
 
 [系统测试标签截图](docs/screenshots/vehicle-tests.png)
 
-Dock 首位的 Apps 列出镜像内置应用。System 的 System Task 标签显示内核调度任务，System Info 显示资源统计，System Tests 提供系统测试。顶栏的 UTC 日期与时间来自 QEMU RTC。
+Dock 首位的 Apps 列出镜像内置应用。System 的 Task、Info、Tests 三个标签分别显示调度任务、资源统计和系统测试。顶栏的 UTC 日期与时间来自 QEMU RTC。
 
 [车载桌面验收记录](docs/tests/optimization/vehicle-desktop/REPORT.md)
 
@@ -54,7 +54,7 @@ Dock 首位的 Apps 列出镜像内置应用。System 的 System Task 标签显�
 
 ![Quota OS 按三级显示实际任务](docs/screenshots/task-manager.png)
 
-Activity Monitor 的 System Task 标签显示各级任务。显示一级固定槽、二级每周期最低 CPU 配额和三级剩余 CPU 任务。任务状态为界面刷新时的快照。窗口关闭与最小化使用 48 × 48 像素按钮。
+System 的 Task 标签显示各级任务。显示一级固定槽、二级每周期最低 CPU 配额和三级剩余 CPU 任务。任务状态为界面刷新时的快照。窗口关闭与最小化使用 48 × 48 像素按钮。
 
 [真实时钟对照](docs/tests/optimization/cycle-03/REPORT.txt)
 

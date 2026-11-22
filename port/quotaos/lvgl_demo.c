@@ -490,25 +490,50 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     return win;
 }
 
-static lv_obj_t *dock_item(lv_obj_t *dock, int x, uint32_t color, const char *icon, const char *name, int id)
+enum app_key { APP_DESKTOP, APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC };
+static const struct app_entry {
+    const char *name;
+    const char *glyph;
+    uint32_t color;
+    int action;
+} app_entries[] = {
+    [APP_DESKTOP] = {"Desktop", LV_SYMBOL_HOME, 0x456887, 211},
+    [APP_SYSTEM] = {app_monitor, LV_SYMBOL_SETTINGS, 0x5368af, 202},
+    [APP_LAUNCHER] = {"Apps", LV_SYMBOL_LIST, 0x31798b, 210},
+    [APP_NOTES] = {"Notes", LV_SYMBOL_EDIT, 0xae743b, 200},
+    [APP_SPEED] = {app_speed, LV_SYMBOL_CHARGE, 0x267757, 205},
+    [APP_VIDEO] = {app_video, LV_SYMBOL_VIDEO, 0x476bb4, 206},
+    [APP_MUSIC] = {app_music, LV_SYMBOL_AUDIO, 0x81549e, 207},
+};
+
+static lv_obj_t *app_icon(lv_obj_t *parent, enum app_key key, int x, int y, int square)
 {
-    lv_obj_t *b = lv_button_create(dock);
-    lv_obj_set_pos(b, x, 7);
-    lv_obj_set_size(b, DOCK_ITEM_WIDTH, 56);
-    lv_obj_set_style_radius(b, 10, 0);
-    lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(color), 0);
-    lv_obj_add_event_cb(b, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)id);
-    lv_obj_t *l = lv_label_create(b);
-    lv_label_set_text(l, icon);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(l, lv_color_hex(0xffffff), 0);
-    lv_obj_align(l, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *n = lv_label_create(b);
-    lv_label_set_text(n, name);
-    lv_obj_align(n, LV_ALIGN_BOTTOM_MID, 0, 2);
-    lv_obj_set_style_text_color(n, lv_color_hex(0xffffff), 0);
-    return b;
+    const struct app_entry *app = &app_entries[key];
+    lv_obj_t *button = lv_button_create(parent);
+    lv_obj_set_pos(button, x, y);
+    lv_obj_set_size(button, DOCK_ITEM_WIDTH, square + 23);
+    lv_obj_set_style_pad_all(button, 0, 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_shadow_width(button, 0, 0);
+    lv_obj_add_event_cb(button, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)app->action);
+    lv_obj_t *tile = lv_obj_create(button);
+    lv_obj_set_size(tile, square, square);
+    lv_obj_align(tile, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_radius(tile, square / 4, 0);
+    lv_obj_set_style_pad_all(tile, 0, 0);
+    lv_obj_set_style_border_width(tile, 0, 0);
+    lv_obj_set_style_bg_color(tile, lv_color_hex(app->color), 0);
+    lv_obj_remove_flag(tile, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *symbol = lv_label_create(tile);
+    lv_label_set_text(symbol, app->glyph);
+    lv_obj_set_style_text_font(symbol, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(symbol, lv_color_hex(0xffffff), 0);
+    lv_obj_center(symbol);
+    lv_obj_t *caption = lv_label_create(button);
+    lv_label_set_text(caption, app->name);
+    lv_obj_set_style_text_color(caption, lv_color_hex(0x233351), 0);
+    lv_obj_align(caption, LV_ALIGN_BOTTOM_MID, 0, 0);
+    return button;
 }
 
 static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail)
@@ -628,7 +653,7 @@ static void refresh_system_info(void)
 static lv_obj_t *dock_minimized_dot(lv_obj_t *dock, int item_x)
 {
     lv_obj_t *dot = lv_obj_create(dock);
-    lv_obj_set_pos(dot, item_x + (DOCK_ITEM_WIDTH - 6) / 2, 64);
+    lv_obj_set_pos(dot, item_x + (DOCK_ITEM_WIDTH - 6) / 2, 75);
     lv_obj_set_size(dot, 6, 6);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(dot, lv_color_hex(0x202e52), 0);
@@ -828,7 +853,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     detail = desk_label(page_home, 252, 124, "No workload results", 0x263552);
     lv_obj_set_size(detail, 436, 338);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    static const char *const tab_names[] = {"System Task", "System Info", "System Tests"};
+    static const char *const tab_names[] = {"Task", "Info", "Tests"};
     static const int tab_ids[] = {203, 208, 204};
     for (int i = 0; i < 3; i++) {
         tabs[i] = add_row(page_home, 55, 0xffffff, 0xc5d9fa, tab_names[i], tab_ids[i]);
@@ -926,43 +951,45 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     select_monitor_tab(SYSTEM_TASK);
 
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
-    const struct { const char *name; int action; int available; } installed[] = {
-        {"Desktop", 211, 1}, {app_monitor, 202, 1}, {"Apps", 210, 1},
-        {"Notes", 200, 1}, {app_speed, 205, apps},
-        {app_video, 206, apps == 2}, {app_music, 207, apps}
-    };
-    for (unsigned i = 0; i < sizeof installed / sizeof installed[0]; i++) {
-        lv_obj_t *entry = add_row(page_apps, 0, 0xffffff, 0xdbe3f0,
-                                  installed[i].name, installed[i].action);
-        lv_obj_set_size(entry, 236, 56);
-        lv_obj_set_pos(entry, 20 + (int)(i % 2) * 260,
-                       74 + (int)(i / 2) * 76);
-        if (!installed[i].available)
+    for (unsigned i = 0; i < sizeof app_entries / sizeof app_entries[0]; i++) {
+        lv_obj_t *entry = app_icon(page_apps, (enum app_key)i, 34 + (int)(i % 3) * 174,
+                                   70 + (int)(i / 3) * 108, 56);
+        if ((i >= APP_SPEED && !apps) || (i == APP_VIDEO && apps != 2)) {
             lv_obj_add_state(entry, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(entry, LV_OPA_50, 0);
+        }
     }
     lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
     lv_obj_t *dock = lv_obj_create(screen);
     int dock_width = (apps ? 6 : 3) * DOCK_STEP + 12;
-    lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - 84);
-    lv_obj_set_size(dock, dock_width, 72);
+    lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - 96);
+    lv_obj_set_size(dock, dock_width, 84);
     lv_obj_set_style_pad_all(dock, 0, 0);
     lv_obj_set_style_radius(dock, 16, 0);
     lv_obj_set_style_bg_color(dock, lv_color_hex(0xc9c9e6), 0);
     lv_obj_set_style_border_color(dock, lv_color_hex(0xe1e2f7), 0);
     lv_obj_set_style_border_width(dock, 1, 0);
     lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
-    dock_item(dock, 12, 0x426a83, LV_SYMBOL_LIST, "Apps", 210);
-    minimized_dots[2] = dock_minimized_dot(dock, 12);
-    dock_item(dock, 12 + DOCK_STEP, 0x4a6bc2, LV_SYMBOL_BARS, app_monitor, 202);
-    minimized_dots[0] = dock_minimized_dot(dock, 12 + DOCK_STEP);
-    if (apps) {
-        dock_item(dock, 12 + 2 * DOCK_STEP, 0x23785c, LV_SYMBOL_CHARGE, app_speed, 205);
-        dock_item(dock, 12 + 3 * DOCK_STEP, 0x395cc0, LV_SYMBOL_VIDEO, app_video, 206);
-        dock_item(dock, 12 + 4 * DOCK_STEP, 0x7851a8, LV_SYMBOL_AUDIO, app_music, 207);
+    static const enum app_key dock_order[] = {
+        APP_LAUNCHER, APP_SYSTEM, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_NOTES
+    };
+    int dock_x = 12;
+    lv_obj_t *notes_icon = NULL;
+    for (unsigned i = 0; i < sizeof dock_order / sizeof dock_order[0]; i++) {
+        enum app_key key = dock_order[i];
+        if (key >= APP_SPEED && !apps)
+            continue;
+        lv_obj_t *button = app_icon(dock, key, dock_x, 5, 44);
+        if (key == APP_LAUNCHER)
+            minimized_dots[2] = dock_minimized_dot(dock, dock_x);
+        else if (key == APP_SYSTEM)
+            minimized_dots[0] = dock_minimized_dot(dock, dock_x);
+        else if (key == APP_NOTES) {
+            minimized_dots[1] = dock_minimized_dot(dock, dock_x);
+            notes_icon = button;
+        }
+        dock_x += DOCK_STEP;
     }
-    int notes_x = 12 + (apps ? 5 : 2) * DOCK_STEP;
-    lv_obj_t *notes_icon = dock_item(dock, notes_x, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
-    minimized_dots[1] = dock_minimized_dot(dock, notes_x);
     build_cursor();
     lv_obj_t *cursor = lv_image_create(lv_layer_sys());
     lv_image_set_src(cursor, &cursor_dsc);
