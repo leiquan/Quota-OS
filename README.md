@@ -6,20 +6,21 @@ Run `bash tools/run-webkit.sh` with QEMU ARM64 installed. This branch brings up 
 
 [Serial log](docs/tests/webkit-stack/guest.log) · [Actual QEMU output](docs/tests/webkit-stack/frame.png) · [LVGL desktop branch](https://github.com/leiquan/Quota-OS/tree/Desktop-LVGL-120X800)
 
-## Load a local HTML file
+## Preview a local HTML page
 
-Run the launcher from your checkout:
+On macOS with QEMU and the Xcode command-line tools installed, run:
 
 ```sh
-printf '<h1>Hello, Quota OS</h1>' > hello.html
-bash tools/run-webkit.sh --page hello.html
+bash tools/run-webkit.sh --page examples/webkit/hello.html
 ```
 
-This mode boots a separate document-loader image built from this branch. The guest reads the file bytes through QEMU fw_cfg, prints their byte count and FNV-1a checksum on the serial console, and exposes the buffer and its length to the engine host interface. Files from 1 to 16,384 bytes are accepted. Empty and oversized files are rejected. The loader image exercises the transport only; it does not link JavaScriptCore or render HTML. With no `--page`, the launcher still boots the previously verified JavaScriptCore and CSS-color image.
+![HTML page captured from QEMU](docs/tests/webkit-page/hello.png)
 
-使用 `--page` 可从宿主机传入本地 HTML，核对来宾串口输出的长度和校验值。当前画面是显示设备自测，页面内容尚未进入 WebCore 排版。
+Change the heading in the file and launch again to see the new text. This is a static preview of self-contained UTF-8 HTML (1–16,384 bytes). macOS WKWebView lays out the document with inline CSS and system fonts, with page JavaScript disabled. The launcher supplies the same HTML and its rendered 1280 × 800 XRGB frame through QEMU fw_cfg; Quota OS displays that frame in ramfb. In-guest WebCore layout, scrolling and interactive browsing remain pending.
 
-Build the loader with the repository's GNU ARM64 cross-toolchain using `make`; its image is `build/quotaos.bin`. The packaged copy is `prebuilt/quotaos-webkit-loader.bin`. Run `python3 tools/webkit-document-check.py` to verify the packaged loader with QEMU.
+在 macOS 上执行上面的命令，就能在 QEMU 中看到文件里的标题和正文。当前采用宿主 WebKit 排版、来宾显示的静态预览。
+
+For the cross-platform transport check use `--page-bytes FILE`; the serial console reports the file length and checksum. Run `python3 tools/webkit-document-check.py` for all five boundary cases. With no argument the launcher boots the separate in-guest JSC and WebCore CSS color test.
 
 ## LVGL desktop baseline
 

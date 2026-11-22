@@ -12,7 +12,7 @@ with tempfile.TemporaryDirectory() as tmp:
     for payload in (b"<p>Hello</p>", "<h1>配额</h1>".encode(), b"x" * 16384, b"x" * 16385, b""):
         page.write_bytes(payload)
         with log.open("wb") as stream:
-            proc = subprocess.Popen([launcher, "--page", page, "-display", "none"],
+            proc = subprocess.Popen([launcher, "--page-bytes", page, "-display", "none"],
                                     stdout=stream, stderr=subprocess.STDOUT)
             try:
                 deadline = time.monotonic() + 15

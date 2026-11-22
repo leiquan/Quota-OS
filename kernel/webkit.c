@@ -50,6 +50,16 @@ void webkit_autostart(void)
         for (uint32_t i = 0; i < document_bytes; i++)
             hash = (hash ^ document[i]) * 16777619u;
         printf("[document] loaded bytes=%u fnv1a=%x\n", document_bytes, hash);
+        uint64_t frame, size;
+        uint32_t copied;
+        if (!fb_reserved_range(&frame, &size) && !fb_present() &&
+            !fw_read_file("opt/quota/webkit-frame", (void *)(uintptr_t)frame, (uint32_t)size, &copied) &&
+            copied == size) {
+            asm volatile("dsb st" ::: "memory");
+            printf("[document] presented host WebKit snapshot bytes=%u\n", copied);
+            printf("[webkit] done\n");
+            return;
+        }
     } else if (load == -2) {
         printf("[document] rejected: expected 1..16384 bytes\n");
     }
