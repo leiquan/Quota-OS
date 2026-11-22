@@ -8,6 +8,12 @@ AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中�
 
 License: [Apache-2.0](LICENSE)
 
+## 持续优化与测试
+
+每轮测试后单独提交并推送；失败不删除，main 不自动合并。
+
+- [cycle-01：固定双缓冲日志交接，移除关中断文本复制](docs/tests/optimization/cycle-01/REPORT.txt) — native GUI 7/10；icount GUI 10/10；功能回归详见原始记录。
+
 ## 最新桌面：1280 × 800
 
 ![Quota OS 1280×800 实际运行桌面](docs/screenshots/desktop-1280x800.png)

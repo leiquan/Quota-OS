@@ -43,8 +43,20 @@ static struct dev_stats st;
 
 #define KLOG_LINES 24
 #define KLOG_LEN 160
-static char kl[KLOG_LINES][KLOG_LEN];
-static uint32_t kl_n, kl_pos, kl_lost, kl_total;
+struct log_bank {
+    char text[KLOG_LINES][KLOG_LEN];
+    uint32_t n, pos, lost;
+};
+/* Two fixed banks replace the old live buffer plus 3840-byte snapshot.
+ * The IRQ-disabled handoff moves ownership, not text. */
+static struct log_bank banks[2];
+static unsigned kl_active;
+static int kl_flushing;
+static uint32_t kl_total;
+#define kl (banks[kl_active].text)
+#define kl_n (banks[kl_active].n)
+#define kl_pos (banks[kl_active].pos)
+#define kl_lost (banks[kl_active].lost)
 
 void klog(const char *s)
 {
@@ -86,20 +98,57 @@ void klog_end(void)
 
 void klog_flush(void)
 {
-    uint64_t irq_flags = irq_save();
-    uint32_t n = kl_n, lost = kl_lost;
-    static char copy[KLOG_LINES][KLOG_LEN];
-    for (uint32_t i = 0; i < n; i++)
-        str_copy(copy[i], kl[i], KLOG_LEN);
-    kl_n = 0;
-    kl_pos = 0;
-    kl_lost = 0;
-    kl[0][0] = 0;
-    irq_restore(irq_flags);
-    for (uint32_t i = 0; i < n; i++)
-        printf("%s\n", copy[i]);
-    if (lost)
-        printf("[log] %u more lines not kept\n", lost);
+    uint64_t flags = irq_save();
+    /* Never wait for the UART in an exception or nested critical section.
+     * Preserve unfinished records until their producer calls klog_end. */
+    if ((flags & 0x80ull) || kl_flushing || kl_pos || (!kl_n && !kl_lost)) {
+        irq_restore(flags);
+        return;
+    }
+    struct log_bank *ready = &banks[kl_active];
+    kl_active ^= 1u;
+    kl_flushing = 1;
+    irq_restore(flags);
+    for (uint32_t i = 0; i < ready->n; i++)
+        printf("%s\n", ready->text[i]);
+    if (ready->lost)
+        printf("[log] %u more lines not kept\n", ready->lost);
+    /* This bank is no longer the producer's bank. IRQs may stay enabled. */
+    ready->n = ready->pos = ready->lost = 0;
+    ready->text[0][0] = 0;
+    flags = irq_save();
+    kl_flushing = 0;
+    irq_restore(flags);
+}
+
+int klog_selftest(void)
+{
+    if (kl_n || kl_pos || kl_flushing)
+        return 0;
+    klog("[klog-test] partial record");
+    klog_flush();
+    int partial = kl_pos != 0 && kl_n == 0;
+    klog_end();
+    klog("[klog-test] second record");
+    klog_end();
+    uint64_t flags = irq_save(), after;
+    klog_flush();
+    asm volatile("mrs %0, daif" : "=r"(after));
+    int masked = kl_n == 2 && (after & 0x80ull);
+    irq_restore(flags);
+    klog_flush();
+    int recycled = kl_n == 0 && kl_pos == 0 && !kl_flushing;
+    for (unsigned i = 0; i < KLOG_LINES + 3; i++) {
+        klog("[klog-test] overflow ");
+        klog_u(i);
+        klog_end();
+    }
+    int overflow = kl_n == KLOG_LINES && kl_lost == 3;
+    klog_flush();
+    recycled = recycled && kl_n == 0 && kl_lost == 0;
+    printf("[klog-test] partial=%d masked=%d overflow=%d recycled=%d\n",
+           partial, masked, overflow, recycled);
+    return partial && masked && overflow && recycled;
 }
 
 uint32_t klog_count(void)

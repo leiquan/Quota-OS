@@ -394,6 +394,7 @@ void klog(const char *s);
 void klog_u(uint64_t v);
 void klog_end(void);
 void klog_flush(void);
+int klog_selftest(void);
 uint32_t klog_count(void);
 int klog_find_all(const char *const *keys, int n);
 int klog_count_lines(const char *key);

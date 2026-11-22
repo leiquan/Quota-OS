@@ -1148,6 +1148,11 @@ void shell_main(void)
     decl_init();
     decl_verify_devices();
     const char *args = dtb_bootargs();
+    if (strcmp(args, "logtest") == 0) {
+        printf("[klog-test] %s\n", klog_selftest() ? "PASS" : "FAIL");
+        printf("QA DONE\n");
+        for (;;) asm volatile("wfi");
+    }
     if (strcmp(args, "webkit") == 0) {
         webkit_autostart();
         for (;;)

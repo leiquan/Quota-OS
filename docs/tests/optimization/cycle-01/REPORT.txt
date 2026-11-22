@@ -1,0 +1,28 @@
+cycle-01: 固定双缓冲日志交接，移除关中断文本复制
+
+Image SHA256: a04c3498de29923ddb05b1460ae17e28abbd88d16fada642b45c65ef64c85274
+
+Cases:
+logtest-native: {"completed": true, "failed_lines": [], "passed": true, "checks": {"partial_once": true, "second_once": true, "overflow24": true, "lost3": true, "pass_marker": true}}
+logtest-icount: {"completed": true, "failed_lines": [], "passed": true, "checks": {"partial_once": true, "second_once": true, "overflow24": true, "lost3": true, "pass_marker": true}}
+e1-icount: {"completed": true, "failed_lines": [], "passed": true}
+e3-icount: {"completed": true, "failed_lines": [], "passed": true}
+e2h-icount: {"completed": true, "failed_lines": [], "passed": true}
+e4-icount: {"completed": true, "failed_lines": [], "passed": true}
+isolate-native: {"exit_code": 0, "done": true, "restart16": true, "classes_ok": true, "empty": true, "irq_contract": true, "kill": {"rounds": 100, "ok": 100, "late": 0, "stale_reject": 100, "us_min": 1, "us_max": 6, "passed": true}, "fault": {"rounds": 100, "ok": 100, "late": 0, "stale_reject": 100, "us_min": 2, "us_max": 11, "passed": true}, "timing": {"deadline_us": 500, "before": 1, "after": 1, "irq_off_max_us": 11, "passed": true}, "functional_pass": true, "passed": true}
+isolate-icount: {"exit_code": 0, "done": true, "restart16": true, "classes_ok": true, "empty": true, "irq_contract": true, "kill": {"rounds": 100, "ok": 100, "late": 0, "stale_reject": 100, "us_min": 41, "us_max": 73, "passed": true}, "fault": {"rounds": 100, "ok": 100, "late": 0, "stale_reject": 100, "us_min": 81, "us_max": 685, "passed": true}, "timing": {"deadline_us": 500, "before": 0, "after": 0, "irq_off_max_us": 10, "passed": true}, "functional_pass": true, "passed": true}
+
+GUI rounds (T1 miss / T2 short / T2 job miss):
+1 | native: [3, 0, 0] pass=False | icount: [0, 0, 0] pass=True
+2 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+3 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+4 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+5 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+6 | native: [2, 0, 1] pass=False | icount: [0, 0, 0] pass=True
+7 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+8 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+9 | native: [1, 0, 0] pass=False | icount: [0, 0, 0] pass=True
+10 | native: [0, 0, 0] pass=True | icount: [0, 0, 0] pass=True
+
+No deadline/slot/minimum/guard was widened. GUI is Tier3/EL1.
+Finite samples are not a perpetual realtime guarantee. All failures remain.
