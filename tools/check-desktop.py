@@ -10,14 +10,14 @@ def button(n):q.call('human-monitor-command',{'command-line':'mouse_button '+str
 def click(x,y):
  move(x,y);time.sleep(.15);button(1);time.sleep(.15);button(0);time.sleep(.25)
 def shot(name):q.call('screendump',{'filename':str(out/(name+'.ppm'))})
-move(w-1,h-1);time.sleep(.2);shot('desktop')
+move(w-1,h-1);time.sleep(.2);shot('desktop');click(400,550);time.sleep(.65);shot('task-manager');click(582,152)
 click((w-306)//2+152,h-49)
 for key in 'a better place to work':
  q.call('human-monitor-command',{'command-line':'sendkey '+('spc' if key==' ' else key)});time.sleep(.13)
-m=re.search(r'\[lvgl\] plus box (\d+),(\d+) (\d+)x(\d+)',t);x,y,bw,bh=map(int,m.groups());click(x+bw//2,y+bh//2)
-move(970,259);time.sleep(.1);button(1);time.sleep(.1)
+m=re.search(r'\[lvgl\] clear box (\d+),(\d+) (\d+)x(\d+)',t);x,y,bw,bh=map(int,m.groups());click(x+bw//2,y+bh//2)
+move(970,264);time.sleep(.1);button(1);time.sleep(.1)
 for xy in [(978,267),(986,275),(994,283),(1002,291),(1010,303)]:move(*xy);time.sleep(.1)
 button(0);time.sleep(.2);t=(out/'serial.log').read_text();m=re.findall(r'\[desktop\] moved (\d+),(\d+)',t);assert m,'drag missing';x,y=map(int,m[-1]);assert x>650 and y>238
-shot('windows');click(x+23,y+21);time.sleep(.2);click((w-306)//2+152,h-49);shot('restored')
+shot('windows');click(x+6,y+6);time.sleep(.2);click((w-306)//2+152,h-49);shot('restored')
 move(1205,680);time.sleep(.2);shot('readme-desktop')
-t=(out/'serial.log').read_text();r={'size':[w,h],'edge_pointer':bool(re.search(r'pointer 127[7-9],79[7-9]',t)),'notes_open':'[lvgl] input page' in t,'typed':'key code 48 value 1 char 98' in t,'count1':'click count 1' in t,'dragged':[x,y],'closed':'[desktop] window hidden' in t,'restored':t.count('[lvgl] input page')>=2,'panic':'PANIC' in t,'status':q.call('query-status')};(out/'interaction-results.json').write_text(json.dumps(r,indent=2));print(json.dumps(r,indent=2));assert all(r[k] for k in ['edge_pointer','notes_open','typed','count1','closed','restored']) and not r['panic'];q.close()
+t=(out/'serial.log').read_text();r={'tasks_open':'[desktop] task manager opened' in t,'size':[w,h],'edge_pointer':bool(re.search(r'pointer 127[7-9],79[7-9]',t)),'notes_open':'[lvgl] input page' in t,'typed':'key code 48 value 1 char 98' in t,'notes_cleared':'[lvgl] notes cleared' in t,'dragged':[x,y],'closed':'[desktop] window hidden' in t,'restored':t.count('[lvgl] input page')>=2,'panic':'PANIC' in t,'status':q.call('query-status')};(out/'interaction-results.json').write_text(json.dumps(r,indent=2));print(json.dumps(r,indent=2));assert all(r[k] for k in ['tasks_open','edge_pointer','notes_open','typed','notes_cleared','closed','restored']) and not r['panic'];q.close()

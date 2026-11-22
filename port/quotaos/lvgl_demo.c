@@ -15,7 +15,6 @@ _Static_assert(LV_MEM_POOL_EXPAND_SIZE == 0, "LVGL heap must not grow");
 static uint8_t draw_buf[LVGL_DRAW_BYTES] __attribute__((aligned(64)));
 static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
-static lv_obj_t *count_label;
 static lv_obj_t *field;
 static lv_obj_t *menu_list;
 static lv_obj_t *legend;
@@ -23,14 +22,15 @@ static lv_obj_t *detail;
 static lv_obj_t *page_home;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover;
+static lv_obj_t *page_tasks;
+static lv_obj_t *task_rows;
 
 static void show_page(int which)
 {
-    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : page_cover;
+    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : page_tasks;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(win);
 }
-static unsigned clicks;
 
 #define CUR_W 16
 #define CUR_H 16
@@ -257,9 +257,8 @@ static void keypad_read(lv_indev_t *indev, lv_indev_data_t *data)
 static void on_click(lv_event_t *e)
 {
     (void)e;
-    clicks++;
-    lv_label_set_text_fmt(count_label, "Count: %u", clicks);
-    printf("[lvgl] click count %u\n", clicks);
+    lv_textarea_set_text(field, "");
+    printf("[lvgl] notes cleared\n");
 }
 
 static void on_group(lv_event_t *e)
@@ -287,6 +286,11 @@ static void on_group(lv_event_t *e)
     }
     if (id == 104) {
         printf("[lvgl] click and key samples are taken from real events. Panel light is not measured.\n");
+        return;
+    }
+    if (id == 203) {
+        show_page(3);
+        printf("[desktop] task manager opened\n");
         return;
     }
     if (id == 200) {
@@ -380,7 +384,7 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     lv_obj_remove_flag(win, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *bar = lv_obj_create(win);
     lv_obj_set_pos(bar, 0, 0);
-    lv_obj_set_size(bar, w, 42);
+    lv_obj_set_size(bar, w, 52);
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_set_style_radius(bar, 0, 0);
     lv_obj_set_style_border_width(bar, 0, 0);
@@ -391,15 +395,18 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     lv_obj_add_event_cb(bar, window_drag, LV_EVENT_RELEASED, win);
     for (int i = 0; i < 2; i++) {
         lv_obj_t *dot = lv_button_create(bar);
-        lv_obj_set_pos(dot, 16 + i * 22, 15);
-        lv_obj_set_size(dot, 13, 13);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_pos(dot, 4 + i * 52, 2);
+        lv_obj_set_size(dot, 48, 48);
+        lv_obj_set_style_radius(dot, 10, 0);
         lv_obj_set_style_border_width(dot, 0, 0);
         lv_obj_set_style_shadow_width(dot, 0, 0);
-        lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xf5bd4f : 0xef6b73), 0);
+        lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xdce4f3 : 0xf8dce1), 0);
+        lv_obj_t *glyph = desk_label(dot, 0, 0, i ? LV_SYMBOL_MINUS : LV_SYMBOL_CLOSE,
+                                     i ? 0x334563 : 0x982c40);
+        lv_obj_center(glyph);
         lv_obj_add_event_cb(dot, window_control, LV_EVENT_CLICKED, win);
     }
-    lv_obj_t *label = desk_label(bar, 76, 13, title, 0x263552);
+    lv_obj_t *label = desk_label(bar, 120, 18, title, 0x263552);
     lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
     return win;
 }
@@ -415,12 +422,49 @@ static lv_obj_t *dock_item(lv_obj_t *dock, int x, uint32_t color, const char *ic
     lv_obj_add_event_cb(b, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)id);
     lv_obj_t *l = lv_label_create(b);
     lv_label_set_text(l, icon);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(0xffffff), 0);
     lv_obj_align(l, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_t *n = lv_label_create(b);
     lv_label_set_text(n, name);
     lv_obj_align(n, LV_ALIGN_BOTTOM_MID, 0, 2);
     lv_obj_set_style_text_color(n, lv_color_hex(0xffffff), 0);
     return b;
+}
+
+static void refresh_tasks(void)
+{
+    if (lv_obj_has_flag(page_tasks, LV_OBJ_FLAG_HIDDEN))
+        return;
+    static char rows[3072];
+    static const char *const heading[] = {
+        "Tier 1  /  Fixed slots", "Tier 2  /  Reserved minimum", "Tier 3  /  Spare CPU"
+    };
+    size_t used = 0;
+    for (int tier = TIER1; tier <= TIER3; tier++) {
+        used += lv_snprintf(rows + used, sizeof rows - used, "%s\n", heading[tier - TIER1]);
+        int count = 0;
+        for (int i = 0; i < MAX_TASKS; i++) {
+            const struct task *t = sched_task_at(i);
+            if (!t || t->tier != tier || t->state == TASK_EMPTY || t->state == TASK_DEAD)
+                continue;
+            const char *state = t->state == TASK_RUNNING ? "Running" :
+                                t->state == TASK_READY ? "Ready" : "Waiting";
+            if (used + 64 >= sizeof rows)
+                return;
+            if (tier == TIER2)
+                used += lv_snprintf(rows + used, sizeof rows - used,
+                    "  %s   %s   %lu us / 10 ms\n", t->name, state,
+                    (unsigned long)ticks_to_us(t->min_t));
+            else
+                used += lv_snprintf(rows + used, sizeof rows - used,
+                    "  %s   %s\n", t->name, state);
+            count++;
+        }
+        used += lv_snprintf(rows + used, sizeof rows - used, "%s\n", count ? "" : "  None\n");
+    }
+    if (strcmp(rows, lv_label_get_text(task_rows)))
+        lv_label_set_text(task_rows, rows);
 }
 
 int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
@@ -469,36 +513,34 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(top, 0, 0);
     lv_obj_set_style_bg_color(top, lv_color_hex(0x101d39), 0);
     lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
-    desk_label(top, 26, 13, LV_SYMBOL_HOME "  Quota", 0xffffff);
-    desk_label(top, 184, 13, "Desktop", 0xbac9e9);
-    desk_label(top, (int)w - 180, 13, LV_SYMBOL_HOME "  Local session", 0xd7e4fa);
-    lv_obj_t *greeting = desk_label(screen, 88, 72, "Your space. Your pace.", 0xe3eafb);
-    lv_obj_set_style_text_font(greeting, &lv_font_montserrat_24, 0);
+    desk_label(top, 26, 13, "Quota OS", 0xffffff);
 
     page_home = desktop_window(screen, 88, 124, 720, 460, "Activity Monitor");
     menu_list = lv_obj_create(page_home);
-    lv_obj_set_pos(menu_list, 0, 42);
-    lv_obj_set_size(menu_list, 220, 418);
+    lv_obj_set_pos(menu_list, 0, 52);
+    lv_obj_set_size(menu_list, 220, 408);
     lv_obj_set_style_bg_color(menu_list, lv_color_hex(0xeaf0fa), 0);
     lv_obj_set_style_border_width(menu_list, 0, 0);
     lv_obj_set_style_pad_all(menu_list, 12, 0);
     lv_obj_set_style_radius(menu_list, 0, 0);
     lv_obj_remove_flag(menu_list, LV_OBJ_FLAG_SCROLLABLE);
-    desk_label(menu_list, 2, 0, "WORKSPACE", 0x64748b);
     lv_obj_t *inb = add_row(menu_list, 36, 0xffffff, 0xdbe3f0, "Notes", 200);
     lv_obj_t *load9 = add_row(menu_list, 90, 0xe0edff, 0xc5d9fa, "Run workload", 9);
     add_row(menu_list, 144, 0xffffff, 0xdbe3f0, "Stop workload", 103);
     add_row(menu_list, 198, 0xffffff, 0xdbe3f0, "Service check", 5);
     add_row(menu_list, 252, 0xffffff, 0xdbe3f0, "App reservation", 2);
     lv_obj_t *covb = add_row(menu_list, 306, 0xffffff, 0xdbe3f0, "About this system", 201);
-    detail = desk_label(page_home, 252, 84, "Welcome to Quota OS", 0x263552);
+    detail = desk_label(page_home, 252, 84, "No workload results", 0x263552);
     lv_obj_set_size(detail, 436, 338);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+    lv_obj_t *tasks_button = add_row(page_home, 409, 0xe4ecff, 0xc5d9fa, "Task Manager", 203);
+    lv_obj_set_pos(tasks_button, 252, 409);
+    lv_obj_set_width(tasks_button, 180);
     legend = lv_label_create(page_home);
     lv_obj_add_flag(legend, LV_OBJ_FLAG_HIDDEN);
 
     page_input = desktop_window(screen, 650, 238, 540, 358, "Notes");
-    desk_label(page_input, 28, 70, "Make a little room for your ideas.", 0x64748b);
+    desk_label(page_input, 28, 70, "Notes are cleared on restart.", 0x64748b);
     field = lv_textarea_create(page_input);
     lv_obj_set_pos(field, 28, 108);
     lv_obj_set_size(field, 482, 148);
@@ -515,27 +557,35 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_add_event_cb(btn, on_click, LV_EVENT_CLICKED, NULL);
     lv_obj_t *bl = lv_label_create(btn);
-    lv_label_set_text(bl, "+1");
+    lv_label_set_text(bl, "Clear");
     lv_obj_center(bl);
-    count_label = desk_label(page_input, 165, 297, "Count: 0", 0x64748b);
     lv_group_t *group = lv_group_create();
     lv_group_add_obj(group, field);
     lv_indev_set_group(keypad, group);
     lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
 
     page_cover = desktop_window(screen, 390, 205, 500, 348, "About Quota OS");
-    desk_label(page_cover, 28, 70, LV_SYMBOL_HOME "  Quota OS", 0x374e90);
-    desk_label(page_cover, 28, 111, "A small desktop. A clear set of priorities.", 0x263552);
-    lv_obj_t *about = desk_label(page_cover, 28, 156,
-        "Open Notes to write, or Activity Monitor to\n"
-        "run a workload and inspect its results.\n\n"
-        "This is a prototype desktop. Notes are kept\n"
-        "in memory for this session.", 0x64748b);
+    desk_label(page_cover, 28, 70, "Version " QUOTAOS_VERSION "    ARM64", 0x374e90);
+    lv_obj_t *about = desk_label(page_cover, 28, 111,
+        "1280 x 800 display\n"
+        "Desktop priority: Tier 3\n"
+        "Timing results: Activity Monitor", 0x64748b);
     lv_obj_set_width(about, 440);
     lv_obj_t *back = add_row(page_cover, 233, 0xe4ecff, 0xc5d9fa, "Activity Monitor", 202);
     lv_obj_set_pos(back, 28, 280);
     lv_obj_set_width(back, 440);
     lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
+
+    page_tasks = desktop_window(screen, 575, 145, 570, 522, "Task Manager");
+    lv_obj_t *task_body = lv_obj_create(page_tasks);
+    lv_obj_set_pos(task_body, 12, 63);
+    lv_obj_set_size(task_body, 544, 444);
+    lv_obj_set_style_bg_opa(task_body, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(task_body, 0, 0);
+    lv_obj_set_scroll_dir(task_body, LV_DIR_VER);
+    task_rows = desk_label(task_body, 0, 0, "", 0x263552);
+    lv_obj_set_width(task_rows, 498);
+    lv_obj_add_flag(page_tasks, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *dock = lv_obj_create(screen);
     lv_obj_set_pos(dock, ((int)w - 306) / 2, (int)h - 84);
@@ -546,7 +596,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_color(dock, lv_color_hex(0xe1e2f7), 0);
     lv_obj_set_style_border_width(dock, 1, 0);
     lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
-    dock_item(dock, 12, 0x4a6bc2, LV_SYMBOL_SETTINGS, "Monitor", 202);
+    dock_item(dock, 12, 0x4a6bc2, LV_SYMBOL_BARS, "Monitor", 202);
     dock_item(dock, 112, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
     dock_item(dock, 212, 0x7160b5, LV_SYMBOL_LIST, "About", 201);
     build_cursor();
@@ -571,7 +621,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         printf("[lvgl] back box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(btn, &box);
-        printf("[lvgl] plus box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+        printf("[lvgl] clear box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
     }
     printf("[menu] serial 6 10 13 14 15 16 18 stay on the coverage page\n");
@@ -594,13 +644,15 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         if (panel_at && panel_now - panel_at < 100000)
             continue;
         panel_at = panel_now;
+        static uint64_t tasks_at;
+        if (panel_now - tasks_at >= 500000) {
+            refresh_tasks();
+            tasks_at = panel_now;
+        }
         demo_menu_detail(&d);
         if (d.running) {
             lv_snprintf(text, sizeof text,
-                "WORKLOAD IN PROGRESS\n\n"
-                "%u of %u periods\n\n"
-                "The desktop remains available.\n"
-                "Results appear when this window ends.", d.progress, d.total);
+                "Workload running\n\n%u / %u periods", d.progress, d.total);
         } else if (d.have_window) {
             char t2[48];
             if (d.t2_ok)
@@ -620,12 +672,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                 d.t1_miss || (d.t2_ok && (d.t2_short || d.job_miss)) ? "Timing requirements were not met." : "No misses in this observed window.");
         } else {
             lv_snprintf(text, sizeof text,
-                "YOUR SYSTEM, AT A GLANCE\n\n"
-                "Fixed windows for essential services.\n"
-                "Minimum resources for admitted apps.\n"
-                "The desktop uses the remaining time.\n\n"
-                "Run a workload to see measured results.\n"
-                "Open Notes from the dock to get started.");
+                "No workload results.\nSelect Run workload to measure deadlines.");
         }
         if (strcmp(text, shown) != 0) {
             lv_label_set_text(detail, text);
@@ -653,6 +700,5 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             }
         }
     }
-    printf("[lvgl] result clicks %u drops %u\n", clicks, input_drop_count());
     return 0;
 }

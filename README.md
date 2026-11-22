@@ -10,10 +10,19 @@ License: [Apache-2.0](LICENSE)
 
 ## 持续优化与测试
 
+- [cycle-04：三级任务管理器、触控窗口按钮和桌面精简](docs/tests/optimization/cycle-04/REPORT.txt) — native GUI 7/10；icount GUI 10/10；功能回归详见原始记录。
 - [cycle-02：启动前校验设备，拒绝未验证设备取得保底资源](docs/tests/optimization/cycle-02/REPORT.txt) — native GUI 4/10；icount GUI 10/10；功能回归详见原始记录。
 每轮测试后单独提交并推送；失败不删除，main 不自动合并。**最新版本仍未通过硬实时验收。**
 
 - [cycle-01：固定双缓冲日志交接，移除关中断文本复制](docs/tests/optimization/cycle-01/REPORT.txt) — native GUI 7/10；icount GUI 10/10；功能回归详见原始记录。
+
+## 任务管理器
+
+![Quota OS 按三级显示实际任务](docs/screenshots/task-manager.png)
+
+从 Activity Monitor 打开 Task Manager。显示一级固定槽、二级每周期最低 CPU 配额和三级剩余 CPU 任务。任务状态为界面刷新时的快照。窗口关闭与最小化使用 48 × 48 像素按钮。
+
+[真实时钟对照](docs/tests/optimization/cycle-03/REPORT.txt)
 
 ## 最新桌面：1280 × 800
 

@@ -130,14 +130,14 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0):
                 m = re.search(r'\[lvgl\] input box (\d+),(\d+) (\d+)x(\d+)',t)
                 x,y,w,h = map(int,m.groups())
                 click(x+w//2,y+h//2)
-                m = re.search(r'\[lvgl\] plus box (\d+),(\d+) (\d+)x(\d+)',t)
+                m = re.search(r'\[lvgl\] clear box (\d+),(\d+) (\d+)x(\d+)',t)
                 x,y,w,h = map(int,m.groups())
                 click(x+w//2,y+h//2)
                 for key in ['a','b']:
                     q.call('human-monitor-command',{'command-line':'sendkey '+key})
                     time.sleep(.2)
                 t = contents(log)
-                longevity_ok = ('[lvgl] click count 1' in t and
+                longevity_ok = ('[lvgl] notes cleared' in t and
                                 '[lvgl] key code 48 value 1 char 98' in t and
                                 '[lvgl] demo returned' not in t)
                 q.call('screendump',{'filename':str(out/'after-50s.ppm')})

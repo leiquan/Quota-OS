@@ -1,0 +1,22 @@
+{
+  "tasks_open": true,
+  "size": [
+    1280,
+    800
+  ],
+  "edge_pointer": true,
+  "notes_open": true,
+  "typed": true,
+  "notes_cleared": true,
+  "dragged": [
+    690,
+    277
+  ],
+  "closed": true,
+  "restored": true,
+  "panic": false,
+  "status": {
+    "status": "running",
+    "running": true
+  }
+}

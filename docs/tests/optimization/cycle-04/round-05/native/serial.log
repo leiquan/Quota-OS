@@ -1,0 +1,430 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 2 pool 16 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x40143000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (b3fa874)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x44000000 physical RAM span 128 MB (probed)
+[boot] DTB at 0x44000000
+[boot] DTB snapshot 7608 bytes (header said 1048576)
+[boot] DTB memory 134217728 bytes
+[boot] system reserve 350 us/period, 16384 KB;
+       tier-1 1500 us/period, 13312 KB; guard 80 us/period
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 7 own colors, padding 11776 KB
+[boot] kernel image+bss 2103 KB of the 16384 KB system reserve
+[boot] GICv3 from DTB: distributor 0x8000000, redistributor 0x80a0000
+[boot] CNTFRQ 24000000 Hz (1 tick = 41 ns), virtual timer PPI 27
+[boot] clock: host time (not icount; timings are reference only)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 395/400 us, stop 7/20 us (measured/declared)
+      [非 icount，仅供参考]
+[dev] sim-blk: job 1990/2000 us, stop 1769/2000 us (measured/declared)
+      [非 icount，仅供参考]
+[dev] sim-cam: job 290/300 us, stop 7/30 us (measured/declared)
+      [非 icount，仅供参考]
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 display-vsync and timer-server bound to their slots
+[boot] slot table from tick 1440000, period 240000 ticks, guard 480 ticks
+[boot] shell task running
+[boot] no bootarg, starting LVGL
+[lvgl] autostart on the Tier-3 shell task
+[lvgl] this task does not mask IRQs and it is not a tier-1 slot.
+[lvgl] one kernel task. It is not an EL0 process. Three-tier hardware isolation is not claimed.
+[admit] lvgl heap 256 KB draw 240 KB framebuffer 4000 KB, fixed, pool expand 0
+[admit] oversubscription probe 1
+REFUSED: device does not meet minimum requirements
+  minimum memory 4294967295 KB > 89600 KB for apps
+  (RAM 131072 KB - system reserve - tier-1 - color padding)
+No app can be closed to make room: this device is too small.
+[admit] lvgl-demo accepted 4496 KB. cpu_min is 0. The shell stays tier 3.
+[fb] reserved 4096000 bytes at 0x40c18000 inside the system reserve
+[fb] ramfb published 1280x800 stride 5120 at 0x40c18000 from fw_cfg 0x9020000
+[input] virtio-mmio nodes 32 queue cap 32
+[input] pointer "QEMU Virtio Tablet" base 0xa003c00 queue 8 abs 1 range x 0..32767 y 0..32767
+[input] keyboard "QEMU Virtio Keyboard" base 0xa003e00 queue 8 abs 0 range x 0..0 y 0..0
+[lvgl] upstream 9.3.0 heap 262144 draw 245760
+[desktop] ready: windows, drag title bars, close/minimize, dock restore
+[desktop] size 1280x800
+[lvgl] load9 box 101,279 194x38
+[lvgl] input box 101,225 194x38
+[lvgl] cover box 101,495 194x38
+[lvgl] back box 419,486 440x38
+[lvgl] clear box 679,522 112x40
+[menu] serial 6 10 13 14 15 16 18 stay on the coverage page
+[lvgl] ready
+[lvgl] legend T1 quota 1500us 13312KB  T2 min 0us  T3 left 8070us
+[input] raw ptr type 3 code 0 value 5072
+[input] raw ptr type 3 code 1 value 12220
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 197,297 down 0
+[input] raw ptr type 1 code 272 value 1
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 197,297 down 1
+[lvgl] fb commit click 219 us n=1 (not panel light)
+[input] raw ptr type 1 code 272 value 0
+[input] raw ptr type 0 code 0 value 0
+[input] raw ptr type 3 code 0 value 7173
+[input] raw ptr type 3 code 1 value 1845
+[input] raw ptr type 0 code 0 value 0
+[input] raw ptr type 3 code 0 value 7916
+[input] raw ptr type 3 code 1 value 2378
+[lvgl] pointer 197,297 down 0
+[menu] button 9
+
+=== GUI menu 9, same counters as the serial item, 200 periods ===
+32 tier-3 busy loops, with a tier-2 game and audio-mix.
+[menu] running 9. The shell stays scheduled.
+[lvgl] pointer 279,44 down 0
+[lvgl] pointer 308,57 down 0
+[lvgl] legend T1 quota 1500us 13312KB  T2 min 3000us  T3 left 5070us
+[lvgl] pointer 337,70 down 0
+[lvgl] pointer 366,83 down 0
+[lvgl] pointer 395,96 down 0
+[lvgl] pointer 424,109 down 0
+[lvgl] pointer 453,122 down 0
+[lvgl] pointer 482,135 down 0
+[lvgl] pointer 511,148 down 0
+[lvgl] pointer 540,161 down 0
+[lvgl] pointer 569,174 down 0
+[lvgl] pointer 598,187 down 0
+[lvgl] pointer 287,200 down 0
+[lvgl] pointer 316,213 down 0
+[lvgl] pointer 345,226 down 0
+[lvgl] pointer 374,239 down 0
+[lvgl] pointer 403,252 down 0
+[lvgl] pointer 432,265 down 0
+[lvgl] pointer 461,278 down 0
+[lvgl] pointer 490,291 down 0
+[lvgl] pointer 519,304 down 0
+[lvgl] pointer 548,317 down 0
+[lvgl] pointer 577,330 down 0
+[lvgl] pointer 324,369 down 0
+[lvgl] pointer 353,382 down 0
+[lvgl] pointer 382,395 down 0
+[lvgl] pointer 411,408 down 0
+[lvgl] pointer 469,44 down 0
+[lvgl] pointer 498,57 down 0
+[lvgl] pointer 614,109 down 0
+[lvgl] pointer 303,122 down 0
+[lvgl] pointer 332,135 down 0
+[lvgl] pointer 361,148 down 0
+[lvgl] pointer 390,161 down 0
+[lvgl] pointer 419,174 down 0
+[lvgl] pointer 448,187 down 0
+[lvgl] pointer 477,200 down 0
+[lvgl] pointer 506,213 down 0
+[lvgl] pointer 535,226 down 0
+[lvgl] pointer 564,239 down 0
+[lvgl] pointer 593,252 down 0
+[lvgl] pointer 282,265 down 0
+[lvgl] pointer 311,278 down 0
+[lvgl] pointer 340,291 down 0
+[lvgl] pointer 369,304 down 0
+[lvgl] pointer 398,317 down 0
+[lvgl] pointer 427,330 down 0
+[lvgl] pointer 456,343 down 0
+[lvgl] pointer 485,356 down 0
+[lvgl] pointer 514,369 down 0
+[lvgl] pointer 543,382 down 0
+[lvgl] pointer 572,395 down 0
+[lvgl] pointer 601,408 down 0
+[lvgl] pointer 290,421 down 0
+[lvgl] pointer 319,44 down 0
+[lvgl] pointer 348,57 down 0
+[lvgl] pointer 377,70 down 0
+[lvgl] pointer 406,83 down 0
+[lvgl] pointer 435,96 down 0
+[lvgl] pointer 464,109 down 0
+[lvgl] pointer 493,122 down 0
+[lvgl] pointer 522,135 down 0
+[menu] T1 miss 32 class a 32 class b 0 skipped 21. Class a counts. Not a pass line.
+[menu] done max 113 us samples 368 capped 0 (completions only)
+[menu] not_started 17 unfinished 1 open bound 72721 us (not a completion)
+[menu] p99 85 us nearest-rank ceil(0.99*n) n=368
+Tier 1 (ticks; 1 tick = 16 ns; start = first job instruction - slot start)
+  task           slot   jobs  miss  start_min  start_max  jitter  lat_max
+  display-vsync     0    200    15          1        286     285     2714
+  timer-server      1    200    17          1       5528    5527     2129
+  display-vsync last release: period 234, tick 57624000,
+    epoch+k*P+offset 57624000
+  timer-server last release: period 234, tick 57684000,
+    epoch+k*P+offset 57684000
+T1MISS task=display-vsync period=105 reason=not_started start_t=-1
+  lat_t=1745306 lat_us=72721 deadline_us=500 J_us=78644 class=a
+T1MISS task=timer-server period=105 reason=not_started start_t=-1
+  lat_t=1685306 lat_us=70221 deadline_us=300 J_us=78644 class=a
+T1MISS task=display-vsync period=106 reason=skipped lat_us=-
+  deadline_us=500 J_us=73505 covered=yes uncovered_us=0 class=a
+T1MISS task=timer-server period=106 reason=skipped lat_us=-
+  deadline_us=300 J_us=73505 covered=yes uncovered_us=0 class=a
+T1MISS task=display-vsync period=107 reason=skipped lat_us=-
+  deadline_us=500 J_us=63721 covered=yes uncovered_us=0 class=a
+T1MISS task=timer-server period=107 reason=skipped lat_us=-
+  deadline_us=300 J_us=63721 covered=yes uncovered_us=0 class=a
+T1MISS task=display-vsync period=108 reason=skipped lat_us=-
+  deadline_us=500 J_us=53721 covered=yes uncovered_us=0 class=a
+T1MISS task=timer-server period=108 reason=skipped lat_us=-
+  deadline_us=300 J_us=53721 covered=yes uncovered_us=0 class=a
+T1MISS task=display-vsync period=109 reason=skipped lat_us=-
+  deadline_us=500 J_us=43721 covered=yes uncovered_us=0 class=a
+T1MISS task=timer-server period=109 reason=skipped lat_us=-
+  deadline_us=300 J_us=43721 covered=yes uncovered_us=0 class=a
+T1MISS task=display-vsync period=110 reason=skipped lat_us=-
+  deadline_us=500 J_us=33721 covered=yes uncovered_us=0 class=a
+T1MISS task=timer-server period=110 reason=skipped lat_us=-
+  deadline_us=300 J_us=33721 covered=yes uncovered_us=0 class=a
+T1MISS task=display-vsync period=111 reason=skipped lat_us=-
+  deadline_us=500 J_us=23721 covered=yes uncovered_us=0 class=a
+T1MISS task=timer-server period=111 reason=skipped lat_us=-
+  deadline_us=300 J_us=23721 covered=yes uncovered_us=0 class=a
+T1MISS task=display-vsync period=112 reason=not_started start_t=-1
+  lat_t=65306 lat_us=2721 deadline_us=500 J_us=13721 class=a
+T1MISS task=timer-server period=112 reason=unfinished start_t=5528
+  lat_t=7661 lat_us=319 deadline_us=300 J_us=13721 class=a
+T1MISS task=display-vsync period=113 reason=not_started start_t=-1
+  lat_t=17257 lat_us=719 deadline_us=500 J_us=9619 class=a
+T1MISS task=timer-server period=113 reason=not_started start_t=-1
+  lat_t=608834 lat_us=25368 deadline_us=300 J_us=35007 class=a
+T1MISS task=display-vsync period=114 reason=skipped lat_us=-
+  deadline_us=500 J_us=27107 covered=yes uncovered_us=0 class=a
+T1MISS task=timer-server period=114 reason=skipped lat_us=-
+  deadline_us=300 J_us=27107 covered=yes uncovered_us=0 class=a
+T1MISS task=display-vsync period=115 reason=not_started start_t=-1
+  lat_t=188834 lat_us=7868 deadline_us=500 J_us=18868 class=a
+T1MISS task=timer-server period=115 reason=not_started start_t=-1
+  lat_t=128834 lat_us=5368 deadline_us=300 J_us=18868 class=a
+T1MISS task=timer-server period=117 reason=not_started start_t=-1
+  lat_t=326294 lat_us=13595 deadline_us=300 J_us=14328 class=a
+T1MISS task=display-vsync period=118 reason=not_started start_t=-1
+  lat_t=146294 lat_us=6095 deadline_us=500 J_us=13727 class=a
+T1MISS task=timer-server period=118 reason=not_started start_t=-1
+  lat_t=86294 lat_us=3595 deadline_us=300 J_us=13727 class=a
+T1MISS task=display-vsync period=119 reason=not_started start_t=-1
+  lat_t=82755 lat_us=3448 deadline_us=500 J_us=13563 class=a
+T1MISS task=timer-server period=119 reason=not_started start_t=-1
+  lat_t=22755 lat_us=948 deadline_us=300 J_us=13563 class=a
+T1MISS task=timer-server period=120 reason=not_started start_t=-1
+  lat_t=29298 lat_us=1220 deadline_us=300 J_us=8902 class=a
+T1MISS task=display-vsync period=123 reason=not_started start_t=-1
+  lat_t=392734 lat_us=16363 deadline_us=500 J_us=19526 class=a
+T1MISS task=timer-server period=123 reason=not_started start_t=-1
+  lat_t=332734 lat_us=13863 deadline_us=300 J_us=19526 class=a
+T1MISS task=display-vsync period=124 reason=not_started start_t=-1
+  lat_t=152734 lat_us=6363 deadline_us=500 J_us=16495 class=a
+T1MISS task=timer-server period=124 reason=not_started start_t=-1
+  lat_t=92734 lat_us=3863 deadline_us=300 J_us=16495 class=a
+misses: class a (clock jump) 32, class b (kernel) 0, skipped periods 21
+done lat_max is completions only. not_started 17 unfinished 1
+open lower bound 72721 us (observation - ideal release, not a completion)
+skipped counter 21 counts every open job, not only tier 1.
+tier-1 reason=skipped 14, and each of those is also a T1 miss.
+T1CHAIN n=24 dropped=8. Stored only when a tier-1 job misses.
+T1CHAIN no extra stores on a job that completes inside its slot.
+T1CHAIN task=display-vsync period=105 reason=not_started source=timer prev=audio-mix
+  ideal 26664000 release 26664000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409306 now 28409347 slot_end 26676000
+  seen-release 72721 us now-release 72722 us deadline 500 us
+  jumps in [prev period, seen] 8 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=timer-server period=105 reason=not_started source=timer prev=audio-mix
+  ideal 26724000 release 26724000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409306 now 28409347 slot_end 26731200
+  seen-release 70221 us now-release 70222 us deadline 300 us
+  jumps in [prev period, seen] 8 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=display-vsync period=106 reason=skipped source=timer prev=audio-mix
+  ideal 26904000 release 26904000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 26916000
+  seen-release 62722 us now-release 62722 us deadline 500 us
+  jumps in [prev period, seen] 2 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=timer-server period=106 reason=skipped source=timer prev=audio-mix
+  ideal 26964000 release 26964000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 26971200
+  seen-release 60222 us now-release 60222 us deadline 300 us
+  jumps in [prev period, seen] 2 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=display-vsync period=107 reason=skipped source=timer prev=audio-mix
+  ideal 27144000 release 27144000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 27156000
+  seen-release 52722 us now-release 52722 us deadline 500 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=timer-server period=107 reason=skipped source=timer prev=audio-mix
+  ideal 27204000 release 27204000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 27211200
+  seen-release 50222 us now-release 50222 us deadline 300 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=display-vsync period=108 reason=skipped source=timer prev=audio-mix
+  ideal 27384000 release 27384000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 27396000
+  seen-release 42722 us now-release 42722 us deadline 500 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=timer-server period=108 reason=skipped source=timer prev=audio-mix
+  ideal 27444000 release 27444000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 27451200
+  seen-release 40222 us now-release 40222 us deadline 300 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=display-vsync period=109 reason=skipped source=timer prev=audio-mix
+  ideal 27624000 release 27624000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 27636000
+  seen-release 32722 us now-release 32722 us deadline 500 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=timer-server period=109 reason=skipped source=timer prev=audio-mix
+  ideal 27684000 release 27684000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 27691200
+  seen-release 30222 us now-release 30222 us deadline 300 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=display-vsync period=110 reason=skipped source=timer prev=audio-mix
+  ideal 27864000 release 27864000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 27876000
+  seen-release 22722 us now-release 22722 us deadline 500 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=timer-server period=110 reason=skipped source=timer prev=audio-mix
+  ideal 27924000 release 27924000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 27931200
+  seen-release 20222 us now-release 20222 us deadline 300 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=display-vsync period=111 reason=skipped source=timer prev=audio-mix
+  ideal 28104000 release 28104000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 28116000
+  seen-release 12722 us now-release 12722 us deadline 500 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=timer-server period=111 reason=skipped source=timer prev=audio-mix
+  ideal 28164000 release 28164000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409347 now 28409347 slot_end 28171200
+  seen-release 10222 us now-release 10222 us deadline 300 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=display-vsync period=112 reason=not_started source=timer prev=audio-mix
+  ideal 28344000 release 28344000 match
+  cval 26663520 entry 28409306 entry-cval 72741 us
+  seen 28409306 now 28409347 slot_end 28356000
+  seen-release 2721 us now-release 2722 us deadline 500 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=timer-server period=112 reason=unfinished source=timer prev=timer-server
+  ideal 28404000 release 28404000 match
+  cval 28411200 entry 28411661 entry-cval 19 us
+  seen 28411661 now 28411669 slot_end 28411200
+  seen-release 319 us now-release 319 us deadline 300 us
+  jumps in [prev period, seen] 1 largest 72741 us (26663520..28409306)
+  jump covers release 26663520..28409306 (72741 us)
+T1CHAIN task=display-vsync period=113 reason=not_started source=timer prev=game
+  ideal 28584000 release 28584000 match
+  cval 28459691 entry 28601257 entry-cval 5898 us
+  seen 28601257 now 28601294 slot_end 28596000
+  seen-release 719 us now-release 720 us deadline 500 us
+  jumps in [prev period, seen] 2 largest 72741 us (26663520..28409306)
+  jump covers release 28459691..28601257 (5898 us)
+T1CHAIN task=timer-server period=113 reason=not_started source=timer prev=game
+  ideal 28644000 release 28644000 match
+  cval 28643520 entry 29252834 entry-cval 25388 us
+  seen 29252834 now 29252876 slot_end 28651200
+  seen-release 25368 us now-release 25369 us deadline 300 us
+  jumps in [prev period, seen] 3 largest 72741 us (26663520..28409306)
+  jump covers release 28643520..29252834 (25388 us)
+T1CHAIN task=display-vsync period=114 reason=skipped source=timer prev=game
+  ideal 28824000 release 28824000 match
+  cval 28643520 entry 29252834 entry-cval 25388 us
+  seen 29252876 now 29252876 slot_end 28836000
+  seen-release 17869 us now-release 17869 us deadline 500 us
+  jumps in [prev period, seen] 2 largest 25388 us (28643520..29252834)
+  jump covers release 28643520..29252834 (25388 us)
+T1CHAIN task=timer-server period=114 reason=skipped source=timer prev=game
+  ideal 28884000 release 28884000 match
+  cval 28643520 entry 29252834 entry-cval 25388 us
+  seen 29252876 now 29252876 slot_end 28891200
+  seen-release 15369 us now-release 15369 us deadline 300 us
+  jumps in [prev period, seen] 2 largest 25388 us (28643520..29252834)
+  jump covers release 28643520..29252834 (25388 us)
+T1CHAIN task=display-vsync period=115 reason=not_started source=timer prev=game
+  ideal 29064000 release 29064000 match
+  cval 28643520 entry 29252834 entry-cval 25388 us
+  seen 29252834 now 29252876 slot_end 29076000
+  seen-release 7868 us now-release 7869 us deadline 500 us
+  jumps in [prev period, seen] 1 largest 25388 us (28643520..29252834)
+  jump covers release 28643520..29252834 (25388 us)
+T1CHAIN task=timer-server period=115 reason=not_started source=timer prev=game
+  ideal 29124000 release 29124000 match
+  cval 28643520 entry 29252834 entry-cval 25388 us
+  seen 29252834 now 29252876 slot_end 29131200
+  seen-release 5368 us now-release 5369 us deadline 300 us
+  jumps in [prev period, seen] 1 largest 25388 us (28643520..29252834)
+  jump covers release 28643520..29252834 (25388 us)
+T1CHAIN task=timer-server period=117 reason=not_started source=timer prev=game
+  ideal 29604000 release 29604000 match
+  cval 29603520 entry 29930294 entry-cval 13615 us
+  seen 29930294 now 29930358 slot_end 29611200
+  seen-release 13595 us now-release 13598 us deadline 300 us
+  jumps in [prev period, seen] 8 largest 13615 us (29603520..29930294)
+  jump covers release 29603520..29930294 (13615 us)
+T1CHAIN task=display-vsync period=118 reason=not_started source=timer prev=game
+  ideal 29784000 release 29784000 match
+  cval 29603520 entry 29930294 entry-cval 13615 us
+  seen 29930294 now 29930358 slot_end 29796000
+  seen-release 6095 us now-release 6098 us deadline 500 us
+  jumps in [prev period, seen] 2 largest 13615 us (29603520..29930294)
+  jump covers release 29603520..29930294 (13615 us)
+T1CHAIN pk advances only when a kernel entry sees CNTVCT past the period end.
+T1CHAIN entry-cval is CNTVCT minus the compare value this guest wrote.
+T1CHAIN a timer source was taken with guest IRQs unmasked at the interrupted instruction.
+  app           min_us sugg_us  recv_min recv_avg recv_max  short
+  game            2000    1000         0     3136    27144     10
+  audio-mix: jobs 200, misses 14, worst response 9274 us (deadline 4000 us)
+结果: Tier 1 错过 32 次，起点抖动 5527 tick，
+  槽内 Tier 2/3 共 347657 tick。
+结果: Tier 2 低于最低值 10 个周期，audio-mix 错过 14 次。
+[menu] shell avg 122 us/period over 200. LVGL draw and input on this tier-3 task.
+[menu] the serial bench blocks the shell, so it does not include this cost.
+[menu] host clock unless boot says icount. An average is not a real-time bound.
+[menu] done 9
+[lvgl] detail
+WORKLOAD COMPLETE
+
+Priority 1 missed deadlines       32
+Priority 2 short / missed       10 / 14
+
+Completed response max       113 us
+Completed samples                368
+Not started / unfinished       17 / 1
+
+Timing requirements were not met.
+[lvgl] legend T1 quota 1500us 13312KB  T2 min 0us  T3 left 8070us
+[lvgl] pointer 551,148 down 0
+[lvgl] pointer 580,161 down 0
