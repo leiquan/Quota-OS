@@ -223,6 +223,8 @@ static void compact(struct quota_input *q, int *n, int *i)
     *i = 0;
 }
 
+static void task_context_at(lv_point_t point);
+
 static void take_inputs(void)
 {
     /* Keep events LVGL has not read yet. A refresh can be later than the virtio poll. */
@@ -231,7 +233,9 @@ static void take_inputs(void)
     input_service_poll();
     struct quota_input ev;
     while (input_pop(&ev)) {
-        if (ev.kind == QUOTA_INPUT_KEY && nkeys < 32)
+        if (ev.kind == QUOTA_INPUT_CONTEXT)
+            task_context_at((lv_point_t){ev.x, ev.y});
+        else if (ev.kind == QUOTA_INPUT_KEY && nkeys < 32)
             keys[nkeys++] = ev;
         else if (ev.kind == QUOTA_INPUT_POINTER && nptrs < 32)
             ptrs[nptrs++] = ev;
@@ -339,13 +343,6 @@ static void on_group(lv_event_t *e)
     if (id == 210) {
         show_page(3);
         printf("[desktop] Apps opened\n");
-        return;
-    }
-    if (id == 211) {
-        lv_obj_add_flag(page_home, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
         return;
     }
     if (id >= 205 && id <= 207) {
@@ -490,14 +487,13 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     return win;
 }
 
-enum app_key { APP_DESKTOP, APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC };
+enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC };
 static const struct app_entry {
     const char *name;
     const char *glyph;
     uint32_t color;
     int action;
 } app_entries[] = {
-    [APP_DESKTOP] = {"Desktop", LV_SYMBOL_HOME, 0x456887, 211},
     [APP_SYSTEM] = {app_monitor, LV_SYMBOL_SETTINGS, 0x5368af, 202},
     [APP_LAUNCHER] = {"Apps", LV_SYMBOL_LIST, 0x31798b, 210},
     [APP_NOTES] = {"Notes", LV_SYMBOL_EDIT, 0xae743b, 200},
@@ -602,6 +598,8 @@ static void refresh_app_stats(uint64_t elapsed)
             if (i == 0)
                 status = current.speed_misses > previous.speed_misses ? "Deadline missed" :
                          frames ? "No new misses" : "No new frames";
+            else if (i && !vehicle_app_running(i + 1))
+                status = "Stopped";
             else if (i == 1 && app_desktop_mode() == 1)
                 status = "Not running";
             else if (i == 1 && current.video_paused)
@@ -674,6 +672,98 @@ static const char *task_display_name(const char *name)
     return name;
 }
 
+static lv_obj_t *context_layer, *context_button, *context_label;
+static lv_obj_t *stopped_rows[2];
+static int context_tier, context_start;
+static void refresh_tasks(void);
+
+static void dismiss_context(lv_event_t *event)
+{
+    (void)event;
+    lv_obj_add_flag(context_layer, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void apply_context(lv_event_t *event)
+{
+    (void)event;
+    int result = vehicle_app_set_running(context_tier, context_start);
+    printf("[system] tier=%d start=%d result=%d\n", context_tier, context_start, result);
+    if (result) {
+        lv_label_set_text(context_label, "Unavailable");
+        return;
+    }
+    lv_obj_add_flag(context_layer, LV_OBJ_FLAG_HIDDEN);
+    refresh_tasks();
+}
+
+static void open_context(int tier, lv_point_t point)
+{
+    if (!context_layer) {
+        context_layer = lv_obj_create(lv_layer_top());
+        lv_obj_set_size(context_layer, lv_pct(100), lv_pct(100));
+        lv_obj_set_style_pad_all(context_layer, 0, 0);
+        lv_obj_set_style_border_width(context_layer, 0, 0);
+        lv_obj_set_style_bg_opa(context_layer, LV_OPA_TRANSP, 0);
+        lv_obj_remove_flag(context_layer, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(context_layer, dismiss_context, LV_EVENT_CLICKED, NULL);
+        context_button = lv_button_create(context_layer);
+        lv_obj_set_size(context_button, 176, 48);
+        lv_obj_set_style_bg_color(context_button, lv_color_hex(0x344968), 0);
+        lv_obj_add_event_cb(context_button, apply_context, LV_EVENT_CLICKED, NULL);
+        context_label = lv_label_create(context_button);
+        lv_obj_center(context_label);
+    }
+    context_tier = tier;
+    context_start = !vehicle_app_running(tier);
+    if (tier == TIER1) {
+        lv_label_set_text(context_label, "Protected by kernel");
+        lv_obj_add_state(context_button, LV_STATE_DISABLED);
+    } else {
+        lv_obj_remove_state(context_button, LV_STATE_DISABLED);
+        lv_label_set_text_fmt(context_label, "%s %s", context_start ? "Start" : "Stop",
+                              tier == TIER2 ? app_video : app_music);
+    }
+    lv_obj_set_pos(context_button, point.x < (int)fb_w - 176 ? point.x : (int)fb_w - 176,
+                   point.y < (int)fb_h - 48 ? point.y : (int)fb_h - 48);
+    lv_obj_remove_flag(context_layer, LV_OBJ_FLAG_HIDDEN);
+    printf("[system] context tier=%d start=%d\n", tier, context_start);
+}
+
+static int row_tier(lv_obj_t *row)
+{
+    if (!row) return 0;
+    for (int i = 0; i < MAX_TASKS; i++) {
+        if (row != task_items[i]) continue;
+        const struct task *t = sched_task_at(i);
+        if (!t || t->state == TASK_DEAD) return 0;
+        if (t->tier == TIER1) return TIER1;
+        if (!strcmp(t->name, "video")) return TIER2;
+        if (!strcmp(t->name, "music")) return TIER3;
+        return 0;
+    }
+    if (row == stopped_rows[0]) return TIER2;
+    if (row == stopped_rows[1]) return TIER3;
+    return 0;
+}
+
+static void task_context_at(lv_point_t point)
+{
+    if (context_layer)
+        lv_obj_add_flag(context_layer, LV_OBJ_FLAG_HIDDEN);
+    int tier = row_tier(lv_indev_search_obj(lv_screen_active(), &point));
+    if (tier) open_context(tier, point);
+}
+
+static void row_long_press(lv_event_t *event)
+{
+    int tier = row_tier(lv_event_get_target_obj(event));
+    if (tier) {
+        lv_point_t point;
+        lv_indev_get_point(lv_indev_active(), &point);
+        open_context(tier, point);
+    }
+}
+
 static void refresh_tasks(void)
 {
     if (monitor_tab != SYSTEM_TASK || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
@@ -729,11 +819,13 @@ static void refresh_tasks(void)
             else
                 lv_snprintf(memory, sizeof memory, "RAM use unavailable");
             char text[192];
-            lv_snprintf(text, sizeof text, "%s\n%s  /  CPU %lu us\n%s\n%s",
-                task_display_name(t->name), state, cpu, allocation, memory);
+            lv_snprintf(text, sizeof text, "%s%s\n%s  /  CPU %lu us\n%s\n%s",
+                task_display_name(t->name), tier == TIER1 ? "  /  Protected" : "", state, cpu, allocation, memory);
             lv_obj_t *item = task_items[i];
             if (!item) {
                 task_items[i] = item = lv_label_create(list);
+                lv_obj_add_flag(item, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_add_event_cb(item, row_long_press, LV_EVENT_LONG_PRESSED, NULL);
                 lv_obj_set_width(item, lv_pct(100));
                 lv_obj_set_style_pad_all(item, 8, 0);
                 lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
@@ -749,6 +841,11 @@ static void refresh_tasks(void)
             if (strcmp(text, lv_label_get_text(item)))
                 lv_label_set_text(item, text);
             visible++;
+        }
+        if (tier > TIER1 && stopped_rows[tier - TIER2]) {
+            int stopped = !vehicle_app_running(tier);
+            monitor_visible(stopped_rows[tier - TIER2], stopped);
+            visible += stopped;
         }
         monitor_visible(empty_tasks[tier - TIER1], !visible);
     }
@@ -853,7 +950,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     detail = desk_label(page_home, 252, 124, "No workload results", 0x263552);
     lv_obj_set_size(detail, 436, 338);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    static const char *const tab_names[] = {"Task", "Info", "Tests"};
+    static const char *const tab_names[] = {"Task", "Info", "Test"};
     static const int tab_ids[] = {203, 208, 204};
     for (int i = 0; i < 3; i++) {
         tabs[i] = add_row(page_home, 55, 0xffffff, 0xc5d9fa, tab_names[i], tab_ids[i]);
@@ -945,16 +1042,27 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         lv_obj_set_scroll_dir(list, LV_DIR_VER);
         lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_style_pad_row(list, 5, 0);
+        if (apps && i) {
+            lv_obj_t *row = desk_label(list, 0, 0,
+                i == 1 ? "Dashcam  /  Stopped" : "Music Player  /  Stopped", 0x475a7a);
+            lv_obj_set_width(row, lv_pct(100));
+            lv_obj_set_style_pad_all(row, 8, 0);
+            lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_event_cb(row, row_long_press, LV_EVENT_LONG_PRESSED, NULL);
+            stopped_rows[i - 1] = row;
+        }
         task_lists[i] = list;
         empty_tasks[i] = desk_label(list, 0, 0, "No active tasks", 0x64748b);
     }
     select_monitor_tab(SYSTEM_TASK);
 
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
-    for (unsigned i = 0; i < sizeof app_entries / sizeof app_entries[0]; i++) {
-        lv_obj_t *entry = app_icon(page_apps, (enum app_key)i, 34 + (int)(i % 3) * 174,
+    static const enum app_key catalog[] = {APP_SYSTEM, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC};
+    for (unsigned i = 0; i < sizeof catalog / sizeof catalog[0]; i++) {
+        enum app_key key = catalog[i];
+        lv_obj_t *entry = app_icon(page_apps, key, 34 + (int)(i % 3) * 174,
                                    70 + (int)(i / 3) * 108, 56);
-        if ((i >= APP_SPEED && !apps) || (i == APP_VIDEO && apps != 2)) {
+        if ((key >= APP_SPEED && !apps) || (key == APP_VIDEO && apps != 2)) {
             lv_obj_add_state(entry, LV_STATE_DISABLED);
             lv_obj_set_style_opa(entry, LV_OPA_50, 0);
         }

@@ -1153,7 +1153,8 @@ static uint32_t music_frames;
 static int music_held;
 static struct task *dashboard_demo;
 static struct running_app *video_demo;
-static int64_t music_demo;
+static int64_t music_demo = -1;
+static int video_configured;
 static int app_test_phase;
 enum desktop_probe_state { PROBE_OFF, PROBE_ARMED, PROBE_SPINNING, PROBE_DONE };
 static volatile enum desktop_probe_state desktop_probe;
@@ -1188,7 +1189,7 @@ void app_display_read(struct app_display_stats *stats)
 
 int app_desktop_mode(void)
 {
-    return app_surface ? (video_demo ? 2 : 1) : 0;
+    return app_surface ? (video_configured ? 2 : 1) : 0;
 }
 
 static void app_meter(uint32_t x, uint32_t y, uint32_t frame, uint32_t color)
@@ -1333,6 +1334,103 @@ void app_desktop_poll(void)
     }
 }
 
+int vehicle_app_running(int tier)
+{
+    if (tier == TIER1)
+        return dashboard_demo && dashboard_demo->state != TASK_DEAD;
+    if (tier == TIER2)
+        return video_demo != 0;
+    return tier == TIER3 && music_demo >= 0 && proc_alive(music_demo);
+}
+
+int vehicle_app_set_running(int tier, int start)
+{
+    if (!app_surface || tier < TIER1 || tier > TIER3)
+        return -1;
+    if (tier == TIER1)
+        return start ? 0 : task_kill(dashboard_demo);
+    if (vehicle_app_running(tier) == start)
+        return 0;
+    if (tier == TIER3) {
+        if (start) {
+            music_demo = proc_spawn("music", 0, 0, 0, (uintptr_t)app_surface, 0,
+                                    APP_DRAW_X, APP_MUSIC_Y, APP_MUSIC_SIZE, APP_MUSIC_SIZE);
+            return music_demo >= 0 ? 0 : -1;
+        }
+        if (proc_kill(music_demo))
+            return -1;
+        music_demo = -1;
+        return 0;
+    }
+    if (!start) {
+        if (task_kill(video_demo->task))
+            return -1;
+        resource_release(video_demo);
+        video_demo = 0;
+        return 0;
+    }
+    const struct app_manifest manifest = {"video", "frame demo", 16, 16, 600, 600};
+    struct running_app *app = resource_commit(&manifest);
+    if (!app)
+        return -1;
+    struct task *t = task_try_create("video", TIER2, KIND_SPIN);
+    if (!t) {
+        resource_release(app);
+        return -1;
+    }
+    t->min_t = us_to_ticks(manifest.cpu_min_us);
+    task_set_entry(t, app_demo_video_frame);
+    app->task = t;
+    video_demo = app;
+    video_configured = 1;
+    task_start(t);
+    return 0;
+}
+
+static int vehicle_lifecycle_check(void)
+{
+    unsigned cpu = resource_cpu_min_sum_us();
+    uint64_t mem = resource_mem_min_sum_kb();
+    int pages = proc_pages_free();
+    int64_t old_music = music_demo;
+    struct task *timer = sched_find("timer-server");
+    if (!timer || vehicle_app_set_running(TIER1, 0) >= 0 || task_kill(timer) >= 0 ||
+        sched_slot_owner(0) != dashboard_demo || sched_slot_owner(1) != timer)
+        return 0;
+    if (vehicle_app_set_running(TIER2, 0) || sched_find("video") ||
+        resource_cpu_min_sum_us() + 600 != cpu || resource_mem_min_sum_kb() + 16 != mem)
+        return 0;
+    if (vehicle_app_set_running(TIER3, 0) || sched_find("music") || proc_alive(old_music) ||
+        proc_pages_free() != pages + 3 || resource_mem_min_sum_kb() + 32 != mem ||
+        proc_queue_depth() != 0)
+        return 0;
+    /* Blocked fixtures occupy task slots without competing for CPU. */
+    static struct task *fillers[MAX_TASKS];
+    int count = 0;
+    while (count < MAX_TASKS) {
+        struct task *t = task_try_create("slot-test", TIER3, KIND_SPIN);
+        if (!t)
+            break;
+        fillers[count++] = t;
+    }
+    int rolled_back = vehicle_app_set_running(TIER2, 1) < 0 &&
+                      vehicle_app_set_running(TIER3, 1) < 0 &&
+                      resource_cpu_min_sum_us() + 600 == cpu &&
+                      resource_mem_min_sum_kb() + 32 == mem &&
+                      proc_pages_free() == pages + 3;
+    while (count)
+        task_kill(fillers[--count]);
+    if (!rolled_back)
+        return 0;
+    if (vehicle_app_set_running(TIER2, 1) || vehicle_app_set_running(TIER3, 1) ||
+        !vehicle_app_running(TIER2) || !vehicle_app_running(TIER3) ||
+        proc_alive(old_music) || proc_pages_free() != pages ||
+        resource_cpu_min_sum_us() != cpu || resource_mem_min_sum_kb() != mem)
+        return 0;
+    printf("[lifecycle] PASS protected=2 released_cpu_us=600 released_ram_kib=32 reclaimed_pages=3 full_table_rollback=2 restarted=2\n");
+    return 1;
+}
+
 static void app_demo_run(int with_video, int stall)
 {
     uint64_t pa, bytes;
@@ -1344,23 +1442,17 @@ static void app_demo_run(int with_video, int stall)
     fb_geometry(&w, &h);
     app_stride = w;
     struct task *dashboard = sched_find("dashboard");
-    int64_t music = proc_spawn("music", 0, 0, 0, pa, 0, APP_DRAW_X, APP_MUSIC_Y, APP_MUSIC_SIZE, APP_MUSIC_SIZE);
+    dashboard_demo = dashboard;
+    app_surface = (uint32_t *)(uintptr_t)pa;
+    video_configured = with_video;
+    int music_ok = vehicle_app_set_running(TIER3, 1);
     struct task *music_task = sched_find("music");
-    struct running_app *video = 0;
-    if (with_video) {
-        const struct app_manifest m = {"video", "frame demo", 16, 16, 600, 600};
-        video = resource_commit(&m);
-        if (video) {
-            struct task *t = task_create("video", TIER2, KIND_SPIN);
-            t->min_t = us_to_ticks(m.cpu_min_us);
-            task_set_entry(t, app_demo_video_frame);
-            video->task = t;
-            task_start(t);
-        }
-    }
+    if (with_video)
+        vehicle_app_set_running(TIER2, 1);
+    struct running_app *video = video_demo;
     struct task *desktop = sched_find("shell");
-    if (!desktop || !dashboard || music < 0 || !music_task || (with_video && !video)) {
-        printf("[apps] FAIL startup music=%ld\nQA DONE\n", music);
+    if (!desktop || !dashboard || music_ok < 0 || !music_task || (with_video && !video)) {
+        printf("[apps] FAIL startup music=%d\nQA DONE\n", music_ok);
         return;
     }
     printf("[apps] dashboard tier=%d slot=%d; music tier=%d EL0; video=%d\n",
@@ -1371,11 +1463,11 @@ static void app_demo_run(int with_video, int stall)
         printf("[apps] FAIL incorrect tier\nQA DONE\n");
         return;
     }
-    dashboard_demo = dashboard;
-    video_demo = video;
-    music_demo = music;
+    if (!strcmp(dtb_bootargs(), "apps-lifecycle") && !vehicle_lifecycle_check()) {
+        printf("[lifecycle] FAIL\nQA DONE\n");
+        return;
+    }
     desktop_probe = stall ? PROBE_ARMED : PROBE_OFF;
-    app_surface = (uint32_t *)(uintptr_t)pa;
     lvgl_autostart();
     printf("[apps] FAIL desktop returned\nQA DONE\n");
 }
@@ -1386,7 +1478,7 @@ void shell_main(void)
     klog_flush(); /* Boot records are printed without blocking realtime IRQs. */
     const char *args = dtb_bootargs();
     int stall = !strcmp(args, "apps-desktop-stall");
-    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || stall) {
+    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || stall || !strcmp(args, "apps-lifecycle")) {
         app_demo_run(strcmp(args, "apps") != 0, stall);
         for (;;) asm volatile("wfi");
     }

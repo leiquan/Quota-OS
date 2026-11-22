@@ -17,6 +17,7 @@
 #define ABS_X 0u
 #define ABS_Y 1u
 #define BTN_LEFT 0x110u
+#define BTN_RIGHT 0x111u
 #define BTN_TOUCH 0x14au
 #define NDEV 2
 #define QCAP 32
@@ -260,6 +261,9 @@ static void take_event(struct idev *d, struct evbuf *ev)
             d->x = clamp_span(d->x + (int)ev->value, (int)span_w);
         else if (ev->code == REL_Y)
             d->y = clamp_span(d->y + (int)ev->value, (int)span_h);
+    } else if (ev->type == EV_KEY && ev->code == BTN_RIGHT) {
+        if (ev->value == 1)
+            enqueue(QUOTA_INPUT_CONTEXT, BTN_RIGHT, 1, d->x, d->y);
     } else if (ev->type == EV_KEY && (ev->code == BTN_LEFT || ev->code == BTN_TOUCH)) {
         d->btn = ev->value != 0;
     } else if (ev->type == EV_SYN && ev->code == 0) {

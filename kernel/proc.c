@@ -913,6 +913,17 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
             free_idx(p->pages[i]);
         return -1;
     }
+    p->task = task_try_create(name, TIER3, KIND_SPIN);
+    if (!p->task) {
+        resource_release(p->app);
+        p->app = 0;
+        for (int i = 0; i < 3; i++) {
+            free_idx(p->pages[i]);
+            p->pages[i] = -1;
+            p->pa[i] = 0;
+        }
+        return -1;
+    }
     p->asid = p->slot + 1;
     p->vx = vx;
     p->vy = vy;
@@ -927,7 +938,6 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
     memcpy((void *)(uintptr_t)p->pa[0], user_blob, (size_t)blen);
     clean_code((void *)(uintptr_t)p->pa[0], blen);
     tlb_asid(p->asid);
-    p->task = task_create(name, TIER3, KIND_SPIN);
     pack = (uint64_t)vx | ((uint64_t)vy << 16) | ((uint64_t)vw << 32) | ((uint64_t)vh << 48);
     task_arm_el0(p->task, 0, USER_SP, role, limit, foreign_pa, fb_pa, kern_va, pack);
     p->task->user_ttbr = p->ttbr;

@@ -14,7 +14,7 @@ License: [Apache-2.0](LICENSE)
 
 [系统测试标签截图](docs/screenshots/vehicle-tests.png)
 
-Dock 首位的 Apps 列出镜像内置应用。System 的 Task、Info、Tests 三个标签分别显示调度任务、资源统计和系统测试。顶栏的 UTC 日期与时间来自 QEMU RTC。
+Dock 首位的 Apps 列出镜像内置应用。System 的 Task、Info、Test 三个标签分别显示调度任务、资源统计和系统测试。顶栏的 UTC 日期与时间来自 QEMU RTC。
 
 [车载桌面验收记录](docs/tests/optimization/vehicle-desktop/REPORT.md)
 

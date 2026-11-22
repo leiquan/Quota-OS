@@ -422,7 +422,7 @@ static void win_reset(struct task *t)
     t->w.start_min = ~0ull;
 }
 
-struct task *task_create(const char *name, int tier, int kind)
+struct task *task_try_create(const char *name, int tier, int kind)
 {
     for (int i = 0; i < MAX_TASKS; i++) {
         if (tasks[i].state != TASK_EMPTY && tasks[i].state != TASK_DEAD)
@@ -451,6 +451,14 @@ struct task *task_create(const char *name, int tier, int kind)
         t->state = TASK_BLOCKED; /* 参数填好后由 task_start 放行 */
         return t;
     }
+    return 0;
+}
+
+struct task *task_create(const char *name, int tier, int kind)
+{
+    struct task *t = task_try_create(name, tier, kind);
+    if (t)
+        return t;
     printf("PANIC: out of tasks\n");
     for (;;)
         asm volatile("wfi");
@@ -486,7 +494,7 @@ static void kill_locked(struct task *t);
 
 void task_dead(struct task *t)
 {
-    if (!t)
+    if (!t || t->tier == TIER1)
         return;
     kill_locked(t);
     rebuild_lists();
@@ -518,14 +526,17 @@ static void kill_locked(struct task *t)
 }
 
 /* 只在任务上下文里调用（shell）。 */
-void task_kill(struct task *t)
+int task_kill(struct task *t)
 {
-    if (!t)
-        return;
     uint64_t irq_flags = irq_save();
+    if (!t || t->tier == TIER1 || t->state == TASK_DEAD) {
+        irq_restore(irq_flags);
+        return -1;
+    }
     kill_locked(t);
     rebuild_lists();
     irq_restore(irq_flags);
+    return 0;
 }
 
 void sched_bind_slot(struct task *t, int slot)
@@ -1728,7 +1739,7 @@ void services_start(void)
 {
     const char *args = dtb_bootargs();
     int dashboard = !strcmp(args, "apps") || !strcmp(args, "apps-video") ||
-                    !strcmp(args, "apps-desktop-stall");
+                    !strcmp(args, "apps-desktop-stall") || !strcmp(args, "apps-lifecycle");
     struct task *t = task_create(dashboard ? "dashboard" : "display-vsync", TIER1, KIND_JOB);
     if (dashboard)
         dashboard_app = t;

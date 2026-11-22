@@ -288,6 +288,8 @@ const struct app_manifest *resource_catalog(int *count);
 #define APP_MUSIC_SIZE 32
 int app_desktop_mode(void);
 void app_desktop_poll(void);
+int vehicle_app_running(int tier);
+int vehicle_app_set_running(int tier, int start);
 struct app_display_stats {
     uint32_t frames[3];
     uint32_t speed_misses;
@@ -306,10 +308,11 @@ void sched_read_system_info(struct sched_system_info *info);
 void sched_print_t3_pool(void);
 void sched_init(void);
 struct task *sched_current(void);
+struct task *task_try_create(const char *name, int tier, int kind);
 struct task *task_create(const char *name, int tier, int kind);
 void task_start(struct task *t);
 void task_ready(struct task *t);
-void task_kill(struct task *t);
+int task_kill(struct task *t);
 void sched_bind_slot(struct task *t, int slot);
 struct task *sched_slot_owner(int slot);
 struct task *sched_find(const char *name);
@@ -519,6 +522,7 @@ void fb_geometry(uint32_t *w, uint32_t *h);
 
 #define QUOTA_INPUT_KEY 1u
 #define QUOTA_INPUT_POINTER 2u
+#define QUOTA_INPUT_CONTEXT 3u
 struct quota_input {
     uint8_t kind;
     uint16_t code;
