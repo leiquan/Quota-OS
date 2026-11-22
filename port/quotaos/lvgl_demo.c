@@ -27,13 +27,17 @@ static lv_obj_t *app_cards[3];
 static lv_obj_t *app_rate[3], *app_status[3];
 static lv_obj_t *clock_label;
 static uint64_t rtc_base;
-static int monitor_tab;
+enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_TESTS };
+static enum monitor_page monitor_tab;
+static lv_obj_t *minimized_dots[2];
 static lv_obj_t *task_rows[3];
 
 static void show_page(int which)
 {
     lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : page_cover;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
+    if (which < 2 && minimized_dots[which])
+        lv_obj_add_flag(minimized_dots[which], LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(win);
 }
 
@@ -286,13 +290,13 @@ static void monitor_visible(lv_obj_t *obj, int visible)
         lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void select_monitor_tab(int tab)
+static void select_monitor_tab(enum monitor_page tab)
 {
     monitor_tab = tab;
-    monitor_visible(task_body, tab == 0);
-    monitor_visible(menu_list, tab == 1);
-    monitor_visible(detail, tab == 1);
-    monitor_visible(info_panel, tab == 2);
+    monitor_visible(task_body, tab == SYSTEM_TASK);
+    monitor_visible(menu_list, tab == SYSTEM_TESTS);
+    monitor_visible(detail, tab == SYSTEM_TESTS);
+    monitor_visible(info_panel, tab == SYSTEM_INFO);
     for (int i = 0; i < 3; i++)
         lv_obj_set_style_bg_color(tabs[i], lv_color_hex(i == tab ? 0xe0edff : 0xffffff), 0);
 }
@@ -307,19 +311,19 @@ static void on_group(lv_event_t *e)
     }
     if (id == 208) {
         show_page(0);
-        select_monitor_tab(2);
+        select_monitor_tab(SYSTEM_INFO);
         printf("[desktop] system info opened\n");
         return;
     }
     if (id == 209) {
         demo_menu_start(9);
-        select_monitor_tab(0);
+        select_monitor_tab(SYSTEM_TASK);
         printf("[desktop] task manager opened\n");
         return;
     }
     if (id == 203 || id == 204) {
         show_page(0);
-        select_monitor_tab(id == 204);
+        select_monitor_tab(id == 204 ? SYSTEM_TESTS : SYSTEM_TASK);
         printf("[desktop] %s\n", id == 203 ? "task manager opened" : "system tests opened");
         return;
     }
@@ -379,11 +383,25 @@ static lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, ui
     return o;
 }
 
-static void window_control(lv_event_t *e)
+static void hide_window(lv_event_t *e, int minimized)
 {
     lv_obj_t *win = lv_event_get_user_data(e);
     lv_obj_add_flag(win, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *marker = win == page_home ? minimized_dots[0] :
+                       win == page_input ? minimized_dots[1] : NULL;
+    if (marker)
+        monitor_visible(marker, minimized);
     printf("[desktop] window hidden\n");
+}
+
+static void window_close(lv_event_t *e)
+{
+    hide_window(e, 0);
+}
+
+static void window_minimize(lv_event_t *e)
+{
+    hide_window(e, 1);
 }
 
 static void window_drag(lv_event_t *e)
@@ -442,7 +460,7 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
         lv_obj_t *glyph = desk_label(dot, 0, 0, i ? LV_SYMBOL_MINUS : LV_SYMBOL_CLOSE,
                                      i ? 0x334563 : 0x982c40);
         lv_obj_center(glyph);
-        lv_obj_add_event_cb(dot, window_control, LV_EVENT_CLICKED, win);
+        lv_obj_add_event_cb(dot, i ? window_minimize : window_close, LV_EVENT_CLICKED, win);
     }
     lv_obj_t *label = desk_label(bar, 120, 18, title, 0x263552);
     lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
@@ -551,7 +569,7 @@ static void refresh_app_stats(uint64_t elapsed)
 
 static void refresh_system_info(void)
 {
-    if (monitor_tab != 2 || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
+    if (monitor_tab != SYSTEM_INFO || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
         return;
     struct sched_system_info v;
     sched_read_system_info(&v);
@@ -584,9 +602,22 @@ static void refresh_system_info(void)
         lv_label_set_text(info_text, text);
 }
 
+static lv_obj_t *dock_minimized_dot(lv_obj_t *dock, int item_x)
+{
+    lv_obj_t *dot = lv_obj_create(dock);
+    lv_obj_set_pos(dot, item_x + 37, 64);
+    lv_obj_set_size(dot, 6, 6);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dot, lv_color_hex(0x202e52), 0);
+    lv_obj_set_style_border_width(dot, 0, 0);
+    lv_obj_remove_flag(dot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+    return dot;
+}
+
 static void refresh_tasks(void)
 {
-    if (monitor_tab != 0 || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
+    if (monitor_tab != SYSTEM_TASK || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
         return;
     static char rows[4096];
     for (int tier = TIER1; tier <= TIER3; tier++) {
@@ -598,15 +629,52 @@ static void refresh_tasks(void)
                 continue;
             const char *state = t->state == TASK_RUNNING ? "Running" :
                                 t->state == TASK_READY ? "Ready" : "Waiting";
-            if (used + 96 >= sizeof rows)
+            if (used + 192 >= sizeof rows)
                 break;
-            if (tier == TIER2)
-                used += lv_snprintf(rows + used, sizeof rows - used,
-                    "%s\n%s  /  %lu us per 10 ms\n\n", t->name, state,
-                    (unsigned long)ticks_to_us(t->min_t));
+            uint64_t flags = irq_save();
+            unsigned long cpu = ticks_to_us(t->last_used_t);
+            unsigned long grant = ticks_to_us(t->last_grant_t);
+            irq_restore(flags);
+            unsigned mem_grant = 0;
+            unsigned mapped = proc_task_memory_kib((struct task *)t, &mem_grant);
+            char allocation[64] = "CPU grant unavailable";
+            if (tier == TIER1 && t->slot >= 0) {
+                int count;
+                const struct tier1_decl *decl = resource_tier1(&count);
+                int slot = t->slot;
+                for (int j = 0; j < count; j++) {
+                    if (!decl[j].cpu_us || slot-- != 0)
+                        continue;
+                    mem_grant = decl[j].mem_kb;
+                    lv_snprintf(allocation, sizeof allocation, "Fixed %u us", decl[j].cpu_us);
+                    break;
+                }
+            } else if (tier == TIER2) {
+                lv_snprintf(allocation, sizeof allocation, "Min %lu / grant %lu us",
+                    (unsigned long)ticks_to_us(t->min_t), grant);
+                for (int j = 0; ; j++) {
+                    const struct running_app *app = resource_running(j);
+                    if (!app)
+                        break;
+                    if (app->task == t) {
+                        mem_grant = app->mem_granted_kb;
+                        break;
+                    }
+                }
+            } else {
+                lv_snprintf(allocation, sizeof allocation, "%s",
+                    tier == TIER3 ? "Shared CPU pool" : "CPU grant unavailable");
+            }
+            char memory[48];
+            if (mapped)
+                lv_snprintf(memory, sizeof memory, "RAM %u KiB app pages", mapped);
+            else if (mem_grant)
+                lv_snprintf(memory, sizeof memory, "RAM %u KiB reserved", mem_grant);
             else
-                used += lv_snprintf(rows + used, sizeof rows - used,
-                    "%s\n%s\n\n", t->name, state);
+                lv_snprintf(memory, sizeof memory, "RAM use unavailable");
+            used += lv_snprintf(rows + used, sizeof rows - used,
+                "%s  |  %s\nCPU %lu us used\n%s\n%s\n\n",
+                t->name, state, cpu, allocation, memory);
         }
         lv_obj_t *label = task_rows[tier - TIER1];
         const char *value = used ? rows : "No active tasks";
@@ -707,8 +775,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     detail = desk_label(page_home, 252, 124, "No workload results", 0x263552);
     lv_obj_set_size(detail, 436, 338);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    static const char *const tab_names[] = {"System Task", "System Tests", "System Info"};
-    static const int tab_ids[] = {203, 204, 208};
+    static const char *const tab_names[] = {"System Task", "System Info", "System Tests"};
+    static const int tab_ids[] = {203, 208, 204};
     for (int i = 0; i < 3; i++) {
         tabs[i] = add_row(page_home, 55, 0xffffff, 0xc5d9fa, tab_names[i], tab_ids[i]);
         lv_obj_set_pos(tabs[i], 12 + i * 145, 55);
@@ -789,9 +857,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
         desk_label(card, 16, 14, tiers[i], accent[i]);
         desk_label(card, 16, 39, captions[i], 0x475a7a);
+        desk_label(card, 16, 56, "CPU per 10 ms", 0x64748b);
         lv_obj_t *list = lv_obj_create(card);
-        lv_obj_set_pos(list, 10, 72);
-        lv_obj_set_size(list, 194, 234);
+        lv_obj_set_pos(list, 10, 78);
+        lv_obj_set_size(list, 194, 228);
         lv_obj_set_style_pad_all(list, 5, 0);
         lv_obj_set_style_bg_color(list, lv_color_hex(0xf3f6fb), 0);
         lv_obj_set_style_border_width(list, 0, 0);
@@ -799,7 +868,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         task_rows[i] = desk_label(list, 0, 0, "", 0x263552);
         lv_obj_set_width(task_rows[i], 176);
     }
-    select_monitor_tab(0);
+    select_monitor_tab(SYSTEM_TASK);
 
     lv_obj_t *dock = lv_obj_create(screen);
     int dock_width = apps ? 506 : 206;
@@ -812,6 +881,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(dock, 1, 0);
     lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
     dock_item(dock, 12, 0x4a6bc2, LV_SYMBOL_BARS, "Monitor", 202);
+    minimized_dots[0] = dock_minimized_dot(dock, 12);
     lv_obj_t *notes_icon;
     if (apps) {
         dock_item(dock, 112, 0x23785c, LV_SYMBOL_CHARGE, "Speed", 205);
@@ -821,6 +891,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     } else {
         notes_icon = dock_item(dock, 112, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
     }
+    minimized_dots[1] = dock_minimized_dot(dock, apps ? 412 : 112);
     build_cursor();
     lv_obj_t *cursor = lv_image_create(lv_layer_sys());
     lv_image_set_src(cursor, &cursor_dsc);
@@ -830,7 +901,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_update_layout(screen);
     {
         lv_area_t box;
-        lv_obj_get_coords(tabs[1], &box);
+        lv_obj_get_coords(tabs[SYSTEM_TESTS], &box);
         printf("[lvgl] tests box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(tabs[0], &box);

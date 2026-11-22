@@ -105,6 +105,8 @@ struct task {
     uint64_t sugg_t;            /* Tier 2：建议值里超出最低值的部分 */
     uint64_t work_t;            /* KIND_JOB：每个作业的工作量 */
     uint64_t deadline_t;        /* KIND_JOB：相对释放时刻的截止期 */
+    uint64_t last_used_t;
+    uint64_t period_grant_t, last_grant_t;
     uint64_t used_t;            /* 本周期已用 */
 
     int job_open;
@@ -598,6 +600,7 @@ int proc_kill(int64_t handle);
 void proc_ledger(const char *tag);
 int proc_pages_free(void);
 int proc_pages_used(void);
+unsigned proc_task_memory_kib(struct task *t, unsigned *grant);
 int proc_queue_depth(void);
 int proc_holds(void);
 int proc_alive(int64_t handle);

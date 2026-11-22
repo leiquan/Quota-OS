@@ -826,6 +826,9 @@ static void end_period(uint64_t now, int skipped)
         t->p_hr_pass = 0;
         t->p_hr_n = 0;
         t->ipc_hold = 0;
+        t->last_used_t = t->used_t;
+        t->last_grant_t = t->period_grant_t;
+        t->period_grant_t = 0;
         t->used_t = 0;
         t->dev_used_t = 0;
         if (t->bw_budget) {
@@ -995,6 +998,8 @@ static struct task *pick_t2(int sugg)
         if (used < cap && room) {
             rr2 = i;
             t->run_cap = cap;
+            if (cap > t->period_grant_t)
+                t->period_grant_t = cap;
             k_arm_rel = cap - used;
             if (room < k_arm_rel)
                 k_arm_rel = room;

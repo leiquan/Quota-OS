@@ -235,6 +235,19 @@ static struct proc *proc_by_task(struct task *t)
     return 0;
 }
 
+unsigned proc_task_memory_kib(struct task *t, unsigned *grant)
+{
+    struct proc *p = proc_by_task(t);
+    if (!p)
+        return 0;
+    *grant = p->app->mem_granted_kb;
+    unsigned kib = 0;
+    for (unsigned i = 0; i < sizeof p->pages / sizeof p->pages[0]; i++)
+        if (p->pages[i] >= 0)
+            kib += 4;
+    return kib;
+}
+
 int proc_alive(int64_t handle)
 {
     return from_handle(handle, 1) != 0;
