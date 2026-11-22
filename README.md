@@ -54,7 +54,7 @@ Dock 的三个应用图标可高亮对应卡片。活动管理器的 Activity �
 
 ![Quota OS 按三级显示实际任务](docs/screenshots/task-manager.png)
 
-从 Activity Monitor 打开 Task Manager。显示一级固定槽、二级每周期最低 CPU 配额和三级剩余 CPU 任务。任务状态为界面刷新时的快照。窗口关闭与最小化使用 48 × 48 像素按钮。
+Activity Monitor 的 System Task 标签显示各级任务。显示一级固定槽、二级每周期最低 CPU 配额和三级剩余 CPU 任务。任务状态为界面刷新时的快照。窗口关闭与最小化使用 48 × 48 像素按钮。
 
 [真实时钟对照](docs/tests/optimization/cycle-03/REPORT.txt)
 

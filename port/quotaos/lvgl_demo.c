@@ -703,11 +703,11 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     add_row(menu_list, 74, 0xffffff, 0xdbe3f0, "Stop workload", 103);
     add_row(menu_list, 128, 0xffffff, 0xdbe3f0, "Service check", 5);
     add_row(menu_list, 182, 0xffffff, 0xdbe3f0, "App reservation", 2);
-    lv_obj_t *watch = add_row(menu_list, 236, 0xe0edff, 0xc5d9fa, "Run & view activity", 209);
+    lv_obj_t *watch = add_row(menu_list, 236, 0xe0edff, 0xc5d9fa, "Run & view tasks", 209);
     detail = desk_label(page_home, 252, 124, "No workload results", 0x263552);
     lv_obj_set_size(detail, 436, 338);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    static const char *const tab_names[] = {"Activity", "System Tests", "System Info"};
+    static const char *const tab_names[] = {"System Task", "System Tests", "System Info"};
     static const int tab_ids[] = {203, 204, 208};
     for (int i = 0; i < 3; i++) {
         tabs[i] = add_row(page_home, 55, 0xffffff, 0xc5d9fa, tab_names[i], tab_ids[i]);
@@ -753,10 +753,14 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
 
     page_cover = desktop_window(screen, app_desktop_mode() ? 310 : 390, 205, 500, 348, "About Quota OS");
     desk_label(page_cover, 28, 70, "Version " QUOTAOS_VERSION "    ARM64", 0x374e90);
-    lv_obj_t *about = desk_label(page_cover, 28, 111,
-        "1280 x 800 display\n"
-        "Desktop priority: Tier 3\n"
-        "Timing results: Activity Monitor", 0x64748b);
+    char about_text[160];
+    lv_snprintf(about_text, sizeof about_text,
+        "%u x %u display\n"
+        "Author: leiquan@live.com\n"
+        "Display core: Tier 1\n"
+        "Desktop interaction: Tier 3",
+        (unsigned)w, (unsigned)h);
+    lv_obj_t *about = desk_label(page_cover, 28, 111, about_text, 0x64748b);
     lv_obj_set_width(about, 440);
     lv_obj_t *back = add_row(page_cover, 233, 0xe4ecff, 0xc5d9fa, "Activity Monitor", 202);
     lv_obj_set_pos(back, 28, 280);
@@ -771,7 +775,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_pad_all(task_body, 0, 0);
     lv_obj_remove_flag(task_body, LV_OBJ_FLAG_SCROLLABLE);
     static const char *const tiers[] = {"Tier 1", "Tier 2", "Tier 3"};
-    static const char *const captions[] = {"Fixed slots", "Reserved CPU", "Spare CPU"};
+    static const char *const captions[] = {"Vendor reserved", "User selected", "Shared resources"};
     static const uint32_t accent[] = {0x23785c, 0x395cc0, 0x7851a8};
     for (int i = 0; i < 3; i++) {
         lv_obj_t *card = lv_obj_create(task_body);
