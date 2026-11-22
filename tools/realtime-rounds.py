@@ -72,6 +72,9 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0, task_manager=Fal
                     raise TimeoutError('LVGL boot')
                 time.sleep(.01)
             text = contents(log)
+            expected_clock = '[boot] clock: icount' if mode == 'icount' else '[boot] clock: host time'
+            if expected_clock not in text:
+                raise AssertionError(f'Guest clock mismatch: expected {mode}')
             geometry = re.search(r'ramfb published (\d+)x(\d+)', text)
             if not geometry: raise AssertionError('framebuffer geometry missing')
             sw, sh = map(int, geometry.groups())
@@ -90,7 +93,8 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0, task_manager=Fal
                 time.sleep(.12)
                 q.call('human-monitor-command', {'command-line': 'mouse_button 0'})
 
-            press(x + w // 2, y + h // 2)
+            if not task_manager or mode != 'icount':
+                press(x + w // 2, y + h // 2)
             if task_manager:
                 if (sw, sh) != (1280, 800):
                     raise AssertionError('Task Manager test requires the 1280x800 default layout')
@@ -101,7 +105,9 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0, task_manager=Fal
                     if time.monotonic() >= wait_until:
                         raise AssertionError('Task Manager did not open')
                     time.sleep(.02)
-                if '[menu] done 9' in contents(log):
+                if mode == 'icount':
+                    press(x + w // 2, y + h // 2)
+                elif '[menu] done 9' in contents(log):
                     raise AssertionError('Workload finished before Task Manager could be exercised')
             end = time.monotonic()+90
             events = 0
@@ -211,6 +217,8 @@ def main():
     ap.add_argument('--cpu',default='cortex-a72')
     ap.add_argument('--machine',default='virt,gic-version=2')
     args=ap.parse_args()
+    if args.rounds < 1:
+        ap.error("--rounds must be positive")
     if args.accel=='hvf' and 'icount' in args.modes:
         ap.error('HVF does not use instruction-count time')
     os.environ['QUOTA_QEMU_ACCEL']=args.accel

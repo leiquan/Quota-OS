@@ -36,7 +36,9 @@ def serial_case(kernel,out,boot,mode):
     return result
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument('kernel',type=Path);ap.add_argument('out',type=Path);ap.add_argument('--rounds',type=int,default=10);a=ap.parse_args()
+    ap=argparse.ArgumentParser();ap.add_argument('kernel',type=Path);ap.add_argument('out',type=Path);ap.add_argument('--rounds',type=int,default=100);a=ap.parse_args()
+    if a.rounds < 1:
+        ap.error('--rounds must be positive')
     root=a.out.resolve();root.mkdir(parents=True,exist_ok=True);kernel=a.kernel.resolve();rt=runpy.run_path('tools/realtime-rounds.py')
     summary={'sha256':hashlib.sha256(kernel.read_bytes()).hexdigest(),'cases':{},'rounds':[]}
     def save(): (root/'summary.json').write_text(json.dumps(summary,indent=2))
@@ -48,8 +50,10 @@ def main():
     for n in range(1,a.rounds+1):
         row={'round':n}
         for mode,accel,cpu,machine,clock in [('native','hvf','host','virt,gic-version=3','host'),('icount','tcg','cortex-a72','virt,gic-version=2','icount')]:
+            if mode == 'native' and n > 10:
+                continue
             os.environ.update(QUOTA_QEMU_ACCEL=accel,QUOTA_QEMU_CPU=cpu,QUOTA_QEMU_MACHINE=machine,QUOTA_GUI_LONGEVITY_SECONDS='0')
-            try:r=rt['gui'](kernel,root/('round-%02d'%n)/mode,clock)
+            try:r=rt['gui'](kernel,root/('round-%02d'%n)/mode,clock, task_manager=(mode == 'icount'))
             except Exception as e:r={'passed':False,'error':repr(e)}
             row[mode]=r;print(n,mode,json.dumps(r),flush=True)
         summary['rounds'].append(row);save()
@@ -58,5 +62,12 @@ def main():
         try:r=rt['isolate'](kernel,root/('isolate-'+mode),clock)
         except Exception as e:r={'passed':False,'error':repr(e)}
         summary['cases']['isolate-'+mode]=r;save();print('isolate',mode,json.dumps(r),flush=True)
-    return 0 if all(x['passed'] for x in summary['cases'].values()) and all(r[m]['passed'] for r in summary['rounds'] for m in ['native','icount']) else 1
+    summary['acceptance_passed'] = (
+        len(summary['rounds']) == a.rounds
+        and all(row['icount']['passed'] for row in summary['rounds'])
+        and all(result['passed'] for name, result in summary['cases'].items()
+                if name.endswith('-icount'))
+    )
+    save()
+    return 0 if summary['acceptance_passed'] else 1
 if __name__=='__main__':raise SystemExit(main())

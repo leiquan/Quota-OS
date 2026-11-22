@@ -8,6 +8,15 @@ AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中�
 
 License: [Apache-2.0](LICENSE)
 
+## 虚拟平台验收
+
+默认验收配置为 QEMU TCG、Cortex-A72、virt/GICv2、128 MiB，使用 `-icount shift=4,sleep=off`。运行 `python3 tools/optimization-cycle.py prebuilt/quotaos.bin /tmp/quota-acceptance --rounds 100`。
+
+- 100 轮 GUI 压力窗口必须全部完成。一级截止期错过、二级最低 CPU 时间不足及二级作业错过均须为零。
+- 任务管理器开启，驱动发送指针事件，桌面必须完成负载操作。现有测试覆盖此交互路径，未规定所有 GUI 操作的最大响应时延。
+- EL0 功能和回收专项单独检查。桌面仍为 EL1 三级任务，三级 GUI 应用的故障隔离尚未完成。
+- 原生宿主时钟采样用于诊断。产品验收的时间指标以这套虚拟时钟配置及所测负载为限。
+
 ## 持续优化与测试
 
 - [cycle-04：三级任务管理器、触控窗口按钮和桌面精简](docs/tests/optimization/cycle-04/REPORT.txt) — native GUI 7/10；icount GUI 10/10；功能回归详见原始记录。
