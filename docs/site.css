@@ -52,3 +52,43 @@ footer.bar { border-bottom: 0; border-top: 1px solid #354259; }
 .controls button { min-width: 44px; min-height: 44px; border: 1px solid #557095; border-radius: 8px; background: #192c46; color: #eef3ff; cursor: pointer; }
 .controls button:focus-visible { outline: 2px solid #91d6ff; outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .gallery { scroll-behavior: auto; } }
+
+/* Shared visual hierarchy for both languages. */
+:root {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  color: #eff4ff;
+  background: #0a101d;
+}
+body { background: radial-gradient(ellipse 72rem 34rem at 78% 0%, #1c3153, transparent 84%); }
+.wrap { width: min(1120px, calc(100% - 64px)); }
+.bar { padding-block: 24px; border-color: #29374c; }
+.brand { letter-spacing: -.035em; font-size: 1.2rem; }
+nav { gap: clamp(12px, 2.5vw, 32px); }
+nav a { color: #dae5f7; }
+.hero { padding-top: clamp(58px, 9vw, 116px); }
+h1 { max-width: 14ch; font-size: clamp(2.65rem, 7vw, 6rem); letter-spacing: -.06em; font-weight: 760; }
+:lang(zh-CN) h1 { max-width: none; letter-spacing: -.035em; }
+.intro { max-width: 60ch; line-height: 1.8; }
+.actions { margin-block: 28px 44px; }
+.primary { padding: 11px 20px; background: #c0ddff; }
+.section { margin-block: clamp(56px, 9vw, 108px); }
+.section h2 { letter-spacing: -.035em; line-height: 1.2; margin: 0 0 26px; }
+.grid, .stats { gap: 16px; }
+article, .stats div { padding: clamp(20px, 3vw, 30px); border-color: #2a3b56; background: linear-gradient(145deg, #162338, #101a2b); }
+article p:last-child { margin-bottom: 0; }
+.showcase { padding: clamp(8px, 1.7vw, 16px); border: 1px solid #304565; border-radius: 20px; background: #111b2c; box-shadow: 0 24px 70px #03071080; }
+.gallery { background: #0c1423; scrollbar-width: thin; }
+.gallery figcaption { padding: 4px 12px 14px; }
+.controls:not([hidden]) { gap: 10px; margin-top: 10px; }
+.indicators { display: flex; gap: 2px; }
+.controls .indicator { min-width: 24px; border: 0; background: transparent; padding: 0; }
+.indicator::before { content: ""; display: block; width: 8px; height: 8px; margin: auto; border-radius: 50%; background: #7085a4; }
+.indicator[aria-current="true"]::before { width: 16px; border-radius: 6px; background: #c0ddff; }
+.controls output { color: #b9c7dd; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.playback { padding-inline: 9px; }
+@media (max-width: 640px) {
+  .wrap { width: calc(100% - 32px); }
+  header.bar { flex-wrap: wrap; gap: 12px; }
+  nav { flex-wrap: wrap; gap: 10px 16px; }
+  .controls:not([hidden]) { gap: 6px; }
+}
