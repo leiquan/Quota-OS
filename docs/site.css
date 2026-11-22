@@ -43,3 +43,12 @@ footer.bar { border-bottom: 0; border-top: 1px solid #354259; }
   .section { margin-block: 48px; }
 }
 @media (prefers-reduced-motion: reduce) { :root { scroll-behavior: auto; } }
+.language { border: 1px solid #557095; border-radius: 6px; padding: 5px 10px; }
+.gallery { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; border-radius: 12px; background: #101a2b; }
+.gallery figure { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; }
+.gallery img { width: 100%; }
+.gallery figcaption { padding: 0 12px 12px; }
+.controls:not([hidden]) { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 8px; }
+.controls button { min-width: 44px; min-height: 44px; border: 1px solid #557095; border-radius: 8px; background: #192c46; color: #eef3ff; cursor: pointer; }
+.controls button:focus-visible { outline: 2px solid #91d6ff; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .gallery { scroll-behavior: auto; } }
