@@ -55,6 +55,11 @@ def boot():
                     click(415,508)
                 result = wait(r"\[quota-test\] "+str(number)+r" (PASS|FAIL)", offset)
                 if result[1] != "PASS": raise AssertionError(f"scenario {number} failed")
+                if number > 1:
+                    gaps = wait(r"Peak gap: Speed (\d+) us, Dashcam (\d+) us", offset)
+                    speed_us, camera_us = map(int, gaps.groups())
+                    assert 0 < speed_us < 11000 and 0 < camera_us < 41000, gaps.group()
+
             q.call("screendump", {"filename":str((args.out/"test.ppm").resolve())})
         finally:
             proc.terminate()

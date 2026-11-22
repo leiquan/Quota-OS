@@ -15,17 +15,12 @@ LDFLAGS := -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none
 # 映像里不放时间戳。
 SRC_COMMIT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
 
-SRCS := boot/startup.S boot/vectors.S \
-	kernel/main.c kernel/uart.c kernel/printf.c kernel/string.c \
-	kernel/dtb.c kernel/gic.c kernel/timer.c kernel/resource.c kernel/mmu.c \
-	kernel/sched.c kernel/demo.c kernel/apps/vehicle.c kernel/apps/c_demo.c kernel/decl.c kernel/ipc.c kernel/dev.c kernel/color.c kernel/e4.c \
-	kernel/note_disk.c kernel/fb.c kernel/input.c kernel/lvgl_boot.c \
-	kernel/proc.c kernel/isolate.c
+SRCS := $(shell cat kernel/sources.list)
 OBJS := $(patsubst %,build/%.o,$(basename $(SRCS)))
 
 .PHONY: all clean run run-small
 
-# prebuilt/quotaos.bin is the known-good serial drop-in. `make` does not copy over it.
+# The default prebuilt image contains LVGL. This target builds the serial kernel.
 all: build/quotaos.elf build/quotaos.bin
 
 # 提交号变了才重写这个文件，main.c 依赖它。
@@ -74,11 +69,11 @@ prebuilt/quotaos.bin: build/quotaos.bin
 # 用原始映像启动，QEMU 才会按 Linux 引导协议把设备树指针放进 x0。
 run: build/quotaos.bin
 	qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
-		-nographic -kernel build/quotaos.bin
+		-nographic -kernel build/quotaos.bin -append serial
 
 run-small: build/quotaos.bin
 	qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 64M \
-		-nographic -kernel build/quotaos.bin
+		-nographic -kernel build/quotaos.bin -append serial
 
 clean:
 	rm -rf build

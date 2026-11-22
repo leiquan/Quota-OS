@@ -22,11 +22,13 @@ The launcher boots the included ARM64 image and creates a persistent Notes disk 
 
 ## Vehicle instruments
 
-Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Dashcam draws simulated lane markings at a target of 25 frames per second in Tier 2. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. The labels and history are sampled by the desktop; Speed continues to commit while that desktop is stalled.
+Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Dashcam draws simulated lane markings at a target of 25 frames per second in Tier 2. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. Speed and Dashcam FPS use timestamps from completed framebuffer commits. System → Test also reports their longest observed gaps; the intentional camera pause starts a new interval on resume. The labels and history are sampled by the desktop; Speed continues to commit while that desktop is stalled.
 
 ![Quota OS desktop showing the Speed gauge, simulated dashcam lanes and music frame history](docs/screenshots/vehicle-instruments.png)
 
 [100 desktop-stall cold boots with these instruments](docs/tests/cortex-a35/instrument-regression.tar.gz)
+
+The LVGL frontend lives in `port/quotaos/desktop/`. Hardware access belongs to `kernel/drivers/`; the scheduler and admission code stay in `kernel/`. The serial and graphical builds read the same core source list from `kernel/sources.list`.
 
 ## Tasks and application control
 

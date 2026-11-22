@@ -5,7 +5,7 @@
 #include "quotaos.h"
 
 #define LV_CONF_INCLUDE_SIMPLE
-#include "lvgl.h"
+#include "desktop.h"
 
 #include <stddef.h>
 
@@ -30,9 +30,6 @@ static struct app_display_stats save_before;
 static lv_obj_t *task_body;
 static lv_obj_t *tabs[3], *info_panel;
 static lv_obj_t *info_values[24], *info_crossings;
-static lv_obj_t *app_cards[3];
-static lv_obj_t *music_history[8];
-static lv_obj_t *app_rate[3], *app_status[3];
 static lv_obj_t *clock_label;
 static uint64_t rtc_base;
 enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_TESTS };
@@ -64,9 +61,6 @@ static const enum app_key page_keys[] = {APP_SYSTEM, APP_NOTES, APP_COUNT, APP_L
 static lv_obj_t *task_lists[3];
 static lv_obj_t *task_items[MAX_TASKS];
 static lv_obj_t *empty_tasks[3];
-static const char app_speed[] = "Speed";
-static const char app_video[] = "Dashcam";
-static const char app_music[] = "Music Player";
 static const char app_monitor[] = "System";
 enum { DOCK_STEP = 132, DOCK_ITEM_WIDTH = 120 };
 
@@ -533,9 +527,9 @@ static void poll_trial(void)
     }
     char result[300];
     lv_snprintf(result, sizeof result,
-        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu",
+        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu",
         ok ? "PASS" : "FAIL", (unsigned long)elapsed, (unsigned long)ticks_to_us(peak),
-        frames, misses, shortfalls, over, crossings);
+        frames, misses, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings);
     trial.active = 0;
     trial_result(number, result);
 }
@@ -756,12 +750,11 @@ static void on_group(lv_event_t *e)
     }
     if (id >= 205 && id <= 207) {
         lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
-        if (app_cards[id - 205]) {
+        if (app_desktop_mode()) {
             int tier = id - 204;
             if (!vehicle_app_running(tier) && vehicle_app_set_running(tier, 1)) return;
             dock_state(APP_SPEED + tier - 1, OPEN);
-            for (int i = 0; i < 3; i++)
-                lv_obj_set_style_outline_width(app_cards[i], i == id - 205 ? 2 : 0, 0);
+            instruments_select(id - 205);
             printf("[desktop] app selected %d\n", id - 205 + 1);
         }
         return;
@@ -807,7 +800,7 @@ static lv_obj_t *add_row(lv_obj_t *parent, int y, uint32_t bg, uint32_t edge, co
     return item;
 }
 
-static lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, uint32_t color)
+lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, uint32_t color)
 {
     lv_obj_t *o = lv_label_create(parent);
     lv_obj_set_pos(o, x, y);
@@ -1026,28 +1019,6 @@ static lv_obj_t *app_icon(lv_obj_t *parent, enum app_key key, int x, int y, int 
     return button;
 }
 
-static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail, const char *symbol, uint32_t accent)
-{
-    lv_obj_t *card = lv_obj_create(screen);
-    lv_obj_set_pos(card, 860, y);
-    lv_obj_set_size(card, 380, 140);
-    lv_obj_set_style_pad_all(card, 0, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(0x526782), 0);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0x182338), 0);
-    lv_obj_set_style_bg_grad_color(card, lv_color_hex(0x22344d), 0);
-    lv_obj_set_style_bg_grad_dir(card, LV_GRAD_DIR_HOR, 0);
-    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *heading = desk_label(card, 30, 16, title, 0xf5f8fd);
-    lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
-    desk_label(card, 30, 49, detail, 0xb8cadd);
-    lv_obj_t *icon = desk_label(card, 332, 20, symbol, accent);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_outline_color(card, lv_color_hex(0x8bf2cb), 0);
-    return card;
-}
-
 static int leap_year(unsigned year)
 {
     return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
@@ -1079,46 +1050,6 @@ static void refresh_clock(void)
     lv_label_set_text_fmt(clock_label, "%04u-%02u-%02u  %02u:%02u:%02u",
                           year, month + 1, days + 1, time / 3600,
                           time / 60 % 60, time % 60);
-}
-
-static void refresh_app_stats(uint64_t elapsed)
-{
-    static struct app_display_stats previous;
-    struct app_display_stats current;
-    app_display_read(&current);
-    if (elapsed) {
-        for (int i = 0; i < 3; i++) {
-            uint32_t frames = current.frames[i] - previous.frames[i];
-            unsigned fps = (unsigned)(((uint64_t)frames * 1000000u + elapsed / 2) / elapsed);
-            if (i == 2) {
-                for (int j = 0; j < 7; j++)
-                    lv_bar_set_value(music_history[j], lv_bar_get_value(music_history[j + 1]), LV_ANIM_OFF);
-                lv_bar_set_value(music_history[7], fps > 200 ? 200 : (int)fps, LV_ANIM_OFF);
-            }
-            char rate[32];
-            lv_snprintf(rate, sizeof rate, "%u FPS (%s)", fps,
-                        clock_is_icount() ? "icount" : "guest clock");
-            if (strcmp(rate, lv_label_get_text(app_rate[i])))
-                lv_label_set_text(app_rate[i], rate);
-            const char *status = frames ? "Updating" : "No new frames";
-            char deadlines[48];
-            if (i == 0) {
-                lv_snprintf(deadlines, sizeof deadlines, "%u deadline misses", (unsigned)current.speed_misses);
-                status = deadlines;
-            }
-            else if (i && !vehicle_app_running(i + 1))
-                status = "Stopped";
-            else if (i == 1 && app_desktop_mode() == 1)
-                status = "Not running";
-            else if (i == 1 && current.video_paused)
-                status = "Test pause";
-            else if (i == 2 && current.music_held)
-                status = "Demo hold (Tier 3)";
-            if (strcmp(status, lv_label_get_text(app_status[i])))
-                lv_label_set_text(app_status[i], status);
-        }
-    }
-    previous = current;
 }
 
 static void refresh_system_info(void)
@@ -1444,34 +1375,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     }
 
     int apps = app_desktop_mode();
-    if (apps) {
-        app_cards[0] = app_card(screen, 116, app_speed, "Tier 1  /  Simulated km/h", LV_SYMBOL_CHARGE, 0x69dfbd);
-        app_cards[1] = app_card(screen, 281, app_video, apps == 2 ?
-                 "Tier 2  /  Simulated road  /  25 fps" : "Optional  /  Not running", LV_SYMBOL_VIDEO, 0x8fcdf5);
-        app_cards[2] = app_card(screen, 446, app_music, "Tier 3  /  Simulated playback", LV_SYMBOL_AUDIO, 0xd8afff);
-        lv_obj_t *scale = lv_scale_create(app_cards[0]);
-        lv_scale_set_mode(scale, LV_SCALE_MODE_HORIZONTAL_TOP);
-        lv_scale_set_label_show(scale, false);
-        lv_scale_set_total_tick_count(scale, 9);
-        lv_obj_set_style_line_color(scale, lv_color_hex(0x91adb6), LV_PART_ITEMS);
-        lv_obj_set_style_line_color(scale, lv_color_hex(0xc8e5eb), LV_PART_INDICATOR);
-        lv_scale_set_major_tick_every(scale, 4);
-        lv_obj_set_pos(scale, 94, 78);
-        lv_obj_set_size(scale, 64, 10);
-        for (int i = 0; i < 8; i++) {
-            lv_obj_t *bar = lv_bar_create(app_cards[2]);
-            lv_obj_set_pos(bar, 75 + i * 10, 89);
-            lv_obj_set_size(bar, 6, 32);
-            lv_bar_set_range(bar, 0, 200);
-            lv_obj_set_style_bg_color(bar, lv_color_hex(0x354058), LV_PART_MAIN);
-            lv_obj_set_style_bg_color(bar, lv_color_hex(0xd5a6fd), LV_PART_INDICATOR);
-            music_history[i] = bar;
-        }
-        for (int i = 0; i < 3; i++) {
-            app_rate[i] = desk_label(app_cards[i], 184, 84, "Measuring FPS", 0xf1f6ff);
-            app_status[i] = desk_label(app_cards[i], 184, 109, "", 0xc7d7e6);
-        }
-    }
+    if (apps) instruments_create(screen, apps);
     page_home = desktop_window(screen, 88, 124, 720, 460, app_monitor);
     menu_list = lv_obj_create(page_home);
     lv_obj_set_pos(menu_list, 0, 100);
@@ -1836,7 +1740,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             if (clock_label)
                 refresh_clock();
             if (apps)
-                refresh_app_stats(tasks_at ? panel_now - tasks_at : 0);
+                instruments_refresh();
             tasks_at = panel_now;
         }
         if (apps) { poll_trial(); continue; }

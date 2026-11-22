@@ -287,7 +287,7 @@ const struct app_manifest *resource_catalog(int *count);
 #define APP_VIDEO_Y 370
 #define APP_MUSIC_Y 535
 #define APP_METER_W 128
-#define APP_METER_H 24
+#define APP_METER_H 40
 #define APP_MUSIC_SIZE 32
 int app_desktop_mode(void);
 void app_demo_run(int with_video, int stall);
@@ -296,6 +296,8 @@ int vehicle_app_running(int tier);
 int vehicle_app_set_running(int tier, int start);
 struct app_display_stats {
     uint32_t frames[3];
+    uint64_t sample_tick, commit_tick[2];
+    uint32_t video_epoch, video_max_gap_us;
     uint32_t speed_misses, max_gap_us;
     int video_paused, music_held;
 };

@@ -168,7 +168,7 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
   -kernel prebuilt/quotaos.bin -append isolate
 ```
 
-和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `kernel/lvgl_boot.c` 和 `port/quotaos/lvgl_demo.c`。显示队列在 `kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。菜单宿主计时错过留给菜单那条分支，这次没有改它。
+和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `kernel/lvgl_boot.c` 和 `port/quotaos/desktop/desktop.c`。显示队列在 `kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。菜单宿主计时错过留给菜单那条分支，这次没有改它。
 
 
 文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。
@@ -685,7 +685,7 @@ python3 tools/tier1_rounds.py build/quotaos.bin /tmp/t1-normal 30      # 不用 
 
 ## 中断控制器（GICv2 / GICv3，commit C 252a90d）
 
-`kernel/gic.c` 从设备树的 interrupt-controller 节点决定驱动哪种硬件：
+`kernel/drivers/gic.c` 从设备树的 interrupt-controller 节点决定驱动哪种硬件：
 
 - `arm,cortex-a15-gic` 或 `arm,gic-400`：GICv2，distributor + 内存映射的 CPU interface。
 - `arm,gic-v3`：GICv3，distributor（亲和路由、Group 1）+ 本核的 redistributor（按 MPIDR 找）+ `ICC_*` 系统寄存器 CPU interface。从 EL2 启动时 `boot/startup.S` 先打开 `ICC_SRE_EL2`。

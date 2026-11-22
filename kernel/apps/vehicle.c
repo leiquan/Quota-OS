@@ -5,6 +5,8 @@ static uint32_t *volatile app_surface;
 static uint32_t app_stride;
 static volatile uint32_t dashboard_frames, video_frames;
 static volatile int video_stalled;
+static uint64_t video_tick, video_max_gap;
+static unsigned video_epoch;
 static uint32_t music_frames;
 static int music_held;
 static struct task *dashboard_demo;
@@ -51,11 +53,19 @@ void app_desktop_stall_probe(void)
 
 void app_display_read(struct app_display_stats *stats)
 {
+    uint64_t flags = irq_save();
+    stats->sample_tick = ticks_now();
+    stats->commit_tick[0] = display_commit_tick;
+    stats->commit_tick[1] = video_tick;
     stats->frames[0] = dashboard_frames;
     stats->frames[1] = video_frames;
     stats->frames[2] = music_frames;
+    stats->video_epoch = video_epoch;
     stats->speed_misses = dashboard_demo ? dashboard_demo->misses : 0;
-    stats->max_gap_us = ticks_to_us(display_max_gap);
+    uint64_t speed_gap = display_max_gap, camera_gap = video_max_gap;
+    irq_restore(flags);
+    stats->max_gap_us = ticks_to_us(speed_gap);
+    stats->video_max_gap_us = ticks_to_us(camera_gap);
     stats->video_paused = video_stalled;
     stats->music_held = music_held;
 }
@@ -159,15 +169,31 @@ static void app_demo_video_frame(void)
         uint64_t period = sched_period_now();
         if (!video_stalled && period % 4 == 0) {
             uint32_t frame = video_frames + 1;
-            for (unsigned y = 0; y < APP_METER_H; y++) {
-                uint32_t *center = app_surface + (APP_VIDEO_Y + y) * app_stride + APP_DRAW_X + 63;
-                /* Redraw only the lane markings, including after display initialization. */
-                unsigned edge = 7 + y * 2;
-                center[1 - (int)edge] = center[1 + edge] = 0x98c8cf;
-                uint32_t color = ((y + frame) & 7) < 4 ? 0xb6e4ed : 0x273449;
-                center[0] = center[1] = color;
+            unsigned phase = frame & 63;
+            int bend = (int)(phase < 32 ? phase : 63 - phase) - 16;
+            unsigned last = (frame - 1) & 63;
+            int old_bend = (int)(last < 32 ? last : 63 - last) - 16;
+            for (int y = 0; y < APP_METER_H; y++) {
+                uint32_t *row = app_surface + (APP_VIDEO_Y + y) * app_stride + APP_DRAW_X;
+                int center = 64 + bend * (APP_METER_H - y) / APP_METER_H;
+                int old = 64 + old_bend * (APP_METER_H - y) / APP_METER_H;
+                int edge = 6 + y;
+                for (int k = 0; k < 3; k++) {
+                    row[old-edge+k] = row[old+edge+k] = row[old+k] = 0x101820;
+                }
+                row[center-edge] = row[center-edge+1] = 0x88d8e7;
+                row[center+edge] = row[center+edge+1] = 0x88d8e7;
+                if (((unsigned)y - frame * 2) & 8)
+                    row[center] = row[center+1] = row[center+2] = 0xffdf8d;
             }
+            asm volatile("dsb st" ::: "memory");
+            uint64_t flags = irq_save();
+            uint64_t now = ticks_now();
+            if (video_tick && now - video_tick > video_max_gap)
+                video_max_gap = now - video_tick;
+            video_tick = now;
             video_frames = frame;
+            irq_restore(flags);
         }
         observe_desktop_stall(period);
         asm volatile("svc #0" ::: "memory");
@@ -205,6 +231,8 @@ void app_desktop_poll(void)
         vn = video_frames - v0;
         mn = proc_submits(music_demo) - m0;
         dm = dashboard_demo->misses - misses0;
+        video_tick = 0;
+        video_epoch++;
         video_stalled = 0;
         app_test_period = period;
         app_test_phase = 4;
@@ -268,6 +296,8 @@ int vehicle_app_set_running(int tier, int start)
     app->task = t;
     video_demo = app;
     video_configured = 1;
+    video_tick = 0;
+    video_epoch++;
     task_start(t);
     return 0;
 }
