@@ -8,7 +8,7 @@
 [proc] kernel ttbr 0x4014c000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
 
 Quota OS microkernel
-Version: 016 (1cffff0)
+Version: 016 (d2dcaed)
 基于三级资源声明的微内核，
 一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
 [boot] EL1 SPSel=1 SCTLR_EL1.M=1
@@ -68,7 +68,7 @@ No app can be closed to make room: this device is too small.
 [menu] serial 6 10 13 14 15 16 18 stay on the coverage page
 [lvgl] ready
 [files] mounted bytes=0 checksum=0
-[apps] during 100 periods: dashboard_frames=100 misses=0 video_frames=0 music_submits=101
+[apps] during 100 periods: dashboard_frames=100 misses=0 video_frames=0 music_submits=99
 [apps] PASS
 QA DONE
 [input] raw ptr type 3 code 0 value 2971
@@ -78,7 +78,7 @@ QA DONE
 [input] raw ptr type 1 code 272 value 1
 [input] raw ptr type 0 code 0 value 0
 [lvgl] pointer 115,149 down 1
-[lvgl] fb commit click 3538 us n=1 (not panel light)
+[lvgl] fb commit click 9409 us n=1 (not panel light)
 [input] raw ptr type 1 code 272 value 0
 [input] raw ptr type 0 code 0 value 0
 [lvgl] pointer 115,149 down 0
@@ -90,347 +90,165 @@ QA DONE
 [input] raw ptr type 1 code 272 value 1
 [input] raw ptr type 0 code 0 value 0
 [lvgl] pointer 442,742 down 1
-[lvgl] fb commit click 8103 us n=2 (not panel light)
+[lvgl] fb commit click 8384 us n=2 (not panel light)
 [lvgl] pointer 442,742 down 0
 [menu] button 210
 [desktop] Apps opened
 [lvgl] pointer 574,231 down 0
 [lvgl] pointer 574,231 down 1
-[lvgl] fb commit click 7926 us n=3 (not panel light)
+[lvgl] fb commit click 10225 us n=3 (not panel light)
 [lvgl] pointer 574,231 down 0
 [menu] button 200
 [lvgl] input page
 [lvgl] pointer 163,155 down 0
 [lvgl] pointer 163,155 down 1
-[lvgl] fb commit click 12541 us n=4 (not panel light)
+[lvgl] fb commit click 9361 us n=4 (not panel light)
 [lvgl] pointer 163,155 down 0
 [desktop] window hidden
 [lvgl] pointer 489,384 down 0
 [lvgl] pointer 489,384 down 1
-[lvgl] fb commit click 28293 us n=5 (not panel light)
+[lvgl] fb commit click 60110 us n=5 (not panel light)
 [lvgl] pointer 489,384 down 0
-[lvgl] key code 23 value 1 char 105
-[lvgl] fb commit key 27306 us n=1 (not panel light)
-[lvgl] key code 23 value 0 char 105
-[lvgl] key code 49 value 1 char 110
-[lvgl] fb commit key 6666 us n=2 (not panel light)
-[lvgl] key code 49 value 0 char 110
-[lvgl] key code 20 value 1 char 116
-[lvgl] fb commit key 18600 us n=3 (not panel light)
-[lvgl] key code 20 value 0 char 116
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 7017 us n=4 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 50 value 1 char 109
-[lvgl] fb commit key 7424 us n=5 (not panel light)
-[lvgl] key code 50 value 0 char 109
-[lvgl] key code 30 value 1 char 97
-[lvgl] fb commit key 7738 us n=6 (not panel light)
-[lvgl] key code 30 value 0 char 97
-[lvgl] key code 23 value 1 char 105
-[lvgl] fb commit key 7187 us n=7 (not panel light)
-[lvgl] key code 23 value 0 char 105
-[lvgl] key code 49 value 1 char 110
-[lvgl] fb commit key 7953 us n=8 (not panel light)
-[lvgl] key code 49 value 0 char 110
-[lvgl] key code 10 value 1 char 40
-[lvgl] fb commit key 8052 us n=9 (not panel light)
-[lvgl] key code 10 value 0 char 40
-[lvgl] key code 47 value 1 char 118
-[lvgl] fb commit key 7948 us n=10 (not panel light)
-[lvgl] key code 47 value 0 char 118
-[lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 8358 us n=11 (not panel light)
-[lvgl] key code 24 value 0 char 111
-[lvgl] key code 23 value 1 char 105
-[lvgl] fb commit key 8896 us n=12 (not panel light)
-[lvgl] key code 23 value 0 char 105
-[lvgl] key code 32 value 1 char 100
-[lvgl] fb commit key 8905 us n=13 (not panel light)
-[lvgl] key code 32 value 0 char 100
-[lvgl] key code 11 value 1 char 41
-[lvgl] fb commit key 8466 us n=14 (not panel light)
-[lvgl] key code 11 value 0 char 41
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 8743 us n=15 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 26 value 1 char 123
-[lvgl] fb commit key 8760 us n=16 (not panel light)
-[lvgl] key code 26 value 0 char 123
-[lvgl] key code 28 value 1 char 10
-[lvgl] fb commit key 13642 us n=16 (not panel light)
-[lvgl] key code 28 value 0 char 10
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 11394 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 20778 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 29842 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 12901 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 25 value 1 char 112
-[lvgl] fb commit key 12173 us n=16 (not panel light)
-[lvgl] key code 25 value 0 char 112
-[lvgl] key code 22 value 1 char 117
-[lvgl] fb commit key 12325 us n=16 (not panel light)
-[lvgl] key code 22 value 0 char 117
-[lvgl] key code 20 value 1 char 116
-[lvgl] fb commit key 12343 us n=16 (not panel light)
-[lvgl] key code 20 value 0 char 116
-[lvgl] key code 31 value 1 char 115
-[lvgl] fb commit key 12543 us n=16 (not panel light)
-[lvgl] key code 31 value 0 char 115
-[lvgl] key code 10 value 1 char 40
-[lvgl] fb commit key 12556 us n=16 (not panel light)
-[lvgl] key code 10 value 0 char 40
-[lvgl] key code 40 value 1 char 34
-[lvgl] fb commit key 13386 us n=16 (not panel light)
-[lvgl] key code 40 value 0 char 34
-[lvgl] key code 46 value 1 char 67
-[lvgl] fb commit key 12772 us n=16 (not panel light)
-[lvgl] key code 46 value 0 char 67
-[lvgl] key code 22 value 1 char 117
-[lvgl] fb commit key 12919 us n=16 (not panel light)
-[lvgl] key code 22 value 0 char 117
-[lvgl] key code 31 value 1 char 115
-[lvgl] fb commit key 12985 us n=16 (not panel light)
-[lvgl] key code 31 value 0 char 115
-[lvgl] key code 20 value 1 char 116
-[lvgl] fb commit key 13246 us n=16 (not panel light)
-[lvgl] key code 20 value 0 char 116
-[lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 13752 us n=16 (not panel light)
-[lvgl] key code 24 value 0 char 111
-[lvgl] key code 50 value 1 char 109
-[lvgl] fb commit key 13840 us n=16 (not panel light)
-[lvgl] key code 50 value 0 char 109
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 13834 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 31 value 1 char 115
-[lvgl] fb commit key 14159 us n=16 (not panel light)
-[lvgl] key code 31 value 0 char 115
-[lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 14272 us n=16 (not panel light)
-[lvgl] key code 24 value 0 char 111
-[lvgl] key code 22 value 1 char 117
-[lvgl] fb commit key 14921 us n=16 (not panel light)
-[lvgl] key code 22 value 0 char 117
-[lvgl] key code 19 value 1 char 114
-[lvgl] fb commit key 15115 us n=16 (not panel light)
-[lvgl] key code 19 value 0 char 114
-[lvgl] key code 46 value 1 char 99
-[lvgl] fb commit key 14528 us n=16 (not panel light)
-[lvgl] key code 46 value 0 char 99
-[lvgl] key code 18 value 1 char 101
-[lvgl] fb commit key 14875 us n=16 (not panel light)
-[lvgl] key code 18 value 0 char 101
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 14623 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 17 value 1 char 119
-[lvgl] fb commit key 15005 us n=16 (not panel light)
-[lvgl] key code 17 value 0 char 119
-[lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 26474 us n=16 (not panel light)
-[lvgl] key code 24 value 0 char 111
-[lvgl] key code 19 value 1 char 114
-[lvgl] fb commit key 32648 us n=16 (not panel light)
-[lvgl] key code 19 value 0 char 114
-[lvgl] key code 37 value 1 char 107
-[lvgl] fb commit key 31513 us n=16 (not panel light)
-[lvgl] key code 37 value 0 char 107
-[lvgl] key code 31 value 1 char 115
-[lvgl] fb commit key 15798 us n=16 (not panel light)
-[lvgl] key code 31 value 0 char 115
-[lvgl] key code 2 value 1 char 33
-[lvgl] fb commit key 15509 us n=16 (not panel light)
-[lvgl] key code 2 value 0 char 33
-[lvgl] key code 40 value 1 char 34
-[lvgl] fb commit key 15430 us n=16 (not panel light)
-[lvgl] key code 40 value 0 char 34
-[lvgl] key code 11 value 1 char 41
-[lvgl] fb commit key 16056 us n=16 (not panel light)
-[lvgl] key code 11 value 0 char 41
-[lvgl] key code 39 value 1 char 59
-[lvgl] fb commit key 41257 us n=16 (not panel light)
-[lvgl] key code 39 value 0 char 59
-[lvgl] key code 28 value 1 char 10
-[lvgl] fb commit key 22691 us n=16 (not panel light)
-[lvgl] key code 28 value 0 char 10
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 26653 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 18564 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 29315 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 35208 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 19 value 1 char 114
-[lvgl] fb commit key 12770 us n=16 (not panel light)
-[lvgl] key code 19 value 0 char 114
-[lvgl] key code 18 value 1 char 101
-[lvgl] fb commit key 19052 us n=16 (not panel light)
-[lvgl] key code 18 value 0 char 101
-[lvgl] key code 20 value 1 char 116
-[lvgl] fb commit key 19008 us n=16 (not panel light)
-[lvgl] key code 20 value 0 char 116
-[lvgl] key code 22 value 1 char 117
-[lvgl] fb commit key 18968 us n=16 (not panel light)
-[lvgl] key code 22 value 0 char 117
-[lvgl] key code 19 value 1 char 114
-[lvgl] fb commit key 19770 us n=16 (not panel light)
-[lvgl] key code 19 value 0 char 114
-[lvgl] key code 49 value 1 char 110
-[lvgl] fb commit key 19850 us n=16 (not panel light)
-[lvgl] key code 49 value 0 char 110
-[lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 19881 us n=16 (not panel light)
-[lvgl] key code 57 value 0 char 32
-[lvgl] key code 11 value 1 char 48
-[lvgl] fb commit key 20104 us n=16 (not panel light)
-[lvgl] key code 11 value 0 char 48
-[lvgl] key code 39 value 1 char 59
-[lvgl] fb commit key 20134 us n=16 (not panel light)
-[lvgl] key code 39 value 0 char 59
-[lvgl] key code 28 value 1 char 10
-[lvgl] fb commit key 27270 us n=16 (not panel light)
-[lvgl] key code 28 value 0 char 10
-[lvgl] key code 27 value 1 char 125
-[lvgl] fb commit key 22565 us n=16 (not panel light)
-[lvgl] key code 27 value 0 char 125
+[lvgl] pointer 601,540 down 0
+[lvgl] pointer 601,540 down 1
+[lvgl] fb commit click 13365 us n=6 (not panel light)
+[lvgl] pointer 601,540 down 0
+[menu] button 236
 [lvgl] pointer 489,540 down 0
 [lvgl] pointer 489,540 down 1
-[lvgl] fb commit click 19343 us n=6 (not panel light)
+[lvgl] fb commit click 13406 us n=7 (not panel light)
 [lvgl] pointer 489,540 down 0
 [menu] button 232
 [lvgl] key code 32 value 1 char 100
-[lvgl] fb commit key 12578 us n=16 (not panel light)
+[lvgl] fb commit key 29302 us n=1 (not panel light)
 [lvgl] key code 32 value 0 char 100
 [lvgl] key code 18 value 1 char 101
-[lvgl] fb commit key 7298 us n=16 (not panel light)
+[lvgl] fb commit key 18270 us n=2 (not panel light)
 [lvgl] key code 18 value 0 char 101
 [lvgl] key code 50 value 1 char 109
-[lvgl] fb commit key 7403 us n=16 (not panel light)
+[lvgl] fb commit key 31879 us n=3 (not panel light)
 [lvgl] key code 50 value 0 char 109
 [lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 6874 us n=16 (not panel light)
+[lvgl] fb commit key 18449 us n=4 (not panel light)
 [lvgl] key code 24 value 0 char 111
 [lvgl] key code 52 value 1 char 46
-[lvgl] fb commit key 6898 us n=16 (not panel light)
+[lvgl] fb commit key 34940 us n=5 (not panel light)
 [lvgl] key code 52 value 0 char 46
 [lvgl] key code 46 value 1 char 99
-[lvgl] fb commit key 12674 us n=16 (not panel light)
+[lvgl] fb commit key 18501 us n=6 (not panel light)
 [lvgl] key code 46 value 0 char 99
 [lvgl] key code 28 value 1 char 10
 [menu] button 234
-[files] Saved elapsed_us=7900 frames=1 misses=0 boot_max_gap_us=10014
-[lvgl] fb commit key 57922 us n=16 (not panel light)
+[lvgl] fb commit key 70920 us n=7 (not panel light)
 [lvgl] key code 28 value 0 char 10
+[files] Saved elapsed_us=99749 frames=10 misses=0 boot_max_gap_us=10014
 [lvgl] pointer 287,263 down 0
 [lvgl] pointer 287,263 down 1
-[lvgl] fb commit click 3934 us n=7 (not panel light)
+[lvgl] fb commit click 9467 us n=8 (not panel light)
 [lvgl] pointer 287,263 down 0
 [desktop] window hidden
 [lvgl] pointer 442,742 down 0
 [lvgl] pointer 442,742 down 1
-[lvgl] fb commit click 8052 us n=8 (not panel light)
+[lvgl] fb commit click 8450 us n=9 (not panel light)
 [lvgl] pointer 442,742 down 0
 [menu] button 210
 [desktop] Apps opened
 [lvgl] pointer 230,449 down 0
 [lvgl] pointer 230,449 down 1
-[lvgl] fb commit click 7552 us n=9 (not panel light)
+[lvgl] fb commit click 18324 us n=10 (not panel light)
 [lvgl] pointer 230,449 down 0
 [menu] button 230
 [shell] opened
 [lvgl] key code 46 value 1 char 99
-[lvgl] fb commit key 7689 us n=16 (not panel light)
+[lvgl] fb commit key 14851 us n=8 (not panel light)
 [lvgl] key code 46 value 0 char 99
 [lvgl] key code 46 value 1 char 99
-[lvgl] fb commit key 7973 us n=16 (not panel light)
+[lvgl] fb commit key 14648 us n=9 (not panel light)
+[lvgl] key code 46 value 0 char 99
+[lvgl] key code 28 value 1 char 10
+[menu] button 231
+[shell] cc: Usage: cc demo.c -o hello
+[lvgl] fb commit key 57965 us n=10 (not panel light)
+[lvgl] key code 28 value 0 char 10
+[lvgl] key code 46 value 1 char 99
+[lvgl] fb commit key 14358 us n=11 (not panel light)
+[lvgl] key code 46 value 0 char 99
+[lvgl] key code 46 value 1 char 99
+[lvgl] fb commit key 14676 us n=12 (not panel light)
 [lvgl] key code 46 value 0 char 99
 [lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 7524 us n=16 (not panel light)
+[lvgl] fb commit key 14662 us n=13 (not panel light)
 [lvgl] key code 57 value 0 char 32
 [lvgl] key code 32 value 1 char 100
-[lvgl] fb commit key 7562 us n=16 (not panel light)
+[lvgl] fb commit key 23044 us n=14 (not panel light)
 [lvgl] key code 32 value 0 char 100
 [lvgl] key code 18 value 1 char 101
-[lvgl] fb commit key 7648 us n=16 (not panel light)
+[lvgl] fb commit key 14279 us n=15 (not panel light)
 [lvgl] key code 18 value 0 char 101
 [lvgl] key code 50 value 1 char 109
-[lvgl] fb commit key 8452 us n=16 (not panel light)
+[lvgl] fb commit key 15437 us n=16 (not panel light)
 [lvgl] key code 50 value 0 char 109
 [lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 7755 us n=16 (not panel light)
+[lvgl] fb commit key 24633 us n=16 (not panel light)
 [lvgl] key code 24 value 0 char 111
 [lvgl] key code 52 value 1 char 46
-[lvgl] fb commit key 8425 us n=16 (not panel light)
+[lvgl] fb commit key 15235 us n=16 (not panel light)
 [lvgl] key code 52 value 0 char 46
 [lvgl] key code 46 value 1 char 99
-[lvgl] fb commit key 8548 us n=16 (not panel light)
+[lvgl] fb commit key 33716 us n=16 (not panel light)
 [lvgl] key code 46 value 0 char 99
 [lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 8993 us n=16 (not panel light)
+[lvgl] fb commit key 27279 us n=16 (not panel light)
 [lvgl] key code 57 value 0 char 32
 [lvgl] key code 12 value 1 char 45
-[lvgl] fb commit key 8637 us n=16 (not panel light)
+[lvgl] fb commit key 15869 us n=16 (not panel light)
 [lvgl] key code 12 value 0 char 45
 [lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 23892 us n=16 (not panel light)
+[lvgl] fb commit key 16650 us n=16 (not panel light)
 [lvgl] key code 24 value 0 char 111
 [lvgl] key code 57 value 1 char 32
-[lvgl] fb commit key 8921 us n=16 (not panel light)
+[lvgl] fb commit key 27292 us n=16 (not panel light)
 [lvgl] key code 57 value 0 char 32
 [lvgl] key code 35 value 1 char 104
-[lvgl] fb commit key 27960 us n=16 (not panel light)
+[lvgl] fb commit key 16082 us n=16 (not panel light)
 [lvgl] key code 35 value 0 char 104
 [lvgl] key code 18 value 1 char 101
+[lvgl] fb commit key 15459 us n=16 (not panel light)
 [lvgl] key code 18 value 0 char 101
-[lvgl] fb commit key 27169 us n=16 (not panel light)
 [lvgl] key code 38 value 1 char 108
-[lvgl] fb commit key 9145 us n=16 (not panel light)
+[lvgl] fb commit key 15527 us n=16 (not panel light)
 [lvgl] key code 38 value 0 char 108
 [lvgl] key code 38 value 1 char 108
-[lvgl] fb commit key 9091 us n=16 (not panel light)
+[lvgl] fb commit key 16242 us n=16 (not panel light)
 [lvgl] key code 38 value 0 char 108
 [lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 9026 us n=16 (not panel light)
+[lvgl] fb commit key 18176 us n=16 (not panel light)
 [lvgl] key code 24 value 0 char 111
 [lvgl] key code 28 value 1 char 10
 [menu] button 231
 [shell] cc demo.c -o hello: Compiled demo.c to hello
-[lvgl] fb commit key 51426 us n=16 (not panel light)
+[lvgl] fb commit key 61632 us n=16 (not panel light)
 [lvgl] key code 28 value 0 char 10
 [lvgl] key code 52 value 1 char 46
-[lvgl] fb commit key 7199 us n=16 (not panel light)
+[lvgl] fb commit key 14415 us n=16 (not panel light)
 [lvgl] key code 52 value 0 char 46
 [lvgl] key code 53 value 1 char 47
-[lvgl] fb commit key 8106 us n=16 (not panel light)
+[lvgl] fb commit key 14303 us n=16 (not panel light)
 [lvgl] key code 53 value 0 char 47
 [lvgl] key code 35 value 1 char 104
-[lvgl] fb commit key 7862 us n=16 (not panel light)
+[lvgl] fb commit key 14481 us n=16 (not panel light)
 [lvgl] key code 35 value 0 char 104
 [lvgl] key code 18 value 1 char 101
-[lvgl] fb commit key 7501 us n=16 (not panel light)
+[lvgl] fb commit key 15118 us n=16 (not panel light)
 [lvgl] key code 18 value 0 char 101
 [lvgl] key code 38 value 1 char 108
-[lvgl] fb commit key 8626 us n=16 (not panel light)
+[lvgl] fb commit key 14245 us n=16 (not panel light)
 [lvgl] key code 38 value 0 char 108
 [lvgl] key code 38 value 1 char 108
-[lvgl] fb commit key 8289 us n=16 (not panel light)
+[lvgl] fb commit key 18503 us n=16 (not panel light)
 [lvgl] key code 38 value 0 char 108
 [lvgl] key code 24 value 1 char 111
-[lvgl] fb commit key 8376 us n=16 (not panel light)
+[lvgl] fb commit key 15411 us n=16 (not panel light)
 [lvgl] key code 24 value 0 char 111
 [lvgl] key code 28 value 1 char 10
 [menu] button 231
@@ -438,6 +256,6 @@ QA DONE
 [map] pte code=0x40207fc3 stack=0x60000040208f43 draw=0x60000040209f43 ap_el0=1/1/1
 [map] walk kern=0x0 pte=0x40207fc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x40207fc3 ap_el0=1
 [shell] ./hello: Running hello (Tier 3)
-[lvgl] fb commit key 56492 us n=16 (not panel light)
-[shell] output: Custom source works!
+[lvgl] fb commit key 67588 us n=16 (not panel light)
+[shell] output: Hello, Quota OS!
 [lvgl] key code 28 value 0 char 10

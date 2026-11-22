@@ -17,7 +17,7 @@
 <h1>Critical tasks get<br><span>their CPU time on schedule.</span></h1>
 <p class="intro">Quota OS is an experimental ARM64 operating system. It reserves CPU time for critical tasks, admits applications when capacity is available, and shares spare time among ordinary workloads.</p>
 <p class="actions"><a class="primary" href="#run">Run Quota OS</a><a href="https://github.com/leiquan/Quota-OS">Browse source ↗</a></p>
-<div class="showcase"><div class="gallery" tabindex="0" aria-label="Desktop screenshots"><figure><img src="screenshots/pages-apps.png" width="1280" height="800" alt="Apps"><figcaption>Apps</figcaption></figure><figure><img src="screenshots/pages-task.png" width="1280" height="800" alt="System Task"><figcaption>System Task</figcaption></figure><figure><img src="screenshots/pages-info.png" width="1280" height="800" alt="System Info"><figcaption>System Info</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="Desktop screenshots"><figure><img src="screenshots/pages-apps.png?v=desktop" width="1280" height="800" alt="Apps"><figcaption>Apps</figcaption></figure><figure><img src="screenshots/pages-task.png?v=desktop" width="1280" height="800" alt="System Task"><figcaption>System Task</figcaption></figure><figure><img src="screenshots/pages-info.png?v=desktop" width="1280" height="800" alt="System Info"><figcaption>System Info</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
 <h3 class="platform-title">Demo configuration</h3><dl class="platform"><div><dt>Processor</dt><dd>ARM64 · Cortex-A35 (QEMU, 1 core)</dd></div><div><dt>Memory</dt><dd>64 MiB</dd></div><div><dt>Display</dt><dd>1280 × 800 · LVGL / ramfb</dd></div><div><dt>Timing</dt><dd>QEMU TCG · icount guest clock</dd></div></dl>
 </section>
 <section class="wrap section" id="model">
@@ -63,13 +63,13 @@ QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh</code></pre>
 <h3>C development inside Quota OS</h3>
 <p>Enter the example in Notes, choose Save As…, and name it <code>demo.c</code>. Open Apps → Shell, type at the <code>quota&gt;</code> prompt, and press Enter.</p>
 <pre><code>int main(void) {
-    puts("Custom source works!");
+    puts("Hello, Quota OS!");
     return 0;
 }</code></pre>
 <pre><code>cc demo.c -o hello
 ./hello</code></pre>
 <p>The initial C subset accepts a header-free int main(void), one puts string literal, and return 0. The executable runs in Tier 3. Tier 2 launch parameters are pending.</p>
-<div class="showcase"><div class="gallery" tabindex="0" aria-label="Save demo.c in Notes"><figure><img src="screenshots/dev-source.png?v=terminal" width="1280" height="800" loading="lazy" alt="Save demo.c in Notes"><figcaption>Save demo.c in Notes</figcaption></figure><figure><img src="screenshots/dev-compile.png?v=terminal" width="1280" height="800" loading="lazy" alt="Compile demo.c in Shell"><figcaption>Compile demo.c in Shell</figcaption></figure><figure><img src="screenshots/dev-run.png?v=terminal" width="1280" height="800" loading="lazy" alt="Run hello in EL0"><figcaption>Run hello in EL0</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="Save demo.c in Notes"><figure><img src="screenshots/dev-source.png?v=desktop" width="1280" height="800" loading="lazy" alt="Save demo.c in Notes"><figcaption>Save demo.c in Notes</figcaption></figure><figure><img src="screenshots/dev-compile.png?v=desktop" width="1280" height="800" loading="lazy" alt="Compile demo.c in Shell"><figcaption>Compile demo.c in Shell</figcaption></figure><figure><img src="screenshots/dev-run.png?v=desktop" width="1280" height="800" loading="lazy" alt="Run hello in EL0"><figcaption>Run hello in EL0</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
 </section>
 </main>
 <footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>

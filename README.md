@@ -70,7 +70,7 @@ Open **System → Test** on the vehicle desktop. Select one workload at a time. 
 
 The four runnable workloads are sampled for at least 100 guest periods and then stopped. In the captured infinite-loop run the guest reported 109 speedometer commits in 109 periods, zero deadline misses and zero pool crossings. The saturated Tier 2 task peaked at 799 µs over 108 periods with zero recorded shortfalls or overruns. These observations cover this QEMU configuration. Fixed budgets under saturation, resource pressure, physical display latency and hardware timing require separate testing. [Serial log](docs/tests/adaptive-reserve/ui.log)
 
-![Tier 3 infinite-loop test in the System app](docs/screenshots/system-test.png)
+![Available quota tests in the System app](docs/screenshots/system-test.png)
 
 ## Files
 
@@ -98,23 +98,23 @@ The launcher uses the prebuilt kernel and creates a dedicated image at `~/.local
 
 ## Develop a C application in Quota OS
 
-Start with the Notes disk attached using `bash tools/run-files.sh`. Enter this program in Notes and choose **Save As…**, enter `demo.c`, and press Enter. The saved source appears on the desktop and in Files.
+Start with the Notes disk attached using `bash tools/run-files.sh`. In Notes, choose **C Example** to insert the program below, or type it yourself. Choose **Save As…**, enter `demo.c`, and press Enter. The saved source appears on the desktop and in Files.
 
 ```c
 int main(void) {
-    puts("Custom source works!");
+    puts("Hello, Quota OS!");
     return 0;
 }
 ```
 
-Open **Apps → Shell**. Type each command at the `quota>` prompt and press **Enter**. The terminal retains a scrollable record of commands and results.
+Open **Apps → Shell**. Type each command at the `quota>` prompt and press **Enter**. The terminal retains a scrollable record of commands and results. Type `cc` alone for an example using the saved filename.
 
 ```sh
 cc demo.c -o hello
 ./hello
 ```
 
-The compiler emits ARM64 instructions inside Quota OS. The program runs in Tier 3 EL0 and writes `Custom source works!` to Shell. This first release accepts the small C subset shown above. It supports one saved source file, at most 463 bytes, alongside the existing note. The compiled binary stays in memory until reboot. Tier 2 admission from Shell and a general C compiler remain future work. Tier 1 is vendor reserved. [First boot](docs/tests/c-workflow/qemu.log) · [Cold reboot](docs/tests/c-workflow/source-reopen.log)
+The compiler emits ARM64 instructions inside Quota OS. The program runs in Tier 3 EL0 and writes `Hello, Quota OS!` to Shell. This first release accepts the small C subset shown above. It supports one saved source file, at most 463 bytes, alongside the existing note. The compiled binary stays in memory until reboot. Tier 2 admission from Shell and a general C compiler remain future work. Tier 1 is vendor reserved. [First boot](docs/tests/c-workflow/qemu.log) · [Cold reboot](docs/tests/c-workflow/source-reopen.log)
 
 | Source saved in Notes | Compilation in Shell | Output from EL0 |
 | --- | --- | --- |

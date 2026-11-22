@@ -21,7 +21,7 @@ static lv_obj_t *detail;
 static lv_obj_t *page_home;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover, *page_apps, *page_files, *page_shell;
-static lv_obj_t *shell_input, *shell_output, *source_entry, *source_icon;
+static lv_obj_t *shell_input, *shell_output, *source_entry, *source_icon, *source_caption, *note_icon;
 static lv_obj_t *shell_history, *shell_prompt, *source_dialog, *source_name, *source_error;
 static char shell_transcript[2048];
 static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata;
@@ -567,10 +567,18 @@ static void shell_append(const char *line)
     shell_refresh();
 }
 
-static const char shell_help[] =
-    "help / pwd / ls / clear\n"
-    "cc FILE.c -o hello   Compile saved C source\n"
-    "./hello               Run in Tier 3";
+static void shell_help(char *out, unsigned capacity)
+{
+    const char *name = note_disk_source_name();
+    if (name)
+        lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
+                    "cc %s -o hello   Compile your source\n"
+                    "./hello   Run in Tier 3", name);
+    else
+        lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
+                    "In Notes, choose C Example, then Save As… to save a .c file.\n"
+                    "Return here to compile and run it.");
+}
 
 static void on_group(lv_event_t *e)
 {
@@ -592,6 +600,12 @@ static void on_group(lv_event_t *e)
         monitor_visible(page_apps, 0);
         dock_state(APP_LAUNCHER, CLOSED);
         show_page(5);
+        if (!shell_transcript[0]) {
+            char help[200];
+            shell_help(help, sizeof help);
+            shell_append("Quota OS Shell  |  /Desktop");
+            shell_append(help);
+        }
         lv_group_focus_obj(shell_input);
         printf("[shell] opened\n");
         return;
@@ -599,12 +613,14 @@ static void on_group(lv_event_t *e)
     if (id == 231) {
         const char *command = lv_textarea_get_text(shell_input);
         if (!command[0]) return;
-        char output[112], compile[96];
+        char output[200], compile[96];
         const char *name = note_disk_source_name();
         const char *result = "Unknown command. Type help.";
         lv_snprintf(compile, sizeof compile, "cc %s -o hello", name ? name : "hello.c");
-        if (!strcmp(command, "help"))
-            result = shell_help;
+        if (!strcmp(command, "help")) {
+            shell_help(output, sizeof output);
+            result = output;
+        }
         else if (!strcmp(command, "pwd"))
             result = "/Desktop";
         else if (!strcmp(command, "ls")) {
@@ -619,13 +635,19 @@ static void on_group(lv_event_t *e)
             shell_refresh();
             lv_textarea_set_text(shell_input, "");
             return;
-        } else if (!strcmp(command, compile)) {
+        } else if (name && !strcmp(command, compile)) {
             if (c_demo_compile(note_disk_source()))
                 result = "Compile error: check the saved C source.";
             else {
                 lv_snprintf(output, sizeof output, "Compiled %s to hello", name);
                 result = output;
             }
+        }
+        else if (command[0] == 'c' && command[1] == 'c' &&
+                 (command[2] == 0 || command[2] == ' ')) {
+            if (name) lv_snprintf(output, sizeof output, "Usage: %s", compile);
+            else shell_help(output, sizeof output);
+            result = output;
         }
         else if (!strcmp(command, "./hello"))
             result = c_demo_run() < 0 ? "Run failed: compile first or wait for a free process slot." : "Running hello (Tier 3)";
@@ -657,6 +679,19 @@ static void on_group(lv_event_t *e)
             show_page(1);
             printf("[files] opened Note.txt in Notes\n");
         }
+        return;
+    }
+    if (id == 236) {
+        if (!lv_textarea_get_text(field)[0]) {
+            lv_textarea_set_text(field, "int main(void) {\n"
+                "    puts(\"Hello, Quota OS!\");\n"
+                "    return 0;\n"
+                "}");
+            lv_label_set_text(note_status, "Example inserted. Choose Save As…");
+        } else {
+            lv_label_set_text(note_status, "Clear the editor to insert an example.");
+        }
+        lv_group_focus_obj(field);
         return;
     }
     if (id == 232) {
@@ -760,7 +795,8 @@ static lv_obj_t *add_row(lv_obj_t *parent, int y, uint32_t bg, uint32_t edge, co
     lv_obj_set_style_border_color(item, lv_color_hex(edge), 0);
     lv_obj_set_style_border_width(item, 1, 0);
     lv_obj_set_style_shadow_width(item, 0, 0);
-    lv_obj_set_style_radius(item, 8, 0);
+    lv_obj_set_style_radius(item, 10, 0);
+    lv_obj_set_style_bg_opa(item, LV_OPA_80, LV_STATE_PRESSED);
     lv_obj_set_style_text_color(item, lv_color_hex(0x101820), 0);
     lv_obj_add_event_cb(item, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)id);
     lv_obj_t *il = lv_label_create(item);
@@ -777,6 +813,44 @@ static lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, ui
     lv_label_set_text(o, text);
     lv_obj_set_style_text_color(o, lv_color_hex(color), 0);
     return o;
+}
+
+static lv_obj_t *desktop_file(lv_obj_t *screen, int x, int y, const char *name,
+                              const char *type, int action, lv_obj_t **caption)
+{
+    lv_obj_t *button = lv_button_create(screen);
+    lv_obj_set_pos(button, x, y);
+    lv_obj_set_size(button, 72, 94);
+    lv_obj_set_style_pad_all(button, 0, 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x14213a), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(button, LV_OPA_50, LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(button, 0, 0);
+    lv_obj_add_event_cb(button, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)action);
+
+    lv_obj_t *paper = lv_obj_create(button);
+    lv_obj_set_size(paper, 42, 50);
+    lv_obj_align(paper, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_set_style_bg_color(paper, lv_color_hex(0xf6f9ff), 0);
+    lv_obj_set_style_border_color(paper, lv_color_hex(0xc2cde1), 0);
+    lv_obj_set_style_border_width(paper, 1, 0);
+    lv_obj_set_style_radius(paper, 6, 0);
+    lv_obj_set_style_pad_all(paper, 0, 0);
+    lv_obj_remove_flag(paper, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *lines = desk_label(paper, 12, 5, LV_SYMBOL_LIST, 0x52708f);
+    lv_obj_t *extension = desk_label(paper, 0, 0, type, 0x284765);
+    lv_obj_align(extension, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_remove_flag(lines, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(extension, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *label = desk_label(button, 0, 0, name, 0xf5f8ff);
+    lv_obj_set_width(label, 72);
+    lv_obj_set_height(label, 20);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 62);
+    if (caption) *caption = label;
+    return button;
 }
 
 static void hide_window(lv_event_t *e, int minimized)
@@ -828,9 +902,10 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     lv_obj_set_pos(win, x, y);
     lv_obj_set_size(win, w, h);
     lv_obj_set_style_pad_all(win, 0, 0);
-    lv_obj_set_style_radius(win, 12, 0);
-    lv_obj_set_style_bg_color(win, lv_color_hex(0xf5f7fc), 0);
-    lv_obj_set_style_border_color(win, lv_color_hex(0xb4bfd9), 0);
+    lv_obj_set_style_radius(win, 16, 0);
+    lv_obj_set_style_clip_corner(win, true, 0);
+    lv_obj_set_style_bg_color(win, lv_color_hex(0xf7f9fc), 0);
+    lv_obj_set_style_border_color(win, lv_color_hex(0xc4cfdf), 0);
     lv_obj_set_style_border_width(win, 1, 0);
     lv_obj_remove_flag(win, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *bar = lv_obj_create(win);
@@ -838,8 +913,10 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     lv_obj_set_size(bar, w, 52);
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_set_style_radius(bar, 0, 0);
-    lv_obj_set_style_border_width(bar, 0, 0);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0xe6ebf5), 0);
+    lv_obj_set_style_border_width(bar, 1, 0);
+    lv_obj_set_style_border_side(bar, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(bar, lv_color_hex(0xdce4ef), 0);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(0xebf0f7), 0);
     lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(bar, window_drag, LV_EVENT_PRESSED, win);
     lv_obj_add_event_cb(bar, window_drag, LV_EVENT_PRESSING, win);
@@ -851,7 +928,8 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
         lv_obj_set_style_radius(dot, 10, 0);
         lv_obj_set_style_border_width(dot, 0, 0);
         lv_obj_set_style_shadow_width(dot, 0, 0);
-        lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xdce4f3 : 0xf8dce1), 0);
+        lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xe0e8f2 : 0xf5e5e9), 0);
+        lv_obj_set_style_bg_color(dot, lv_color_hex(i ? 0xd2dfef : 0xf0cbd3), LV_STATE_PRESSED);
         lv_obj_t *glyph = desk_label(dot, 0, 0, i ? LV_SYMBOL_MINUS : LV_SYMBOL_CLOSE,
                                      i ? 0x334563 : 0x982c40);
         lv_obj_center(glyph);
@@ -896,11 +974,26 @@ static lv_obj_t *app_icon(lv_obj_t *parent, enum app_key key, int x, int y, int 
     lv_obj_set_style_border_width(tile, 0, 0);
     lv_obj_set_style_bg_color(tile, lv_color_hex(app->color), 0);
     lv_obj_remove_flag(tile, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *symbol = lv_label_create(tile);
-    lv_label_set_text(symbol, app->glyph);
-    lv_obj_set_style_text_font(symbol, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(symbol, lv_color_hex(0xffffff), 0);
-    lv_obj_center(symbol);
+    if (key == APP_LAUNCHER) {
+        int cell = square / 6, gap = square / 11;
+        int inset = (square - 2 * cell - gap) / 2;
+        for (int i = 0; i < 4; i++) {
+            lv_obj_t *pad = lv_obj_create(tile);
+            lv_obj_set_size(pad, cell, cell);
+            lv_obj_set_pos(pad, inset + (i % 2) * (cell + gap),
+                           inset + (i / 2) * (cell + gap));
+            lv_obj_set_style_radius(pad, 2, 0);
+            lv_obj_set_style_bg_color(pad, lv_color_hex(i == 3 ? 0xbfe9f0 : 0xffffff), 0);
+            lv_obj_set_style_border_width(pad, 0, 0);
+            lv_obj_remove_flag(pad, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        }
+    } else {
+        lv_obj_t *symbol = lv_label_create(tile);
+        lv_label_set_text(symbol, app->glyph);
+        lv_obj_set_style_text_font(symbol, &lv_font_montserrat_24, 0);
+        lv_obj_set_style_text_color(symbol, lv_color_hex(0xffffff), 0);
+        lv_obj_center(symbol);
+    }
     lv_obj_t *caption = lv_label_create(button);
     lv_label_set_text(caption, app->name);
     lv_obj_set_style_text_color(caption, lv_color_hex(0x233351), 0);
@@ -1292,7 +1385,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_pad_all(top, 0, 0);
     lv_obj_set_style_radius(top, 0, 0);
     lv_obj_set_style_border_width(top, 0, 0);
-    lv_obj_set_style_bg_color(top, lv_color_hex(0x101d39), 0);
+    lv_obj_set_style_bg_color(top, lv_color_hex(0x152641), 0);
+    lv_obj_set_style_bg_opa(top, LV_OPA_70, 0);
     lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *about_button = lv_button_create(top);
     lv_obj_set_pos(about_button, 10, 0);
@@ -1412,7 +1506,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_size(save, 112, 40);
     lv_obj_t *save_source = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save As…", 232);
     lv_obj_set_pos(save_source, 156, 283);
-    lv_obj_set_width(save_source, 156);
+    lv_obj_set_width(save_source, 132);
+    lv_obj_t *example = add_row(page_input, 283, 0xffffff, 0xdce4ef, "C Example", 236);
+    lv_obj_set_pos(example, 294, 283);
+    lv_obj_set_width(example, 98);
     lv_obj_t *btn = lv_button_create(page_input);
     lv_obj_set_pos(btn, 28, 283);
     lv_obj_set_size(btn, 112, 40);
@@ -1532,11 +1629,11 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
     source_entry = add_row(page_files, 185, 0xffffff, 0xdbe3f0, "C source", 233);
     lv_obj_set_pos(source_entry, 20, 185);
-    source_icon = add_row(screen, 66, 0xe0edff, 0xc5d9fa, "C source", 233);
-    lv_obj_set_pos(source_icon, 24, 66);
-    lv_obj_set_width(source_icon, 96);
+    source_icon = desktop_file(screen, 12, 66, "", ".c", 233, &source_caption);
+    note_icon = desktop_file(screen, 12, 164, "Note.txt", "TXT", 213, NULL);
     monitor_visible(source_entry, 0);
     monitor_visible(source_icon, 0);
+    monitor_visible(note_icon, 0);
     page_shell = desktop_window(screen, 160, 148, 670, 390, "Shell");
     shell_history = lv_obj_create(page_shell);
     lv_obj_set_pos(shell_history, 10, 54);
@@ -1563,11 +1660,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_outline_width(shell_input, 0, LV_STATE_FOCUS_KEY);
     lv_group_add_obj(group, shell_input);
     lv_obj_add_event_cb(shell_input, on_group, LV_EVENT_READY, (void *)(uintptr_t)231);
-    shell_append("Quota OS Shell  |  /Desktop\n\n"
-        "help     Show commands\n"
-        "ls       List desktop files\n"
-        "cc FILE.c -o hello   Compile C source\n"
-        "./hello               Run in Tier 3");
+    shell_refresh();
     monitor_visible(page_shell, 0);
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
     static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL};
@@ -1587,9 +1680,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - 96);
     lv_obj_set_size(dock, dock_width, 84);
     lv_obj_set_style_pad_all(dock, 0, 0);
-    lv_obj_set_style_radius(dock, 16, 0);
-    lv_obj_set_style_bg_color(dock, lv_color_hex(0xc9c9e6), 0);
-    lv_obj_set_style_border_color(dock, lv_color_hex(0xe1e2f7), 0);
+    lv_obj_set_style_radius(dock, 20, 0);
+    lv_obj_set_style_bg_color(dock, lv_color_hex(0xdde5f4), 0);
+    lv_obj_set_style_border_color(dock, lv_color_hex(0xf1f5fd), 0);
     lv_obj_set_style_border_width(dock, 1, 0);
     lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
     for (int key = 0; key < APP_COUNT; key++) {
@@ -1661,10 +1754,11 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             if (note_disk_text())
                 lv_label_set_text_fmt(file_metadata, "Plain text  /  %u bytes", note_disk_bytes());
             monitor_visible(file_entry, note_disk_text() != NULL);
+            monitor_visible(note_icon, note_disk_text() != NULL);
             const char *name = note_disk_source_name();
             if (name) {
                 lv_label_set_text(lv_obj_get_child(source_entry, 0), name);
-                lv_label_set_text(lv_obj_get_child(source_icon, 0), name);
+                lv_label_set_text(source_caption, name);
             }
             monitor_visible(source_entry, name != NULL);
             monitor_visible(source_icon, note_disk_source() != NULL);

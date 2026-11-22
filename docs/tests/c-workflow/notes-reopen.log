@@ -5,10 +5,10 @@
 [proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
 [proc] permission-only sharing of the kernel L2 is not what this table does.
 [proc] EL0 slots 2 pool 16 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
-[proc] kernel ttbr 0x4014b000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+[proc] kernel ttbr 0x4014c000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
 
 Quota OS microkernel
-Version: 016 (44498d3)
+Version: 016 (d2dcaed)
 基于三级资源声明的微内核，
 一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
 [boot] EL1 SPSel=1 SCTLR_EL1.M=1
@@ -21,7 +21,7 @@ Version: 016 (44498d3)
 [boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
 [boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
        tier-1 pages in 11 own colors, padding 3584 KB
-[boot] kernel image+bss 2149 KB of the 16384 KB system reserve
+[boot] kernel image+bss 2155 KB of the 16384 KB system reserve
 [boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
 [boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
 [boot] clock: icount (counter driven by instruction count)
@@ -38,9 +38,9 @@ Version: 016 (44498d3)
 [boot] shell task running
 [fb] reserved 4096000 bytes at 0x40c18000 inside the system reserve
 [fb] ramfb published 1280x800 stride 5120 at 0x40c18000 from fw_cfg 0x9020000
-[map] pid=4 handle=0x10001 gen=1 asid=1 ttbr=0x1000040213000 draw_pa=0x40205000
-[map] pte code=0x40203fc3 stack=0x60000040204f43 draw=0x60000040205f43 ap_el0=1/1/1
-[map] walk kern=0x0 pte=0x40203fc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x0 ap_el0=0
+[map] pid=4 handle=0x10001 gen=1 asid=1 ttbr=0x1000040214000 draw_pa=0x40206000
+[map] pte code=0x40204fc3 stack=0x60000040205f43 draw=0x60000040206f43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x40204fc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x0 ap_el0=0
 [apps] dashboard tier=1 slot=0; music tier=3 EL0; video=1
 [lvgl] autostart on the Tier-3 shell task
 [lvgl] this task does not mask IRQs and it is not a tier-1 slot.
@@ -78,7 +78,7 @@ QA DONE
 [input] raw ptr type 1 code 272 value 1
 [input] raw ptr type 0 code 0 value 0
 [lvgl] pointer 376,742 down 1
-[lvgl] fb commit click 7968 us n=1 (not panel light)
+[lvgl] fb commit click 8393 us n=1 (not panel light)
 [input] raw ptr type 1 code 272 value 0
 [input] raw ptr type 0 code 0 value 0
 [lvgl] pointer 376,742 down 0
@@ -91,25 +91,25 @@ QA DONE
 [input] raw ptr type 1 code 272 value 1
 [input] raw ptr type 0 code 0 value 0
 [lvgl] pointer 404,231 down 1
-[lvgl] fb commit click 7763 us n=2 (not panel light)
+[lvgl] fb commit click 15770 us n=2 (not panel light)
 [lvgl] pointer 404,231 down 0
 [menu] button 212
 [files] directory opened
 [lvgl] pointer 369,257 down 0
 [lvgl] pointer 369,257 down 1
-[lvgl] fb commit click 31609 us n=3 (not panel light)
+[lvgl] fb commit click 60459 us n=3 (not panel light)
 [lvgl] pointer 369,257 down 0
 [menu] button 213
 [files] opened Note.txt in Notes
 [lvgl] pointer 712,540 down 0
 [lvgl] pointer 712,540 down 1
-[lvgl] fb commit click 5787 us n=4 (not panel light)
+[lvgl] fb commit click 17094 us n=4 (not panel light)
 [lvgl] pointer 712,540 down 0
 [menu] button 214
-[files] Saved elapsed_us=19839 frames=2 misses=0 boot_max_gap_us=10014
+[files] Saved elapsed_us=9057 frames=1 misses=0 boot_max_gap_us=10014
 [lvgl] pointer 712,540 down 0
 [lvgl] pointer 712,540 down 1
-[lvgl] fb commit click 5760 us n=5 (not panel light)
+[lvgl] fb commit click 16916 us n=5 (not panel light)
 [lvgl] pointer 712,540 down 0
 [menu] button 214
-[files] Saved elapsed_us=17152776 frames=1715 misses=0 boot_max_gap_us=10014
+[files] Saved elapsed_us=11832668 frames=1183 misses=0 boot_max_gap_us=10014
