@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="An experimental ARM64 operating system built around CPU quotas.">
 <title>Quota OS — A resource-partitioned operating system</title>
-<link rel="stylesheet" href="site.css?v=light">
+<link rel="stylesheet" href="site.css?v=compare">
 <script src="site.js?v=dev" defer></script>
+<link rel="icon" href="favicon.png" type="image/png">
 </head>
 <body>
-<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="Main navigation"><a href="#model">Features</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="zh.html" lang="zh-CN">中文</a></nav></header>
+<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="Main navigation"><a href="#model">Features</a><a href="#compare">Compare</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="zh.html" lang="zh-CN">中文</a></nav></header>
 <main>
 <section class="wrap hero" id="home">
 <p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
@@ -26,6 +27,18 @@
 <article><p class="eyebrow">TIER 2</p><h3>User selected</h3><p>The dashcam starts with user approval and sufficient capacity for its declared minimum.</p></article>
 <article><p class="eyebrow">TIER 3</p><h3>Shared resources</h3><p>Music and desktop interaction share remaining CPU time under a common cap.</p></article>
 </div>
+</section>
+<section class="wrap section" id="compare">
+<h2>Compare</h2><p>Quota OS explores resource isolation for automotive instruments and eVTOL displays. Critical display work has a fixed CPU slot, admitted applications receive a minimum, and ordinary workloads share a capped pool.</p>
+<div class="compare-scroll" tabindex="0" aria-label="CPU policy and admission">
+<table class="compare-table"><caption>CPU policy and admission</caption>
+<thead><tr><th scope="col">System</th><th scope="col">Resource mechanism</th><th scope="col">Quota OS comparison</th></tr></thead>
+<tbody><tr><th scope="row">QNX</th><td>Adaptive partitions allocate minimum CPU shares to groups of threads and share spare capacity.</td><td>Quota OS gives applications three explicit admission policies and caps the aggregate best-effort pool. <a href="https://www.qnx.com/developers/docs/7.1/">Official docs</a></td></tr>
+<tr><th scope="row">seL4 MCS</th><td>Scheduling contexts carry a budget and period and can transfer execution budget across IPC.</td><td>System integrators define policy with those primitives. Quota OS defines the tier and admission policy in the OS. <a href="https://docs.sel4.systems/Tutorials/mcs.html">Official docs</a></td></tr>
+<tr><th scope="row">Linux</th><td>SCHED_DEADLINE provides runtime, deadline and period parameters, admission control and optional bandwidth reclaiming.</td><td>An integrator can combine Linux controls to build similar isolation. Quota OS exposes the three-tier policy directly. <a href="https://docs.kernel.org/scheduler/sched-deadline.html">Official docs</a></td></tr>
+<tr><th scope="row">VxWorks 653</th><td>ARINC 653-style time and space partitioning separates workloads into configured partitions.</td><td>Fixed partition timing is closest to Tier 1. Quota OS also demonstrates user-approved reservations and an aggregate shared pool. <a href="https://www.windriver.com/products/vxworks">Official docs</a></td></tr></tbody>
+</table></div>
+<p>The published QEMU icount tests cover CPU scheduling and guest framebuffer commits. Comparative real-hardware latency, aircraft flight control, and safety certification remain outside the verified scope.</p>
 </section>
 <section class="wrap section" id="evidence">
 <h2>The speedometer keeps updating while the desktop spins</h2>

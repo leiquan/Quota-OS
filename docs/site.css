@@ -132,3 +132,11 @@ img { border-color: #ced8e8; }
 .indicator::before { background: #7083a0; }
 .indicator[aria-current="true"]::before { background: #285996; }
 .platform dt { color: #536781; }
+
+.compare-scroll { overflow-x: auto; border: 1px solid #dbe2ed; border-radius: 12px; background: #fff; }
+.compare-table { border-collapse: collapse; width: 100%; min-width: 640px; }
+.compare-table caption { text-align: left; padding: 16px 20px; color: #536781; }
+.compare-table th, .compare-table td { text-align: left; vertical-align: top; padding: 14px 20px; line-height: 1.55; }
+.compare-table thead { background: #eef3fa; }
+.compare-table tbody tr + tr { border-top: 1px solid #e3e9f2; }
+.compare-table th[scope="row"] { white-space: nowrap; }

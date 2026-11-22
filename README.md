@@ -28,6 +28,34 @@ In the desktop-stall run the boot peak was 8,354 µs busy per period (83.54%). T
 
 The desktop uses QEMU ramfb and measures guest framebuffer commits. A boot with virtio-gpu alone reached the kernel but failed framebuffer initialization. GPU queue timing, host presentation and physical scanout remain unverified. [Virtual GPU probe](docs/tests/adaptive-reserve/virtio-gpu.log)
 
+## Compare / 系统对比
+
+### English
+
+Quota OS explores resource isolation for automotive instruments and eVTOL displays. Critical display work has a fixed CPU slot, admitted applications receive a minimum, and ordinary workloads share a capped pool.
+
+| System | Resource mechanism | Quota OS comparison |
+| --- | --- | --- |
+| QNX | Adaptive partitions allocate minimum CPU shares to groups of threads and share spare capacity. | Quota OS gives applications three explicit admission policies and caps the aggregate best-effort pool. [Official docs](https://www.qnx.com/developers/docs/7.1/) |
+| seL4 MCS | Scheduling contexts carry a budget and period and can transfer execution budget across IPC. | System integrators define policy with those primitives. Quota OS defines the tier and admission policy in the OS. [Official docs](https://docs.sel4.systems/Tutorials/mcs.html) |
+| Linux | SCHED_DEADLINE provides runtime, deadline and period parameters, admission control and optional bandwidth reclaiming. | An integrator can combine Linux controls to build similar isolation. Quota OS exposes the three-tier policy directly. [Official docs](https://docs.kernel.org/scheduler/sched-deadline.html) |
+| VxWorks 653 | ARINC 653-style time and space partitioning separates workloads into configured partitions. | Fixed partition timing is closest to Tier 1. Quota OS also demonstrates user-approved reservations and an aggregate shared pool. [Official docs](https://www.windriver.com/products/vxworks) |
+
+The published QEMU icount tests cover CPU scheduling and guest framebuffer commits. Comparative real-hardware latency, aircraft flight control, and safety certification remain outside the verified scope.
+
+### 中文
+
+Quota OS 是面向车载仪表和 eVTOL 显示场景的资源隔离原型。关键显示使用固定 CPU 槽，准入应用获得最低配额，普通工作负载共享有上限的总池。
+
+| 系统 | 资源机制 | 与 Quota OS 对比 |
+| --- | --- | --- |
+| QNX | 自适应分区为一组线程设置最低 CPU 份额，并共享空闲时间。 | Quota OS 为应用定义三种准入方式，并限制三级共享池总量。 [官方资料](https://www.qnx.com/developers/docs/7.1/) |
+| seL4 MCS | 调度上下文携带预算与周期，可以通过 IPC 转移执行预算。 | 系统集成方用这些机制制定策略。Quota OS 在系统中直接定义级别与准入规则。 [官方资料](https://docs.sel4.systems/Tutorials/mcs.html) |
+| Linux | SCHED_DEADLINE 提供运行预算、截止期、周期、准入控制和可选的带宽回收。 | Linux 可以组合出类似隔离策略。Quota OS 直接把三级规则呈现在应用准入和运行中。 [官方资料](https://docs.kernel.org/scheduler/sched-deadline.html) |
+| VxWorks 653 | ARINC 653 式时间和空间分区将工作负载放入预先配置的分区。 | 固定分区的时序接近一级。Quota OS 同时演示用户批准的二级配额和有总上限的三级池。 [官方资料](https://www.windriver.com/products/vxworks) |
+
+已发布的 QEMU icount 测试覆盖 CPU 调度和来宾帧缓冲提交。真实硬件横向时延、飞行控制和安全认证均尚未验证。
+
 ## Live system checks
 
 Open **System → Test** on the vehicle desktop. Select one workload at a time. The two admissible Tier 2 workloads require **Allow launch**. Cancel dismisses the request before it reserves resources.

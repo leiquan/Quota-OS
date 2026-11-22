@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Quota OS 是一款以资源配额为核心的 ARM64 实验操作系统。">
 <title>Quota OS — 以资源配额为核心的操作系统</title>
-<link rel="stylesheet" href="site.css?v=light">
+<link rel="stylesheet" href="site.css?v=compare">
 <script src="site.js?v=dev" defer></script>
+<link rel="icon" href="favicon.png" type="image/png">
 </head>
 <body>
-<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="主导航"><a href="#model">Features</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="index.html" lang="en">English</a></nav></header>
+<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="主导航"><a href="#model">Features</a><a href="#compare">Compare</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="index.html" lang="en">English</a></nav></header>
 <main>
 <section class="wrap hero" id="home">
 <p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
@@ -26,6 +27,18 @@
 <article><p class="eyebrow">TIER 2</p><h3>用户指定</h3><p>行车记录仪声明最低需求。用户同意且容量足够才启动，内核按周期兑现已准入的最低配额。</p></article>
 <article><p class="eyebrow">TIER 3</p><h3>共享资源</h3><p>音乐播放和桌面交互共享剩余 CPU。内核限制总池，池内应用各自承担竞争和延迟。</p></article>
 </div>
+</section>
+<section class="wrap section" id="compare">
+<h2>系统对比</h2><p>Quota OS 是面向车载仪表和 eVTOL 显示场景的资源隔离原型。关键显示使用固定 CPU 槽，准入应用获得最低配额，普通工作负载共享有上限的总池。</p>
+<div class="compare-scroll" tabindex="0" aria-label="CPU 配额和准入">
+<table class="compare-table"><caption>CPU 配额和准入</caption>
+<thead><tr><th scope="col">系统</th><th scope="col">资源机制</th><th scope="col">与 Quota OS 对比</th></tr></thead>
+<tbody><tr><th scope="row">QNX</th><td>自适应分区为一组线程设置最低 CPU 份额，并共享空闲时间。</td><td>Quota OS 为应用定义三种准入方式，并限制三级共享池总量。 <a href="https://www.qnx.com/developers/docs/7.1/">官方资料</a></td></tr>
+<tr><th scope="row">seL4 MCS</th><td>调度上下文携带预算与周期，可以通过 IPC 转移执行预算。</td><td>系统集成方用这些机制制定策略。Quota OS 在系统中直接定义级别与准入规则。 <a href="https://docs.sel4.systems/Tutorials/mcs.html">官方资料</a></td></tr>
+<tr><th scope="row">Linux</th><td>SCHED_DEADLINE 提供运行预算、截止期、周期、准入控制和可选的带宽回收。</td><td>Linux 可以组合出类似隔离策略。Quota OS 直接把三级规则呈现在应用准入和运行中。 <a href="https://docs.kernel.org/scheduler/sched-deadline.html">官方资料</a></td></tr>
+<tr><th scope="row">VxWorks 653</th><td>ARINC 653 式时间和空间分区将工作负载放入预先配置的分区。</td><td>固定分区的时序接近一级。Quota OS 同时演示用户批准的二级配额和有总上限的三级池。 <a href="https://www.windriver.com/products/vxworks">官方资料</a></td></tr></tbody>
+</table></div>
+<p>已发布的 QEMU icount 测试覆盖 CPU 调度和来宾帧缓冲提交。真实硬件横向时延、飞行控制和安全认证均尚未验证。</p>
 </section>
 <section class="wrap section" id="evidence">
 <h2>桌面忙等时，速度表继续更新</h2>
