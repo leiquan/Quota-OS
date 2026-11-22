@@ -68,6 +68,30 @@ bash tools/run-files.sh
 
 The launcher uses the prebuilt kernel and creates a dedicated image at `~/.local/share/quota-os/notes.raw` by default. Set `QUOTA_NOTES_DISK` to choose another dedicated image. The status bar displays Shanghai local time.
 
+## Develop a C application in Quota OS
+
+Start with the Notes disk attached using `bash tools/run-files.sh`. Enter this program in Notes and click **Save hello.c**.
+
+```c
+int main(void) {
+    puts("Hello, Quota OS!");
+    return 0;
+}
+```
+
+Open **Apps → Shell**. Submit each command with **Enter**.
+
+```sh
+cc hello.c -o hello
+./hello
+```
+
+The compiler emits ARM64 instructions inside Quota OS. The program runs in Tier 3 EL0 and writes `Hello, Quota OS!` to Shell. This first release accepts the small C subset shown above. It supports one saved source file, at most 495 bytes, alongside the existing note. The compiled binary stays in memory until reboot. Tier 2 admission from Shell and a general C compiler remain future work. Tier 1 is vendor reserved. [QEMU serial log](docs/tests/c-workflow/qemu.log)
+
+| Source saved in Notes | Compilation in Shell | Output from EL0 |
+| --- | --- | --- |
+| ![Source](docs/screenshots/dev-source.png) | ![Compile](docs/screenshots/dev-compile.png) | ![Run](docs/screenshots/dev-run.png) |
+
 ## Verification
 
 The default single-core Cortex-A35 / 64 MiB image passed 100 QEMU `icount` cold boots with the Tier 3 desktop in a busy loop. In every 100-period sample, the guest recorded 100 speedometer commits and 25 dashcam commits, with zero speedometer deadline misses and zero Tier 3 pool crossings. The maximum speedometer commit gap was 10,013 microseconds in each run. This measures guest framebuffer commits. Host presentation and physical scanout remain unverified. [All 100 serial logs and results](docs/tests/cortex-a35/frame-regression.tar.gz)

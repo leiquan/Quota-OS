@@ -16,11 +16,14 @@ static volatile struct { uint16_t flags, idx; struct {uint32_t id, len;} ring[8]
 static struct { uint32_t type, reserved; uint64_t sector; } header;
 static volatile uint8_t status;
 static char serial[21];
-static struct record transfer, saved;
+static struct record transfer, documents[2];
+static unsigned document;
+#define saved (documents[document])
 static uint64_t base, submitted, last_period;
 static unsigned submitted_once, inflight;
 static uint16_t completed;
-static int slot;
+static int slots[2];
+#define slot (slots[document])
 enum phase { OFFLINE, IDENTIFY, READ_A, READ_B, READY, WRITE, FLUSH, VERIFY, FAILED };
 static enum phase phase;
 static int verify_result;
@@ -80,6 +83,7 @@ static void submit(void)
     header.type = phase == IDENTIFY ? 8 : phase == WRITE ? 1 : flush ? 4 : 0;
     header.sector = phase == READ_B || (phase == WRITE && !slot);
     if (phase == VERIFY) header.sector = slot;
+    header.sector += document * 2;
     if (phase == IDENTIFY || flush) header.sector = 0;
     status = 255;
     desc[0] = (struct descriptor){(uintptr_t)&header, sizeof header, 1, flush ? 2 : 1};
@@ -117,7 +121,13 @@ void note_disk_poll(void)
                 slot = phase == READ_B;
             }
             phase = phase == READ_A ? READ_B : READY;
-            if (phase == READY) printf("[files] mounted bytes=%u checksum=%u\n", saved.length, saved.checksum);
+            if (phase == READY && !document) {
+                document = 1;
+                phase = READ_A;
+            } else if (phase == READY) {
+                document = 0;
+                printf("[files] mounted bytes=%u checksum=%u\n", saved.length, saved.checksum);
+            }
         } else if (phase == VERIFY) {
             verify_result = transfer.magic == MAGIC && transfer.generation == saved.generation &&
                 transfer.length == saved.length && transfer.checksum == saved.checksum &&
@@ -127,6 +137,7 @@ void note_disk_poll(void)
         else if (phase == FLUSH) {
             saved = transfer;
             slot ^= 1;
+            document = 0;
             phase = READY;
         }
         return;
@@ -138,12 +149,13 @@ void note_disk_poll(void)
     submit();
 }
 
-int note_disk_save(const char *text)
+static int save_document(const char *text, unsigned index)
 {
     if (phase != READY || sched_current()->tier != TIER3) return -1;
     unsigned n = 0;
     while (n < sizeof transfer.text && text[n]) n++;
     if (n == sizeof transfer.text) return -2;
+    document = index;
     memset(&transfer, 0, sizeof transfer);
     transfer.magic = MAGIC;
     transfer.generation = saved.generation+1;
@@ -154,11 +166,15 @@ int note_disk_save(const char *text)
     return 0;
 }
 
-unsigned note_disk_bytes(void) { return saved.length; }
+int note_disk_save(const char *text) { return save_document(text, 0); }
+int note_disk_save_source(const char *text) { return save_document(text, 1); }
+const char *note_disk_source(void) { return documents[1].magic ? documents[1].text : 0; }
+
+unsigned note_disk_bytes(void) { return documents[0].length; }
 
 int note_disk_verify(void)
 {
-    if (phase != READY || !saved.magic) return -1;
+    if (phase != READY || !documents[0].magic) return -1;
     verify_result = 0;
     phase = VERIFY;
     return 0;
@@ -166,10 +182,10 @@ int note_disk_verify(void)
 
 int note_disk_verify_result(void) { return phase == FAILED ? -1 : verify_result; }
 
-const char *note_disk_text(void) { return saved.magic ? saved.text : 0; }
+const char *note_disk_text(void) { return documents[0].magic ? documents[0].text : 0; }
 const char *note_disk_status(void)
 {
-    if (phase == READY) return saved.magic ? "Saved" : "Ready";
+    if (phase == READY) return documents[0].magic || documents[1].magic ? "Saved" : "Ready";
     if (phase == WRITE || phase == FLUSH) return "Saving...";
     if (phase == FAILED) return "Disk error";
     if (phase == VERIFY) return "Verifying...";

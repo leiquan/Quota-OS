@@ -20,7 +20,9 @@ static lv_obj_t *menu_list;
 static lv_obj_t *detail;
 static lv_obj_t *page_home;
 static lv_obj_t *page_input;
-static lv_obj_t *page_cover, *page_apps, *page_files;
+static lv_obj_t *page_cover, *page_apps, *page_files, *page_shell;
+static lv_obj_t *shell_input, *shell_output, *source_entry, *source_icon;
+static char shell_last_command[81];
 static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata;
 static uint64_t save_since;
 static struct app_display_stats save_before;
@@ -33,7 +35,7 @@ static lv_obj_t *clock_label;
 static uint64_t rtc_base;
 enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_TESTS };
 static enum monitor_page monitor_tab;
-enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_COUNT };
+enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_COUNT };
 static lv_obj_t *dock, *icons[APP_COUNT], *dots[APP_COUNT];
 enum window_state { CLOSED, OPEN, MINIMIZED };
 static enum window_state states[APP_COUNT];
@@ -55,12 +57,12 @@ static void dock_state(enum app_key key, enum window_state state)
     }
     if (dock) sync_dock();
 }
-static const enum app_key page_keys[] = {APP_SYSTEM, APP_NOTES, APP_COUNT, APP_LAUNCHER, APP_FILES};
+static const enum app_key page_keys[] = {APP_SYSTEM, APP_NOTES, APP_COUNT, APP_LAUNCHER, APP_FILES, APP_SHELL};
 
 static lv_obj_t *task_lists[3];
 static lv_obj_t *task_items[MAX_TASKS];
 static lv_obj_t *empty_tasks[3];
-static const char app_speed[] = "Speedometer";
+static const char app_speed[] = "Speed";
 static const char app_video[] = "Dashcam";
 static const char app_music[] = "Music Player";
 static const char app_monitor[] = "System";
@@ -92,7 +94,7 @@ static void sync_dock(void)
 
 static void show_page(int which)
 {
-    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : page_files;
+    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : which == 4 ? page_files : page_shell;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
     dock_state(page_keys[which], OPEN);
     lv_obj_move_foreground(win);
@@ -235,27 +237,26 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
     lv_display_flush_ready(disp);
 }
 
-static uint32_t map_key(uint16_t code)
+static uint32_t map_key(uint16_t code, int shifted)
 {
-    static const char row1[] = "qwertyuiop";
-    static const char row2[] = "asdfghjkl";
-    static const char row3[] = "zxcvbnm";
-    if (code >= 2 && code <= 10)
-        return (uint32_t)('1' + (code - 2));
-    if (code == 11)
-        return '0';
-    if (code >= 16 && code <= 25)
-        return (uint32_t)row1[code - 16];
-    if (code >= 30 && code <= 38)
-        return (uint32_t)row2[code - 30];
-    if (code >= 44 && code <= 50)
-        return (uint32_t)row3[code - 44];
-    if (code == 57)
-        return ' ';
-    if (code == 28)
-        return LV_KEY_ENTER;
-    if (code == 14)
-        return LV_KEY_BACKSPACE;
+    static const struct {
+        uint16_t first, count;
+        const char *plain, *shift;
+    } rows[] = {
+        {2, 12, "1234567890-=", "!@#$%^&*()_+"},
+        {16, 12, "qwertyuiop[]", "QWERTYUIOP{}"},
+        {30, 12, "asdfghjkl;'`", "ASDFGHJKL:\"~"},
+        {43, 11, "\\zxcvbnm,./", "|ZXCVBNM<>?"},
+    };
+    for (unsigned i = 0; i < sizeof rows / sizeof rows[0]; i++) {
+        if (code < rows[i].first) continue;
+        unsigned offset = code - rows[i].first;
+        if (offset < rows[i].count)
+            return (unsigned char)(shifted ? rows[i].shift[offset] : rows[i].plain[offset]);
+    }
+    if (code == 57) return ' ';
+    if (code == 28) return LV_KEY_ENTER;
+    if (code == 14) return LV_KEY_BACKSPACE;
     return 0;
 }
 
@@ -316,12 +317,19 @@ static void keypad_read(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
     static uint32_t last;
+    static unsigned shift_keys;
     data->key = last;
     data->state = LV_INDEV_STATE_RELEASED;
     data->continue_reading = false;
     while (key_i < nkeys) {
         struct quota_input ev = keys[key_i++];
-        uint32_t mapped = map_key(ev.code);
+        if (ev.code == 42 || ev.code == 54) {
+            unsigned mask = ev.code == 42 ? 1u : 2u;
+            if (ev.value) shift_keys |= mask;
+            else shift_keys &= ~mask;
+            continue;
+        }
+        uint32_t mapped = map_key(ev.code, shift_keys != 0);
         printf("[lvgl] key code %u value %u char %u\n", ev.code, ev.value, mapped);
         if (ev.value)
             key_stamp = now_us();
@@ -406,7 +414,7 @@ static void poll_checks(void)
     const char *disk = !checks.disk ? "SKIP" : note_disk_verify_result() == 1 ? "PASS" : "FAIL";
     lv_label_set_text_fmt(detail,
         "LIVE RESULTS  /  %lu periods\n\n"
-        "%s    Tier 1 stop protection\n%s    Speedometer: %u commits, %u misses\n"
+        "%s    Tier 1 stop protection\n%s    Speed: %u commits, %u misses\n"
         "%s    Tier 2: %lu shortfalls, %lu overruns\n%s    Tier 3: %lu pool crossings\n"
         "%s    Note.txt disk readback", (unsigned long)periods, protection, speed, frames, misses,
         video, shortfalls, overruns, crossings ? "FAIL" : "PASS", crossings, disk);
@@ -523,12 +531,17 @@ static void poll_trial(void)
     }
     char result[300];
     lv_snprintf(result, sizeof result,
-        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeedometer %u commits, %u misses\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu",
+        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu",
         ok ? "PASS" : "FAIL", (unsigned long)elapsed, (unsigned long)ticks_to_us(peak),
         frames, misses, shortfalls, over, crossings);
     trial.active = 0;
     trial_result(number, result);
 }
+
+static const char shell_help[] =
+    "help / pwd / ls / clear\n"
+    "cc hello.c -o hello   Compile saved C source\n"
+    "./hello               Run in Tier 3";
 
 static void on_group(lv_event_t *e)
 {
@@ -546,6 +559,45 @@ static void on_group(lv_event_t *e)
     if (id == 9 || id == 209 || id == 103) {
         checks.active = checks.selected = 0;
     }
+    if (id == 230) {
+        show_page(5);
+        lv_group_focus_obj(shell_input);
+        printf("[shell] opened\n");
+        return;
+    }
+    if (id == 231) {
+        const char *command = lv_textarea_get_text(shell_input);
+        const char *result = "Commands: cc hello.c -o hello   |   ./hello";
+        if (!strcmp(command, "help"))
+            result = shell_help;
+        else if (!strcmp(command, "pwd"))
+            result = "/Desktop";
+        else if (!strcmp(command, "ls"))
+            result = note_disk_source() ? (note_disk_text() ? "Note.txt  hello.c" : "hello.c") :
+                                          (note_disk_text() ? "Note.txt" : "Desktop is empty");
+        else if (!strcmp(command, "clear")) {
+            lv_label_set_text(shell_output, "");
+            lv_textarea_set_text(shell_input, "");
+            return;
+        } else if (!strcmp(command, "cc hello.c -o hello"))
+            result = c_demo_compile(note_disk_source()) ? "Compile error: expected int main(void) { puts(\"text\"); return 0; }" : "Compiled hello.c to hello";
+        else if (!strcmp(command, "./hello"))
+            result = c_demo_run() < 0 ? "Run failed: compile first or wait for a free process slot." : "Running hello (Tier 3)";
+        str_copy(shell_last_command, command, sizeof shell_last_command);
+        lv_label_set_text_fmt(shell_output, "quota> %s\n%s", command, result);
+        printf("[shell] %s: %s\n", command, result);
+        lv_textarea_set_text(shell_input, "");
+        return;
+    }
+    if (id == 233) {
+        const char *source = note_disk_source();
+        if (source) {
+            lv_textarea_set_text(field, source);
+            show_page(1);
+            lv_group_focus_obj(field);
+        }
+        return;
+    }
     if (id == 212) {
         show_page(4);
         printf("[files] directory opened\n");
@@ -560,8 +612,9 @@ static void on_group(lv_event_t *e)
         }
         return;
     }
-    if (id == 214) {
-        int rc = note_disk_save(lv_textarea_get_text(field));
+    if (id == 214 || id == 232) {
+        int rc = id == 232 ? note_disk_save_source(lv_textarea_get_text(field)) :
+                             note_disk_save(lv_textarea_get_text(field));
         if (!rc) {
             save_since = now_us();
             app_display_read(&save_before);
@@ -612,6 +665,7 @@ static void on_group(lv_event_t *e)
     }
     if (id == 200) {
         show_page(1);
+        lv_group_focus_obj(field);
         printf("[lvgl] input page\n");
         return;
     }
@@ -663,7 +717,7 @@ static void hide_window(lv_event_t *e, int minimized)
     lv_obj_t *win = lv_event_get_user_data(e);
     lv_obj_add_flag(win, LV_OBJ_FLAG_HIDDEN);
     enum app_key key = win == page_home ? APP_SYSTEM : win == page_input ? APP_NOTES :
-                       win == page_apps ? APP_LAUNCHER : win == page_files ? APP_FILES : APP_COUNT;
+                       win == page_apps ? APP_LAUNCHER : win == page_files ? APP_FILES : win == page_shell ? APP_SHELL : APP_COUNT;
     dock_state(key, minimized ? MINIMIZED : CLOSED);
     printf("[desktop] window hidden\n");
 }
@@ -749,6 +803,7 @@ static const struct app_entry {
 } app_entries[] = {
     [APP_SYSTEM] = {app_monitor, LV_SYMBOL_SETTINGS, 0x5368af, 202},
     [APP_LAUNCHER] = {"Apps", LV_SYMBOL_LIST, 0x31798b, 210},
+    [APP_SHELL] = {"Shell", LV_SYMBOL_RIGHT, 0x334765, 230},
     [APP_FILES] = {"Files", LV_SYMBOL_DIRECTORY, 0x326e91, 212},
     [APP_NOTES] = {"Notes", LV_SYMBOL_EDIT, 0xae743b, 200},
     [APP_SPEED] = {app_speed, LV_SYMBOL_CHARGE, 0x267757, 205},
@@ -1288,6 +1343,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *save = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save", 214);
     lv_obj_set_pos(save, 398, 283);
     lv_obj_set_size(save, 112, 40);
+    lv_obj_t *save_source = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save hello.c", 232);
+    lv_obj_set_pos(save_source, 156, 283);
+    lv_obj_set_width(save_source, 156);
     lv_obj_t *btn = lv_button_create(page_input);
     lv_obj_set_pos(btn, 28, 283);
     lv_obj_set_size(btn, 112, 40);
@@ -1384,13 +1442,54 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     file_empty = desk_label(page_files, 28, 116, "", 0x64748b);
     lv_obj_add_flag(file_entry, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
+    source_entry = add_row(page_files, 185, 0xffffff, 0xdbe3f0, "hello.c", 233);
+    lv_obj_set_pos(source_entry, 20, 185);
+    source_icon = add_row(screen, 66, 0xe0edff, 0xc5d9fa, "hello.c", 233);
+    lv_obj_set_pos(source_icon, 24, 66);
+    lv_obj_set_width(source_icon, 96);
+    monitor_visible(source_entry, 0);
+    monitor_visible(source_icon, 0);
+    page_shell = desktop_window(screen, 160, 176, 600, 300, "Shell");
+    lv_obj_t *terminal = lv_obj_create(page_shell);
+    lv_obj_set_pos(terminal, 12, 58);
+    lv_obj_set_size(terminal, 576, 222);
+    lv_obj_set_style_bg_color(terminal, lv_color_hex(0x111b2c), 0);
+    lv_obj_set_style_radius(terminal, 10, 0);
+    lv_obj_set_style_border_width(terminal, 0, 0);
+    lv_obj_remove_flag(terminal, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    shell_output = desk_label(page_shell, 24, 72, "Quota OS Shell  |  /Desktop\n\n"
+        "help     Show commands\n"
+        "ls       List desktop files\n"
+        "cc hello.c -o hello   Compile C source\n"
+        "./hello               Run in Tier 3", 0xe4edf9);
+    lv_obj_set_style_text_font(shell_output, &lv_font_montserrat_14, 0);
+    lv_obj_t *prompt = desk_label(page_shell, 24, 224, "quota>", 0x9ce3ce);
+    lv_obj_set_style_text_font(prompt, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(shell_output, 552);
+    lv_label_set_long_mode(shell_output, LV_LABEL_LONG_WRAP);
+    shell_input = lv_textarea_create(page_shell);
+    lv_textarea_set_one_line(shell_input, true);
+    lv_textarea_set_max_length(shell_input, 80);
+    lv_textarea_set_placeholder_text(shell_input, "Command");
+    lv_obj_set_pos(shell_input, 88, 212);
+    lv_obj_set_size(shell_input, 366, 42);
+    lv_obj_set_style_text_font(shell_input, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(shell_input, lv_color_hex(0xe4edf9), 0);
+    lv_obj_set_style_bg_color(shell_input, lv_color_hex(0x1b2a40), 0);
+    lv_obj_set_style_border_color(shell_input, lv_color_hex(0x526984), 0);
+    lv_group_add_obj(group, shell_input);
+    lv_obj_add_event_cb(shell_input, on_group, LV_EVENT_READY, (void *)(uintptr_t)231);
+    lv_obj_t *run = add_row(page_shell, 212, 0xe0edff, 0xc5d9fa, "Enter", 231);
+    lv_obj_set_pos(run, 466, 212);
+    lv_obj_set_size(run, 108, 42);
+    monitor_visible(page_shell, 0);
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
-    static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC};
+    static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL};
     for (unsigned i = 0; i < sizeof catalog / sizeof catalog[0]; i++) {
         enum app_key key = catalog[i];
         lv_obj_t *entry = app_icon(page_apps, key, 34 + (int)(i % 3) * 174,
                                    70 + (int)(i / 3) * 108, 56);
-        if ((key >= APP_SPEED && !apps) || (key == APP_VIDEO && apps != 2)) {
+        if ((key >= APP_SPEED && key <= APP_MUSIC && !apps) || (key == APP_VIDEO && apps != 2)) {
             lv_obj_add_state(entry, LV_STATE_DISABLED);
             lv_obj_set_style_opa(entry, LV_OPA_50, 0);
         }
@@ -1463,6 +1562,11 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
      * and the scheduler still charges all rendering/input to Tier 3. */
     for (;;) {
         note_disk_poll();
+        const char *console = proc_console_text();
+        if (console) {
+            lv_label_set_text_fmt(shell_output, "quota> %s\n%s", shell_last_command, console);
+            printf("[shell] output: %s", console);
+        }
         const char *disk_status = note_disk_status();
         static const char *previous_disk_status;
         if (disk_status != previous_disk_status) {
@@ -1471,7 +1575,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             if (note_disk_text())
                 lv_label_set_text_fmt(file_metadata, "Plain text  /  %u bytes", note_disk_bytes());
             monitor_visible(file_entry, note_disk_text() != NULL);
-            monitor_visible(file_empty, note_disk_text() == NULL);
+            monitor_visible(source_entry, note_disk_source() != NULL);
+            monitor_visible(source_icon, note_disk_source() != NULL);
+            monitor_visible(file_empty, note_disk_text() == NULL && note_disk_source() == NULL);
             lv_label_set_text(file_empty, !strcmp(disk_status, "Ready") ? "No saved files" : disk_status);
             if (save_since && strcmp(disk_status, "Saving...")) {
                 struct app_display_stats after;

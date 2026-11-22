@@ -6,10 +6,10 @@
 <meta name="description" content="Quota OS 是一款以资源配额为核心的 ARM64 实验操作系统。">
 <title>Quota OS — 以资源配额为核心的操作系统</title>
 <link rel="stylesheet" href="site.css?v=light">
-<script src="site.js" defer></script>
+<script src="site.js?v=dev" defer></script>
 </head>
 <body>
-<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="主导航"><a href="#home">Home</a><a href="#model">Features</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="index.html" lang="en">English</a></nav></header>
+<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="主导航"><a href="#model">Features</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="index.html" lang="en">English</a></nav></header>
 <main>
 <section class="wrap hero" id="home">
 <p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
@@ -50,7 +50,15 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 64M \
   -nic none -device ramfb -device virtio-tablet-device -device virtio-keyboard-device \
   -icount shift=4,sleep=off -kernel build/quotaos-lvgl.bin -append apps-video</code></pre>
 <h3>在 Quota OS 内开发 C 应用</h3>
-<p>开发中。目标是在 Notes 保存 C 源码，在 Shell 编译，再把产物作为受配额限制的 EL0 应用运行。</p>
+<p>在 Notes 输入以下代码，点击 Save hello.c。打开 Apps → Shell，输入命令后点击 Enter。</p>
+<pre><code>int main(void) {
+    puts("Hello, Quota OS!");
+    return 0;
+}</code></pre>
+<pre><code>cc hello.c -o hello
+./hello</code></pre>
+<p>首版支持无头文件的 int main(void)、单条 puts 字符串和 return 0。程序按三级启动，当前不支持二级启动参数。</p>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="Notes 保存 hello.c"><figure><img src="screenshots/dev-source.png" width="1280" height="800" loading="lazy" alt="Notes 保存 hello.c"><figcaption>Notes 保存 hello.c</figcaption></figure><figure><img src="screenshots/dev-compile.png" width="1280" height="800" loading="lazy" alt="Shell 编译 hello.c"><figcaption>Shell 编译 hello.c</figcaption></figure><figure><img src="screenshots/dev-run.png" width="1280" height="800" loading="lazy" alt="EL0 执行并输出"><figcaption>EL0 执行并输出</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="下一张">→</button><button type="button" class="playback"></button></div></div>
 </section>
 </main>
 <footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>

@@ -544,6 +544,8 @@ uint32_t input_drop_count(void);
 void note_disk_init(void);
 void note_disk_poll(void);
 int note_disk_save(const char *text);
+int note_disk_save_source(const char *text);
+const char *note_disk_source(void);
 const char *note_disk_text(void);
 unsigned note_disk_bytes(void);
 int note_disk_verify(void);
@@ -615,6 +617,10 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
                    uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,
                    uint16_t vw, uint16_t vh);
 int proc_kill(int64_t handle);
+int c_demo_compile(const char *source);
+int64_t c_demo_run(void);
+int64_t proc_spawn_console(const char *code, unsigned bytes);
+const char *proc_console_text(void);
 void proc_ledger(const char *tag);
 int proc_pages_free(void);
 int proc_pages_used(void);
