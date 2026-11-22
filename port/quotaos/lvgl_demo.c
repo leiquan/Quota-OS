@@ -1517,6 +1517,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     note_status = desk_label(page_input, 28, 70, "", 0x64748b);
     note_disk_init();
     field = lv_textarea_create(page_input);
+    lv_obj_set_style_anim_duration(field, 700, LV_PART_CURSOR);
     lv_obj_set_pos(field, 28, 108);
     lv_obj_set_size(field, 482, 148);
     lv_textarea_set_one_line(field, false);
