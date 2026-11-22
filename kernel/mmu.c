@@ -25,7 +25,7 @@ static uint64_t l1[512] __attribute__((aligned(4096)));
 static uint64_t l2_lo[512] __attribute__((aligned(4096)));
 static uint64_t l2_ram[512] __attribute__((aligned(4096)));
 /* Blocks 6-7 and 32-63. 34 tables, not 64. */
-static uint64_t l3_storage[34][512] __attribute__((aligned(4096)));
+static uint64_t l3_storage[35][512] __attribute__((aligned(4096)));
 static uint64_t *l3_for[64];
 static int mmu_on;
 static volatile int expect_fault;
@@ -95,6 +95,8 @@ int mmu_protect(uint64_t addr, uint64_t len, int prot)
     return 0;
 }
 
+static uint32_t mmu_test_page[1024] __attribute__((aligned(4096)));
+
 void mmu_init(void)
 {
     for (int i = 0; i < 512; i++) {
@@ -114,13 +116,15 @@ void mmu_init(void)
         uint64_t va = 0x40000000ull + ((uint64_t)blk << 21);
         uint64_t l2i = (va >> 21) & 511ull;
         /* Data, reserve tail, structure heap, and malloc arena. */
-        int pages = (blk >= 6 && blk <= 7) || blk >= 32;
+        uint64_t test = (uintptr_t)mmu_test_page;
+        int pages = (blk >= 6 && blk <= 7) || blk >= 32 ||
+                    (test >= va && test < va + 0x200000ull);
         if (!pages) {
             l2_ram[l2i] = va | PTE_VALID | PTE_AF | ATTR_NORMAL | SH_INNER | PTE_UXN;
             l3_for[blk] = 0;
             continue;
         }
-        if (tables >= 34) {
+        if (tables >= (int)(sizeof l3_storage / sizeof l3_storage[0])) {
             printf("[mmu] page-table pool exhausted\n");
             for (;;)
                 asm volatile("wfi");
@@ -151,10 +155,10 @@ void mmu_init(void)
     printf("[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.\n");
 
     /* One aligned page inside RAM, not the last byte. Prove the PTE bits, then restore RW. */
-    volatile uint32_t *page = (volatile uint32_t *)0x47ff0000ull;
+    volatile uint32_t *page = mmu_test_page;
     page[0] = 0x11111111u;
     asm volatile("dsb ish" ::: "memory");
-    mmu_protect(0x47ff0000ull, 4096, 0);
+    mmu_protect((uintptr_t)page, 4096, 0);
     fault_hit = 0;
     expect_fault = 1;
     uint32_t got = 0xdeadbeefu;
@@ -164,7 +168,7 @@ void mmu_init(void)
     expect_fault = 0;
     /* A fault skips the load, so the pattern must not come back. */
     int none_fault = none_hit && none_got != 0x11111111u;
-    mmu_protect(0x47ff0000ull, 4096, 1);
+    mmu_protect((uintptr_t)page, 4096, 1);
     fault_hit = 0;
     expect_fault = 1;
     got = 0;
@@ -173,7 +177,7 @@ void mmu_init(void)
     asm volatile("str %w0, [%1]" :: "r"(0x22222222u), "r"(page) : "memory");
     int write_fault = fault_hit && page[0] == 0x11111111u;
     expect_fault = 0;
-    mmu_protect(0x47ff0000ull, 4096, 1 | 2);
+    mmu_protect((uintptr_t)page, 4096, 1 | 2);
     fault_hit = 0;
     page[0] = 0x33333333u;
     int rw_ok = !fault_hit && page[0] == 0x33333333u;

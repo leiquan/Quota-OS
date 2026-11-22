@@ -23,8 +23,8 @@ def boot(round_no):
     with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
         sock = tmp + "/qmp"
         drive = f"if=none,id=notes,format=raw,file={disk},bps_wr=128"
-        cmd = ["qemu-system-aarch64", "-machine", "virt,gic-version=2", "-cpu", "cortex-a72",
-               "-m", "128M", "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
+        cmd = ["qemu-system-aarch64", "-machine", "virt,gic-version=2", "-cpu", "cortex-a35",
+               "-m", "64M", "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
                "-device", "ramfb", "-device", "virtio-tablet-device", "-device", "virtio-keyboard-device",
                "-drive", drive, "-device", "virtio-blk-device,drive=notes,serial=QUOTA-NOTES",
                "-icount", "shift=4,sleep=off", "-kernel", str(args.kernel), "-append", "apps-video",

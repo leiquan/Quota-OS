@@ -18,8 +18,8 @@ def boot():
     log = args.out / "ui.log"
     with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
         sock = tmp + "/qmp"
-        cmd = ["qemu-system-aarch64", "-machine", "virt,gic-version=2", "-cpu", "cortex-a72",
-               "-m", "128M", "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
+        cmd = ["qemu-system-aarch64", "-machine", "virt,gic-version=2", "-cpu", "cortex-a35",
+               "-m", "64M", "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
                "-device", "ramfb", "-device", "virtio-tablet-device", "-device", "virtio-keyboard-device",
                "-icount", "shift=4,sleep=off", "-kernel", str(args.kernel), "-append", "apps-video",
                "-serial", "file:" + str(log), "-qmp", "unix:" + sock + ",server=on,wait=off"]
