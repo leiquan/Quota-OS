@@ -41,6 +41,7 @@ Dock 的三个应用图标可高亮对应卡片。活动管理器的 Activity �
 
 ## 持续优化与测试
 
+- [桌面忙等隔离、速度表与记录仪百轮回归](docs/tests/optimization/desktop-stall/REPORT.md)
 - [三级 CPU 总池与百轮回归](docs/tests/optimization/tier3-cpu-pool/REPORT.md)
 
 - [cycle-04：三级任务管理器、触控窗口按钮和桌面精简](docs/tests/optimization/cycle-04/REPORT.txt) — native GUI 7/10；icount GUI 10/10；功能回归详见原始记录。

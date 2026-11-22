@@ -292,7 +292,15 @@ struct app_display_stats {
     int video_paused, music_held;
 };
 void app_display_read(struct app_display_stats *stats);
-void app_demo_dashboard_frame(void);
+void app_display_core_frame(void);
+void app_desktop_stall_probe(void);
+struct sched_system_info {
+    uint64_t period;
+    uint64_t cpu_us[3], kernel_us, tier3_limit_us;
+    uint64_t tier1_misses, tier2_short, tier2_over;
+    uint64_t tier3_throttled, tier3_over;
+};
+void sched_read_system_info(struct sched_system_info *info);
 void sched_print_t3_pool(void);
 void sched_init(void);
 struct task *sched_current(void);

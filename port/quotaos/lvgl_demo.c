@@ -17,18 +17,17 @@ static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *field;
 static lv_obj_t *menu_list;
-static lv_obj_t *legend;
 static lv_obj_t *detail;
 static lv_obj_t *page_home;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover;
 static lv_obj_t *task_body;
-static lv_obj_t *tab_live, *tab_tests, *notes_button, *about_button;
+static lv_obj_t *tabs[3], *info_panel, *info_text;
 static lv_obj_t *app_cards[3];
 static lv_obj_t *app_rate[3], *app_status[3];
 static lv_obj_t *clock_label;
 static uint64_t rtc_base;
-static int tests_selected;
+static int monitor_tab;
 static lv_obj_t *task_rows[3];
 
 static void show_page(int which)
@@ -125,10 +124,9 @@ static uint32_t lvgl_tick_ms(void)
 }
 
 enum { SAMP_N = 16 };
-static uint64_t click_stamp, key_stamp, scroll_stamp;
-static uint64_t click_dt[SAMP_N], key_dt[SAMP_N], scroll_dt[SAMP_N];
-static int n_click, n_key, n_scroll;
-static uint32_t flush_n, flush_max_bytes;
+static uint64_t click_stamp, key_stamp;
+static uint64_t click_dt[SAMP_N], key_dt[SAMP_N];
+static int n_click, n_key;
 
 static void take_dt(uint64_t *stamp, uint64_t *arr, int *n, const char *kind)
 {
@@ -145,9 +143,7 @@ static void take_dt(uint64_t *stamp, uint64_t *arr, int *n, const char *kind)
 static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
 {
     int32_t w = lv_area_get_width(area);
-    int32_t h = lv_area_get_height(area);
     uint32_t stride_px = fb_stride / 4u;
-    uint32_t bytes;
     int mode = app_desktop_mode();
     for (int32_t y = area->y1; y <= area->y2; y++) {
         uint32_t *dst = fb_px + (uint32_t)y * stride_px;
@@ -173,13 +169,8 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
         }
         px += w * 4;
     }
-    bytes = (uint32_t)w * (uint32_t)h * 4u;
-    flush_n++;
-    if (bytes > flush_max_bytes)
-        flush_max_bytes = bytes;
     take_dt(&click_stamp, click_dt, &n_click, "click");
     take_dt(&key_stamp, key_dt, &n_key, "key");
-    take_dt(&scroll_stamp, scroll_dt, &n_scroll, "scroll");
     lv_display_flush_ready(disp);
 }
 
@@ -287,51 +278,37 @@ static void on_click(lv_event_t *e)
     printf("[lvgl] notes cleared\n");
 }
 
-static void select_monitor_tab(int tests)
+static void monitor_visible(lv_obj_t *obj, int visible)
 {
-    tests_selected = tests;
-    if (tests) {
-        lv_obj_add_flag(task_body, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(notes_button, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(about_button, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(menu_list, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(detail, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_remove_flag(task_body, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(notes_button, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(about_button, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(menu_list, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(detail, LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_obj_set_style_bg_color(tab_live, lv_color_hex(tests ? 0xffffff : 0xe0edff), 0);
-    lv_obj_set_style_bg_color(tab_tests, lv_color_hex(tests ? 0xe0edff : 0xffffff), 0);
+    if (visible)
+        lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void select_monitor_tab(int tab)
+{
+    monitor_tab = tab;
+    monitor_visible(task_body, tab == 0);
+    monitor_visible(menu_list, tab == 1);
+    monitor_visible(detail, tab == 1);
+    monitor_visible(info_panel, tab == 2);
+    for (int i = 0; i < 3; i++)
+        lv_obj_set_style_bg_color(tabs[i], lv_color_hex(i == tab ? 0xe0edff : 0xffffff), 0);
 }
 
 static void on_group(lv_event_t *e)
 {
     int id = (int)(uintptr_t)lv_event_get_user_data(e);
     printf("[menu] button %d\n", id);
-    if (id == 100) {
-        scroll_stamp = now_us();
-        if (menu_list)
-            lv_obj_scroll_by(menu_list, 0, -36, LV_ANIM_OFF);
-        printf("[lvgl] scroll once, one row, animation off\n");
-        return;
-    }
-    if (id == 101) {
-        printf("[lvgl] runaway not available: no protected process. An unbounded loop is not started.\n");
-        return;
-    }
-    if (id == 102) {
-        printf("[lvgl] ram crash not available. Menu 4 refuses an oversize quota. It does not exhaust RAM.\n");
-        return;
-    }
     if (id == 103) {
         demo_menu_stop();
         return;
     }
-    if (id == 104) {
-        printf("[lvgl] click and key samples are taken from real events. Panel light is not measured.\n");
+    if (id == 208) {
+        show_page(0);
+        select_monitor_tab(2);
+        printf("[desktop] system info opened\n");
         return;
     }
     if (id == 209) {
@@ -572,9 +549,44 @@ static void refresh_app_stats(uint64_t elapsed)
     previous = current;
 }
 
+static void refresh_system_info(void)
+{
+    if (monitor_tab != 2 || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
+        return;
+    struct sched_system_info v;
+    sched_read_system_info(&v);
+    uint64_t cpu_busy = v.cpu_us[0] + v.cpu_us[1] + v.cpu_us[2] + v.kernel_us;
+    uint64_t ram = resource_ram_kb();
+    uint64_t reserved = ram - resource_app_mem_capacity_kb() + resource_mem_min_sum_kb();
+    unsigned cpu_percent = (unsigned)(cpu_busy >= PERIOD_US ? 100 : cpu_busy * 100 / PERIOD_US);
+    unsigned mem_percent = ram ? (unsigned)(reserved * 100 / ram) : 0;
+    char text[512];
+    lv_snprintf(text, sizeof text,
+        "CPU %u%% BUSY  /  LAST 10 ms PERIOD\n"
+        "Tier 1  %lu us    Tier 2  %lu us    Tier 3  %lu / %lu us\n"
+        "Kernel  %lu us    Scheduler clock  %s\n\n"
+        "MEMORY %u%% RESERVED\n"
+        "RAM  %lu KiB    System reserve  %u KiB    Tier 1  %u KiB\n"
+        "App minima  %lu / %lu KiB available\n\n"
+        "RESOURCE EVENTS  /  SINCE BOOT\n"
+        "Tier 1 deadline misses  %lu\n"
+        "Tier 2 runnable minimum shortfalls  %lu    Budget overruns  %lu\n"
+        "Tier 3 throttled periods  %lu    Pool crossings  %lu",
+        cpu_percent, (unsigned long)v.cpu_us[0], (unsigned long)v.cpu_us[1],
+        (unsigned long)v.cpu_us[2], (unsigned long)v.tier3_limit_us,
+        (unsigned long)v.kernel_us, clock_is_icount() ? "icount" : "host",
+        mem_percent, (unsigned long)ram, system_reserve_kb(), resource_t1_mem_kb(),
+        (unsigned long)resource_mem_min_sum_kb(), (unsigned long)resource_app_mem_capacity_kb(),
+        (unsigned long)v.tier1_misses, (unsigned long)v.tier2_short,
+        (unsigned long)v.tier2_over, (unsigned long)v.tier3_throttled,
+        (unsigned long)v.tier3_over);
+    if (strcmp(text, lv_label_get_text(info_text)))
+        lv_label_set_text(info_text, text);
+}
+
 static void refresh_tasks(void)
 {
-    if (tests_selected || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
+    if (monitor_tab != 0 || lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
         return;
     static char rows[4096];
     for (int tier = TIER1; tier <= TIER3; tier++) {
@@ -649,7 +661,17 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(top, 0, 0);
     lv_obj_set_style_bg_color(top, lv_color_hex(0x101d39), 0);
     lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
-    desk_label(top, 26, 13, "Quota OS", 0xffffff);
+    lv_obj_t *about_button = lv_button_create(top);
+    lv_obj_set_pos(about_button, 10, 0);
+    lv_obj_set_size(about_button, 108, 40);
+    lv_obj_set_style_bg_opa(about_button, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(about_button, LV_OPA_20, LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(about_button, 0, 0);
+    lv_obj_t *brand = lv_label_create(about_button);
+    lv_label_set_text(brand, "Quota OS");
+    lv_obj_set_style_text_color(brand, lv_color_hex(0xffffff), 0);
+    lv_obj_center(brand);
+    lv_obj_add_event_cb(about_button, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)201);
 
     if (dtb_find_bases("arm,pl031", &rtc_base, 1) > 0) {
         clock_label = desk_label(top, 0, 0, "", 0xdce8ff);
@@ -682,23 +704,27 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     add_row(menu_list, 128, 0xffffff, 0xdbe3f0, "Service check", 5);
     add_row(menu_list, 182, 0xffffff, 0xdbe3f0, "App reservation", 2);
     lv_obj_t *watch = add_row(menu_list, 236, 0xe0edff, 0xc5d9fa, "Run & view activity", 209);
-    notes_button = add_row(page_home, 55, 0xffffff, 0xdbe3f0, "Notes", 200);
-    lv_obj_set_pos(notes_button, 450, 55);
-    lv_obj_set_width(notes_button, 110);
-    about_button = add_row(page_home, 55, 0xffffff, 0xdbe3f0, "About", 201);
-    lv_obj_set_pos(about_button, 574, 55);
-    lv_obj_set_width(about_button, 110);
     detail = desk_label(page_home, 252, 124, "No workload results", 0x263552);
     lv_obj_set_size(detail, 436, 338);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    tab_live = add_row(page_home, 55, 0xe0edff, 0xc5d9fa, "Activity", 203);
-    lv_obj_set_pos(tab_live, 12, 55);
-    lv_obj_set_width(tab_live, 194);
-    tab_tests = add_row(page_home, 55, 0xffffff, 0xc5d9fa, "System Tests", 204);
-    lv_obj_set_pos(tab_tests, 216, 55);
-    lv_obj_set_width(tab_tests, 194);
-    legend = lv_label_create(page_home);
-    lv_obj_add_flag(legend, LV_OBJ_FLAG_HIDDEN);
+    static const char *const tab_names[] = {"Activity", "System Tests", "System Info"};
+    static const int tab_ids[] = {203, 204, 208};
+    for (int i = 0; i < 3; i++) {
+        tabs[i] = add_row(page_home, 55, 0xffffff, 0xc5d9fa, tab_names[i], tab_ids[i]);
+        lv_obj_set_pos(tabs[i], 12 + i * 145, 55);
+        lv_obj_set_width(tabs[i], 136);
+    }
+
+    info_panel = lv_obj_create(page_home);
+    lv_obj_set_pos(info_panel, 12, 108);
+    lv_obj_set_size(info_panel, 694, 336);
+    lv_obj_set_style_bg_color(info_panel, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_color(info_panel, lv_color_hex(0xdbe3f0), 0);
+    lv_obj_set_style_border_width(info_panel, 1, 0);
+    lv_obj_set_style_pad_all(info_panel, 0, 0);
+    lv_obj_remove_flag(info_panel, LV_OBJ_FLAG_SCROLLABLE);
+    info_text = desk_label(info_panel, 20, 16, "", 0x263552);
+    lv_obj_set_width(info_text, 650);
 
     page_input = desktop_window(screen, app_desktop_mode() ? 260 : 650, 238, 540, 358, "Notes");
     desk_label(page_input, 28, 70, "Notes are cleared on restart.", 0x64748b);
@@ -772,7 +798,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     select_monitor_tab(0);
 
     lv_obj_t *dock = lv_obj_create(screen);
-    int dock_width = apps ? 406 : 306;
+    int dock_width = apps ? 506 : 206;
     lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - 84);
     lv_obj_set_size(dock, dock_width, 72);
     lv_obj_set_style_pad_all(dock, 0, 0);
@@ -782,13 +808,14 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(dock, 1, 0);
     lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
     dock_item(dock, 12, 0x4a6bc2, LV_SYMBOL_BARS, "Monitor", 202);
+    lv_obj_t *notes_icon;
     if (apps) {
         dock_item(dock, 112, 0x23785c, LV_SYMBOL_CHARGE, "Speed", 205);
         dock_item(dock, 212, 0x395cc0, LV_SYMBOL_VIDEO, "Dashcam", 206);
         dock_item(dock, 312, 0x7851a8, LV_SYMBOL_AUDIO, "Music", 207);
+        notes_icon = dock_item(dock, 412, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
     } else {
-        dock_item(dock, 112, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
-        dock_item(dock, 212, 0x7160b5, LV_SYMBOL_LIST, "About", 201);
+        notes_icon = dock_item(dock, 112, 0xc28c4d, LV_SYMBOL_EDIT, "Notes", 200);
     }
     build_cursor();
     lv_obj_t *cursor = lv_image_create(lv_layer_sys());
@@ -799,10 +826,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_update_layout(screen);
     {
         lv_area_t box;
-        lv_obj_get_coords(tab_tests, &box);
+        lv_obj_get_coords(tabs[1], &box);
         printf("[lvgl] tests box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
-        lv_obj_get_coords(tab_live, &box);
+        lv_obj_get_coords(tabs[0], &box);
         printf("[lvgl] activity box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(watch, &box);
@@ -811,7 +838,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         lv_obj_get_coords(load9, &box);
         printf("[lvgl] load9 box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
-        lv_obj_get_coords(notes_button, &box);
+        lv_obj_get_coords(notes_icon, &box);
         printf("[lvgl] input box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(about_button, &box);
@@ -829,17 +856,16 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
 
     /* The shell stack is 8 KB. These stay off that stack. */
     static char shown[480];
-    static char leg_shown[160];
     static char text[480];
     static struct menu_detail d;
     uint64_t panel_at = 0;
     shown[0] = 0;
-    leg_shown[0] = 0;
     /* The UI is a service, not a 45-second demonstration. IRQs remain enabled
      * and the scheduler still charges all rendering/input to Tier 3. */
     for (;;) {
         take_inputs();
         lv_timer_handler();
+        app_desktop_stall_probe();
         app_desktop_poll();
         uint64_t panel_now = now_us();
         if (panel_at && panel_now - panel_at < 100000)
@@ -848,6 +874,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         static uint64_t tasks_at;
         if (panel_now - tasks_at >= 500000) {
             refresh_tasks();
+            refresh_system_info();
             if (clock_label)
                 refresh_clock();
             if (apps)
@@ -890,20 +917,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             if (!d.running && d.have_window)
                 printf("[lvgl] detail\n%s\n", text);
         }
-        {
-            char leg[160];
-            demo_menu_legend(leg, (int)sizeof leg);
-            if (strcmp(leg, leg_shown) != 0) {
-                lv_label_set_text(legend, leg);
-                printf("[lvgl] legend %s\n", leg);
-                int n = 0;
-                while (leg[n] && n < (int)sizeof leg_shown - 1) {
-                    leg_shown[n] = leg[n];
-                    n++;
-                }
-                leg_shown[n] = 0;
-            }
-        }
+
     }
     return 0;
 }

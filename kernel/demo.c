@@ -1155,6 +1155,24 @@ static struct task *dashboard_demo;
 static struct running_app *video_demo;
 static int64_t music_demo;
 static int app_test_phase;
+enum desktop_probe_state { PROBE_OFF, PROBE_ARMED, PROBE_SPINNING, PROBE_DONE };
+static volatile enum desktop_probe_state desktop_probe;
+static uint64_t probe_period;
+static volatile uint64_t display_commit_tick, display_max_gap;
+static volatile uint32_t display_max_gap_us;
+static uint32_t probe_frames, probe_misses, probe_video;
+static uint32_t probe_pool_exceeded;
+
+void app_desktop_stall_probe(void)
+{
+    if (desktop_probe != PROBE_ARMED)
+        return;
+    printf("[desktop-stall] Tier-3 UI entering busy loop\n");
+    desktop_probe = PROBE_SPINNING;
+    while (desktop_probe == PROBE_SPINNING)
+        asm volatile("" ::: "memory");
+}
+
 static uint64_t app_test_period;
 static uint32_t d0, v0, m0, misses0, dn, vn, mn, dm;
 
@@ -1184,7 +1202,7 @@ static void app_meter(uint32_t x, uint32_t y, uint32_t frame, uint32_t color)
             fb[(y + row) * app_stride + x + col] = col < filled ? color : 0x182338;
 }
 
-void app_demo_dashboard_frame(void)
+void app_display_core_frame(void)
 {
     if (!app_surface)
         return;
@@ -1194,7 +1212,7 @@ void app_demo_dashboard_frame(void)
         {3,0,12,3}, {14,3,3,10}, {14,15,3,10}, {3,25,12,3},
         {0,15,3,10}, {0,3,3,10}, {3,12,12,3}
     };
-    unsigned speed = 45 + (++dashboard_frames / 10) % 76;
+    unsigned speed = 45 + ((dashboard_frames + 1) / 10) % 76;
     uint32_t *fb = app_surface;
     for (unsigned y = 0; y < APP_DASH_H; y++)
         for (unsigned x = 0; x < APP_DASH_W; x++)
@@ -1213,6 +1231,47 @@ void app_demo_dashboard_frame(void)
                        APP_DRAW_X + i * 20 + r[0] + x] = 0x35dfa0;
         }
     }
+    /* Complete framebuffer stores before recording a Tier-1 commit. */
+    asm volatile("dsb st" ::: "memory");
+    uint64_t now = ticks_now();
+    if (display_commit_tick && now - display_commit_tick > display_max_gap)
+        display_max_gap = now - display_commit_tick;
+    display_commit_tick = now;
+    dashboard_frames++;
+}
+
+static void observe_desktop_stall(uint64_t period)
+{
+    if (desktop_probe != PROBE_SPINNING)
+        return;
+    if (!probe_period) {
+        struct sched_system_info info;
+        sched_read_system_info(&info);
+        probe_period = period;
+        probe_frames = dashboard_frames;
+        probe_misses = dashboard_demo->misses;
+        probe_video = video_frames;
+        probe_pool_exceeded = info.tier3_over;
+        display_max_gap = 0;
+        return;
+    }
+    if (period - probe_period < 100)
+        return;
+
+    struct sched_system_info info;
+    sched_read_system_info(&info);
+    dn = dashboard_frames - probe_frames;
+    dm = dashboard_demo->misses - probe_misses;
+    vn = video_frames - probe_video;
+    display_max_gap_us = ticks_to_us(display_max_gap);
+    unsigned exceeds = info.tier3_over - probe_pool_exceeded;
+    int ok = period - probe_period == 100 && dn == 100 && dm == 0 &&
+             vn == 25 && exceeds == 0 &&
+             display_max_gap_us > 0 && display_max_gap_us < 11000;
+    desktop_probe = PROBE_DONE;
+    printf("[desktop-stall] periods=%lu dashboard_commits=%u misses=%u max_gap_us=%u dashcam_commits=%u pool_exceeded=%u\n",
+           period - probe_period, dn, dm, display_max_gap_us, vn, exceeds);
+    printf("[desktop-stall] %s\nQA DONE\n", ok ? "PASS" : "FAIL");
 }
 
 static void app_demo_video_frame(void)
@@ -1224,6 +1283,7 @@ static void app_demo_video_frame(void)
             last = period;
             if (!video_stalled && period % 4 == 0)
                 app_meter(APP_DRAW_X, APP_VIDEO_Y, ++video_frames, 0x559dff);
+            observe_desktop_stall(period);
         }
         asm volatile("" ::: "memory");
     }
@@ -1239,6 +1299,8 @@ void app_desktop_poll(void)
     music_held = period % 100 >= 50;
     if (!music_held)
         music_frames += (uint32_t)disp_drain(2);
+    if (desktop_probe != PROBE_OFF)
+        return;
     if (!app_test_phase) {
         app_test_period = period;
         app_test_phase = 1;
@@ -1271,7 +1333,7 @@ void app_desktop_poll(void)
     }
 }
 
-static void app_demo_run(int with_video)
+static void app_demo_run(int with_video, int stall)
 {
     uint64_t pa, bytes;
     uint32_t w, h;
@@ -1296,13 +1358,15 @@ static void app_demo_run(int with_video)
             task_start(t);
         }
     }
-    if (!dashboard || music < 0 || !music_task || (with_video && !video)) {
+    struct task *desktop = sched_find("shell");
+    if (!desktop || !dashboard || music < 0 || !music_task || (with_video && !video)) {
         printf("[apps] FAIL startup music=%ld\nQA DONE\n", music);
         return;
     }
     printf("[apps] dashboard tier=%d slot=%d; music tier=%d EL0; video=%d\n",
            dashboard->tier, dashboard->slot, music_task->tier, video != 0);
     if (dashboard->tier != TIER1 || music_task->tier != TIER3 ||
+        desktop->tier != TIER3 ||
         (video && video->task->tier != TIER2)) {
         printf("[apps] FAIL incorrect tier\nQA DONE\n");
         return;
@@ -1310,6 +1374,7 @@ static void app_demo_run(int with_video)
     dashboard_demo = dashboard;
     video_demo = video;
     music_demo = music;
+    desktop_probe = stall ? PROBE_ARMED : PROBE_OFF;
     app_surface = (uint32_t *)(uintptr_t)pa;
     lvgl_autostart();
     printf("[apps] FAIL desktop returned\nQA DONE\n");
@@ -1320,8 +1385,9 @@ void shell_main(void)
     printf("[boot] shell task running\n");
     klog_flush(); /* Boot records are printed without blocking realtime IRQs. */
     const char *args = dtb_bootargs();
-    if (!strcmp(args, "apps") || !strcmp(args, "apps-video")) {
-        app_demo_run(!strcmp(args, "apps-video"));
+    int stall = !strcmp(args, "apps-desktop-stall");
+    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || stall) {
+        app_demo_run(strcmp(args, "apps") != 0, stall);
         for (;;) asm volatile("wfi");
     }
     if (strcmp(args, "logtest") == 0) {

@@ -55,7 +55,11 @@ static void rebuild_lists(void)
 }
 
 static uint64_t P, G, Q3, SR_T, JUMP_T;
-static uint64_t t3_limit, t3_used;
+static uint64_t t3_limit;
+static uint64_t tier_ticks[3], last_tier_ticks[3], last_kernel_ticks, last_t3_limit;
+static uint64_t tier2_short_count;
+static uint64_t sampled_period;
+#define t3_used tier_ticks[TIER3 - TIER1]
 static uint64_t t3_throttled, t3_over;
 static uint64_t t3_window_throttled, t3_window_over;
 static int t3_blocked;
@@ -65,17 +69,19 @@ static void t3_reset_period(void)
     uint32_t capacity = resource_app_cpu_capacity_us();
     uint32_t reserved = resource_cpu_min_sum_us();
     t3_limit = us_to_ticks(capacity > reserved ? capacity - reserved : 0);
-    t3_used = 0;
+    for (int i = 0; i < 3; i++)
+        tier_ticks[i] = 0;
     t3_blocked = 0;
 }
 
-static void t3_charge(const struct task *owner, uint64_t ticks)
+static void tier_charge(const struct task *owner, uint64_t ticks)
 {
-    if (owner->tier != TIER3)
+    if (owner->tier < TIER1 || owner->tier > TIER3)
         return;
-    uint64_t before = t3_used;
-    t3_used += ticks;
-    if (before <= t3_limit && t3_used > t3_limit)
+    uint64_t *used = &tier_ticks[owner->tier - TIER1];
+    uint64_t before = *used;
+    *used += ticks;
+    if (owner->tier == TIER3 && before <= t3_limit && *used > t3_limit)
         t3_over++;
 }
 
@@ -604,7 +610,7 @@ static void charge(struct task *t, uint64_t a, uint64_t b)
         return;
     struct task *x = t->sc ? t->sc : t;
     /* 服务端在替调用者干活：记在调用者的预算上，服务端自己的不动 */
-    t3_charge(x, b - a);
+    tier_charge(x, b - a);
     x->used_t += b - a;
     x->used_total += b - a;
     if (t->sc) {
@@ -762,6 +768,11 @@ static void check_slot_ends(uint64_t seen, uint64_t now)
 static void end_period(uint64_t now, int skipped)
 {
     obs_now = now;
+    for (int i = 0; i < 3; i++)
+        last_tier_ticks[i] = tier_ticks[i];
+    last_kernel_ticks = k_this_period;
+    last_t3_limit = t3_limit;
+    sampled_period = pk;
     for (int i = 0; i < MAX_TASKS; i++) {
         struct task *t = &tasks[i];
         if (t->state == TASK_EMPTY || t->state == TASK_DEAD || t == idle_task)
@@ -779,6 +790,11 @@ static void end_period(uint64_t now, int skipped)
         }
         if (t->used_t > t->used_max_all)
             t->used_max_all = t->used_t;
+        int short_cpu = t->tier == TIER2 && t->kind == KIND_SPIN &&
+                        (t->state == TASK_RUNNING || t->state == TASK_READY) &&
+                        t->used_t < t->min_t;
+        if (short_cpu)
+            tier2_short_count++;
         if (rec) {
             t->w.periods++;
             t->w.used_sum += t->used_t;
@@ -1293,7 +1309,7 @@ static uint64_t schedule(uint64_t sp, int timer)
                 x->ipc_hold = 1;    /* v014：本周期不再接新调用 */
             }
         }
-        t3_charge(x, c);
+        tier_charge(x, c);
         x->used_t += c;
         x->used_total += c;
         ipc.kern_sum += c;
@@ -1436,7 +1452,7 @@ void job_body(uint64_t start)
         }
     }
     if (t == dashboard_app)
-        app_demo_dashboard_frame();
+        app_display_core_frame();
     uint64_t end = start + t->work_t;
     while (ticks_now() < end)
         asm volatile("" ::: "memory");
@@ -1706,7 +1722,8 @@ void sched_init(void)
 void services_start(void)
 {
     const char *args = dtb_bootargs();
-    int dashboard = !strcmp(args, "apps") || !strcmp(args, "apps-video");
+    int dashboard = !strcmp(args, "apps") || !strcmp(args, "apps-video") ||
+                    !strcmp(args, "apps-desktop-stall");
     struct task *t = task_create(dashboard ? "dashboard" : "display-vsync", TIER1, KIND_JOB);
     if (dashboard)
         dashboard_app = t;
@@ -1763,6 +1780,26 @@ uint64_t sched_next_guard(uint64_t now)
                 return now;
         }
     return now;
+}
+
+void sched_read_system_info(struct sched_system_info *info)
+{
+    uint64_t flags = irq_save();
+    info->period = sampled_period;
+    for (int i = 0; i < 3; i++)
+        info->cpu_us[i] = last_tier_ticks[i];
+    info->kernel_us = last_kernel_ticks;
+    info->tier3_limit_us = last_t3_limit;
+    info->tier1_misses = ks[0].miss_a + ks[0].miss_b;
+    info->tier2_short = tier2_short_count;
+    info->tier2_over = ks[0].t2_over_n;
+    info->tier3_throttled = t3_throttled;
+    info->tier3_over = t3_over;
+    irq_restore(flags);
+    for (int i = 0; i < 3; i++)
+        info->cpu_us[i] = ticks_to_us(info->cpu_us[i]);
+    info->kernel_us = ticks_to_us(info->kernel_us);
+    info->tier3_limit_us = ticks_to_us(info->tier3_limit_us);
 }
 
 void sched_total_misses(uint64_t *a, uint64_t *b)
