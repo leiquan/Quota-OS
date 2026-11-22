@@ -175,7 +175,7 @@ static void cmd_overview(void)
            1000000000ull / timer_freq());
     decl_notice();
     printf("\n[系统预留] kernel, fixed, never lent\n");
-    printf("  CPU %u us/period = %lu ticks\n", SYS_RESERVE_US, us_to_ticks(SYS_RESERVE_US));
+    printf("  CPU %u us/period = %lu ticks\n", resource_kernel_reserve_us(), us_to_ticks(resource_kernel_reserve_us()));
     printf("  measured since boot: max %lu ticks/period (period %lu of %lu)\n",
            sched_kernel_max_all(), sched_kernel_max_period(), sched_periods());
     {
@@ -190,8 +190,8 @@ static void cmd_overview(void)
                a.t[KC_SVC_OTHER], a.n[KC_SVC_OTHER]);
         printf("    of which period-boundary work %lu, waits for a deadline %lu\n",
                a.boundary, a.spin);
-        printf("    reserve %lu, margin %ld\n", us_to_ticks(SYS_RESERVE_US),
-               (long)us_to_ticks(SYS_RESERVE_US) - (long)a.total);
+        printf("    reserve %lu, margin %ld\n", us_to_ticks(resource_kernel_reserve_us()),
+               (long)us_to_ticks(resource_kernel_reserve_us()) - (long)a.total);
     }
     printf("  memory %u KB\n", KERNEL_RESERVE_KB);
 
@@ -229,8 +229,8 @@ static void cmd_overview(void)
            resource_app_cpu_capacity_us(), resource_mem_min_sum_kb(),
            resource_app_mem_capacity_kb());
     printf("  admission: reserve %u + tier-1 %u + tier-2 min %u\n    + guard %u = %u <= %u us\n",
-           SYS_RESERVE_US, resource_t1_cpu_us(), resource_cpu_min_sum_us(), resource_guard_us(),
-           SYS_RESERVE_US + resource_t1_cpu_us() + resource_cpu_min_sum_us() + resource_guard_us(),
+           resource_kernel_reserve_us(), resource_t1_cpu_us(), resource_cpu_min_sum_us(), resource_guard_us(),
+           resource_kernel_reserve_us() + resource_t1_cpu_us() + resource_cpu_min_sum_us() + resource_guard_us(),
            PERIOD_US);
 
     printf("\n[Tier 3] everyone else, round robin %u us, leftover only\n", T3_QUANTUM_US);

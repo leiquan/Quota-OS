@@ -105,6 +105,7 @@ struct task {
     uint64_t sugg_t;            /* Tier 2：建议值里超出最低值的部分 */
     uint64_t work_t;            /* KIND_JOB：每个作业的工作量 */
     uint64_t deadline_t;        /* KIND_JOB：相对释放时刻的截止期 */
+    uint64_t refundable_t; /* Current-period job reservation included in the pool calculation. */
     uint64_t last_used_t;
     uint64_t period_grant_t, last_grant_t;
     uint64_t used_t;            /* 本周期已用 */
@@ -263,6 +264,8 @@ uint32_t resource_guard_us(void);
 uint32_t resource_app_cpu_capacity_us(void);
 uint64_t resource_app_mem_capacity_kb(void);
 uint32_t resource_cpu_min_sum_us(void);
+uint32_t resource_period_reservations_us(uint32_t target);
+uint32_t resource_kernel_reserve_us(void);
 uint64_t resource_mem_min_sum_kb(void);
 uint64_t resource_ram_kb(void);
 int resource_pressure(void);
@@ -302,6 +305,8 @@ void app_desktop_stall_probe(void);
 struct sched_system_info {
     uint64_t period;
     uint64_t cpu_us[3], kernel_us, tier3_limit_us;
+    uint64_t peak_busy_us, peak_kernel_us, max_start_late_us, returned_us;
+    uint64_t kernel_warnings, kernel_overruns, reserve_us, reserve_target_us;
     uint64_t tier1_misses, tier2_short, tier2_over;
     uint64_t tier3_throttled, tier3_over;
 };

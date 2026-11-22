@@ -467,6 +467,8 @@ int disp_drain(int max)
         return 0;
     for (int i = 0; i < EL0_Q_GLOBAL && n < max; i++) {
         struct irq_span span;
+        /* Empty slots can wait until the next drain. Recheck under the lock. */
+        if (!__atomic_load_n(&qq[i].used, __ATOMIC_RELAXED)) continue;
         struct qent work;
         struct proc *p;
         irq_off_begin(&span);

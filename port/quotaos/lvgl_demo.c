@@ -26,7 +26,7 @@ static uint64_t save_since;
 static struct app_display_stats save_before;
 static lv_obj_t *task_body;
 static lv_obj_t *tabs[3], *info_panel;
-static lv_obj_t *info_values[16], *info_crossings;
+static lv_obj_t *info_values[24], *info_crossings;
 static lv_obj_t *app_cards[3];
 static lv_obj_t *app_rate[3], *app_status[3];
 static lv_obj_t *clock_label;
@@ -883,7 +883,8 @@ static void refresh_system_info(void)
     const uint64_t values[] = {cpu_percent, v.cpu_us[0], v.cpu_us[1], v.cpu_us[2],
         v.tier3_limit_us, v.kernel_us, v.tier1_misses, v.tier2_short,
         mem_percent, ram, system_reserve_kb(), resource_t1_mem_kb(),
-        resource_mem_min_sum_kb(), resource_app_mem_capacity_kb(), v.tier2_over, v.tier3_throttled};
+        resource_mem_min_sum_kb(), resource_app_mem_capacity_kb(), v.tier2_over, v.tier3_throttled,
+        v.peak_busy_us, v.peak_kernel_us, v.max_start_late_us, v.returned_us, v.kernel_warnings, v.kernel_overruns, v.reserve_us, v.reserve_target_us};
     for (unsigned i = 0; i < sizeof values / sizeof values[0]; i++) {
         char number[32];
         lv_snprintf(number, sizeof number, "%lu", (unsigned long)values[i]);
@@ -1253,19 +1254,22 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         "CPU busy (%)", "Tier 1 CPU (us)", "Tier 2 CPU (us)", "Tier 3 CPU (us)",
         "Tier 3 limit (us)", "Kernel CPU (us)", "Tier 1 misses", "Tier 2 shortfalls",
         "RAM reserved (%)", "Guest RAM (KiB)", "System reserve (KiB)", "Tier 1 reserve (KiB)",
-        "App minima (KiB)", "App capacity (KiB)", "Tier 2 overruns", "Tier 3 throttled periods"
+        "App minima (KiB)", "App capacity (KiB)", "Tier 2 overruns", "Tier 3 throttled periods",
+        "Busy peak (us)", "Kernel peak (us)", "T1 start late max (us)", "T2 returned (us)", "Kernel warning periods", "Kernel overrun periods", "Kernel reserve (us)", "Reserve target (us)"
     };
     desk_label(info_panel, 16, 10, clock_is_icount() ? "CPU  /  10 ms  /  icount" : "CPU  /  10 ms  /  host", 0x374e90);
     desk_label(info_panel, 356, 10, "Memory and resource events", 0x374e90);
     for (unsigned i = 0; i < sizeof info_names / sizeof info_names[0]; i++) {
-        int x = i < 8 ? 16 : 356, y = 42 + (i % 8) * 29;
+        int column = i < 16 ? i / 8 : i < 20 ? (i - 16) / 2 : (i - 20) / 2;
+        int row = i < 16 ? i % 8 : i < 20 ? 8 + (i - 16) % 2 : 10 + (i - 20) % 2;
+        int x = column ? 356 : 16, y = 36 + row * 23;
         desk_label(info_panel, x, y, info_names[i], 0x475a7a);
         info_values[i] = desk_label(info_panel, x + 186, y, "", 0x263552);
         lv_obj_set_width(info_values[i], 122);
         lv_obj_set_style_text_align(info_values[i], LV_TEXT_ALIGN_RIGHT, 0);
     }
-    desk_label(info_panel, 356, 274, "Tier 3 pool crossings", 0x475a7a);
-    info_crossings = desk_label(info_panel, 542, 274, "", 0x263552);
+    desk_label(info_panel, 356, 312, "Tier 3 pool crossings", 0x475a7a);
+    info_crossings = desk_label(info_panel, 542, 312, "", 0x263552);
     lv_obj_set_width(info_crossings, 122);
     lv_obj_set_style_text_align(info_crossings, LV_TEXT_ALIGN_RIGHT, 0);
 

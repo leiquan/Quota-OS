@@ -20,6 +20,14 @@ static volatile uint32_t display_max_gap_us;
 static uint32_t probe_frames, probe_misses, probe_video;
 static uint64_t probe_pool_exceeded, probe_video_over, probe_video_misses;
 
+static uint64_t app_test_period;
+static uint32_t d0, v0, m0, misses0, dn, vn, mn, dm;
+
+static struct sched_system_info stall_info;
+static uint64_t stall_periods;
+static unsigned stall_exceeds;
+static int stall_ok;
+
 void app_desktop_stall_probe(void)
 {
     if (desktop_probe != PROBE_ARMED)
@@ -28,10 +36,18 @@ void app_desktop_stall_probe(void)
     desktop_probe = PROBE_SPINNING;
     while (desktop_probe == PROBE_SPINNING)
         asm volatile("" ::: "memory");
+    struct kattr worst;
+    sched_kernel_worst(&worst);
+    printf("[kernel-budget] reserve_us=%lu target_us=%lu warnings=%lu overruns=%lu worst_period=%lu guard_us=%lu svc_us=%lu timer_us=%lu\n",
+           stall_info.reserve_us, stall_info.reserve_target_us, stall_info.kernel_warnings, stall_info.kernel_overruns, worst.period,
+           ticks_to_us(worst.t[KC_GUARD]), ticks_to_us(worst.t[KC_SVC_OTHER]), ticks_to_us(worst.t[KC_TIMER]));
+    printf("[peaks] busy_us=%lu kernel_us=%lu start_late_us=%lu returned_us=%lu pool_us=%lu\n",
+           stall_info.peak_busy_us, stall_info.peak_kernel_us, stall_info.max_start_late_us,
+           stall_info.returned_us, stall_info.tier3_limit_us);
+    printf("[desktop-stall] periods=%lu dashboard_commits=%u misses=%u max_gap_us=%u dashcam_commits=%u pool_exceeded=%u\n",
+           stall_periods, dn, dm, display_max_gap_us, vn, stall_exceeds);
+    printf("[desktop-stall] %s\nQA DONE\n", stall_ok ? "PASS" : "FAIL");
 }
-
-static uint64_t app_test_period;
-static uint32_t d0, v0, m0, misses0, dn, vn, mn, dm;
 
 void app_display_read(struct app_display_stats *stats)
 {
@@ -129,10 +145,14 @@ static void observe_desktop_stall(uint64_t period)
              vn == 25 && exceeds == 0 && info.tier2_over == probe_video_over &&
              video_demo->task->misses == probe_video_misses &&
              display_max_gap_us > 0 && display_max_gap_us < 11000;
+    ok = ok && info.reserve_us == info.reserve_target_us && info.reserve_us >= SYS_RESERVE_US &&
+         info.reserve_us >= info.peak_kernel_us * 6 / 5 && info.returned_us > 0 && info.returned_us <= 600;
+    stall_info = info;
+    stall_periods = period - probe_period;
+    stall_exceeds = exceeds;
+    stall_ok = ok;
     desktop_probe = PROBE_DONE;
-    printf("[desktop-stall] periods=%lu dashboard_commits=%u misses=%u max_gap_us=%u dashcam_commits=%u pool_exceeded=%u\n",
-           period - probe_period, dn, dm, display_max_gap_us, vn, exceeds);
-    printf("[desktop-stall] %s\nQA DONE\n", ok ? "PASS" : "FAIL");
+
 }
 
 static void app_demo_video_frame(void)

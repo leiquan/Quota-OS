@@ -32,6 +32,10 @@ static const struct app_manifest catalog[] = {
 static struct running_app apps[MAX_APPS];
 static uint64_t ram_kb;
 static int pressure;
+static uint32_t kernel_reserve = SYS_RESERVE_US;
+static uint32_t kernel_target = SYS_RESERVE_US;
+
+uint32_t resource_kernel_reserve_us(void) { return kernel_reserve; }
 static char reason[REASON_LEN];
 
 static void radd(const char *s)
@@ -147,17 +151,40 @@ uint64_t resource_app_mem_capacity_kb(void)
 
 uint32_t resource_app_cpu_capacity_us(void)
 {
-    uint32_t fixed = SYS_RESERVE_US + resource_t1_cpu_us() + resource_guard_us();
+    uint32_t fixed = kernel_reserve + resource_t1_cpu_us() + resource_guard_us();
     return PERIOD_US > fixed ? PERIOD_US - fixed : 0;
+}
+
+static uint32_t cpu_minima(int begin_period)
+{
+    uint32_t sum = 0;
+    for (int i = 0; i < MAX_APPS; i++) {
+        struct running_app *app = &apps[i];
+        if (!app->alive) continue;
+        sum += app->cpu_min_us;
+        if (begin_period && app->task && app->task->tier == TIER2 && app->task->kind == KIND_JOB)
+            app->task->refundable_t = us_to_ticks(app->cpu_min_us);
+    }
+    return sum;
 }
 
 uint32_t resource_cpu_min_sum_us(void)
 {
-    uint32_t s = 0;
-    for (int i = 0; i < MAX_APPS; i++)
-        if (apps[i].alive)
-            s += apps[i].cpu_min_us;
-    return s;
+    return cpu_minima(0);
+}
+
+/* Scheduler calls this with IRQs masked when it establishes the new pool. */
+uint32_t resource_period_reservations_us(uint32_t target)
+{
+    uint32_t reserved = cpu_minima(1);
+    kernel_target = target;
+    if (kernel_reserve < target) {
+        uint32_t capacity = resource_app_cpu_capacity_us();
+        uint32_t room = capacity > reserved ? capacity - reserved : 0;
+        uint32_t increase = target - kernel_reserve;
+        kernel_reserve += increase < room ? increase : room;
+    }
+    return reserved;
 }
 
 uint64_t resource_mem_min_sum_kb(void)
@@ -327,7 +354,8 @@ int resource_check(const struct app_manifest *m)
     }
 
     uint64_t mem_left = mem_cap - resource_mem_min_sum_kb();
-    uint32_t cpu_left = cpu_cap - resource_cpu_min_sum_us();
+    uint32_t used = resource_cpu_min_sum_us();
+    uint32_t cpu_left = kernel_target == kernel_reserve && cpu_cap > used ? cpu_cap - used : 0;
     if (m->mem_min_kb <= mem_left && m->cpu_min_us <= cpu_left)
         return ADMIT_OK;
 
@@ -395,7 +423,16 @@ struct running_app *resource_commit(const struct app_manifest *m)
     a->cpu_min_us = m->cpu_min_us;
     a->cpu_sugg_us = m->cpu_sugg_us;
     a->mem_granted_kb = m->mem_min_kb;
+    uint64_t flags = irq_save();
+    if (m->cpu_min_us && (kernel_target > kernel_reserve ||
+        (uint64_t)resource_cpu_min_sum_us() + m->cpu_min_us > resource_app_cpu_capacity_us())) {
+        irq_restore(flags);
+        reason[0] = 0;
+        radd("REFUSED: insufficient CPU after kernel reserve update");
+        return 0;
+    }
     a->alive = 1;
+    irq_restore(flags);
     uint64_t granted = sum_granted_kb();
     uint64_t room = cap > granted ? cap - granted : 0;
     uint32_t want = m->mem_sugg_kb > m->mem_min_kb ? m->mem_sugg_kb - m->mem_min_kb : 0;
