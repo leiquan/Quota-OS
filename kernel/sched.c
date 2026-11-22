@@ -1371,6 +1371,8 @@ static uint64_t schedule(uint64_t sp, int timer)
 }
 
 /* 作业任务 eret 后第一条指令读到的时间由 boot/vectors.S 传进来。 */
+static struct task *dashboard_app;
+
 void job_body(uint64_t start)
 {
     struct task *t = cur;
@@ -1385,6 +1387,8 @@ void job_body(uint64_t start)
                 t->w.start_max = off;
         }
     }
+    if (t == dashboard_app)
+        app_demo_dashboard_frame();
     uint64_t end = start + t->work_t;
     while (ticks_now() < end)
         asm volatile("" ::: "memory");
@@ -1653,7 +1657,11 @@ void sched_init(void)
 
 void services_start(void)
 {
-    struct task *t = task_create("display-vsync", TIER1, KIND_JOB);
+    const char *args = dtb_bootargs();
+    int dashboard = !strcmp(args, "apps") || !strcmp(args, "apps-video");
+    struct task *t = task_create(dashboard ? "dashboard" : "display-vsync", TIER1, KIND_JOB);
+    if (dashboard)
+        dashboard_app = t;
     t->work_t = us_to_ticks(80);
     sched_bind_slot(t, 0);
     t = task_create("timer-server", TIER1, KIND_JOB);

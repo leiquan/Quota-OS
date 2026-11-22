@@ -1142,11 +1142,116 @@ void demo_menu_status(char *buf, int cap)
         menu_copy(buf, cap, "idle");
 }
 
+/* Dedicated framebuffer demo mode. The desktop never draws on these regions. */
+static uint32_t *volatile app_surface;
+static uint32_t app_stride;
+static volatile uint32_t dashboard_frames, video_frames;
+static volatile int video_stalled;
+
+static void app_meter(uint32_t x, uint32_t y, uint32_t frame, uint32_t color)
+{
+    uint32_t *fb = app_surface;
+    if (!fb)
+        return;
+    unsigned filled = 8 + (frame % 29) * 4;
+    for (unsigned row = 0; row < 8; row++)
+        for (unsigned col = 0; col < 128; col++)
+            fb[(y + row) * app_stride + x + col] = col < filled ? color : 0x182338;
+}
+
+void app_demo_dashboard_frame(void)
+{
+    if (!app_surface)
+        return;
+    app_meter(48, 70, ++dashboard_frames, 0x35dfa0);
+}
+
+static void app_demo_video_frame(void)
+{
+    uint64_t last = ~0ull;
+    for (;;) {
+        uint64_t period = sched_period_now();
+        if (period != last) {
+            last = period;
+            if (!video_stalled && period % 4 == 0)
+                app_meter(48, 160, ++video_frames, 0x559dff);
+        }
+        asm volatile("" ::: "memory");
+    }
+}
+
+static void app_demo_wait(uint64_t periods)
+{
+    uint64_t first = sched_period_now();
+    while (sched_period_now() - first < periods) {
+        disp_drain(2);
+        asm volatile("svc #0" ::: "memory");
+    }
+}
+
+static void app_demo_run(int with_video)
+{
+    uint64_t pa, bytes;
+    uint32_t w, h;
+    if (fb_present() || fb_reserved_range(&pa, &bytes)) {
+        printf("[apps] FAIL framebuffer\nQA DONE\n");
+        return;
+    }
+    fb_geometry(&w, &h);
+    app_stride = w;
+    app_surface = (uint32_t *)(uintptr_t)pa;
+    struct task *dashboard = sched_find("dashboard");
+    int64_t music = proc_spawn("music", 0, 0, 0, pa, 0, 48, 245, 32, 32);
+    struct task *music_task = sched_find("music");
+    struct running_app *video = 0;
+    if (with_video) {
+        const struct app_manifest m = {"video", "frame demo", 16, 16, 600, 600};
+        video = resource_commit(&m);
+        if (video) {
+            struct task *t = task_create("video", TIER2, KIND_SPIN);
+            t->min_t = us_to_ticks(m.cpu_min_us);
+            task_set_entry(t, app_demo_video_frame);
+            video->task = t;
+            task_start(t);
+        }
+    }
+    if (!dashboard || music < 0 || !music_task || (with_video && !video)) {
+        printf("[apps] FAIL startup music=%ld\nQA DONE\n", music);
+        return;
+    }
+    printf("[apps] dashboard tier=%d slot=%d; music tier=%d EL0; video=%d\n",
+           dashboard->tier, dashboard->slot, music_task->tier, video != 0);
+    app_demo_wait(15);
+    video_stalled = 1;
+    app_demo_wait(2);
+    uint32_t d0 = dashboard_frames, v0 = video_frames, misses = dashboard->misses;
+    uint32_t music0 = proc_submits(music);
+    app_demo_wait(100);
+    uint32_t dn = dashboard_frames - d0, vn = video_frames - v0;
+    uint32_t dm = dashboard->misses - misses, mn = proc_submits(music) - music0;
+    video_stalled = 0;
+    app_demo_wait(12);
+    int ok = dashboard->tier == TIER1 && music_task->tier == TIER3 &&
+             dn == 100 && vn == 0 && dm == 0 && mn > 0 &&
+             (!video || (video->task->tier == TIER2 && v0 > 0 && video_frames > v0));
+    printf("[apps] during 100 periods: dashboard_frames=%u misses=%u video_frames=%u music_submits=%u\n",
+           dn, dm, vn, mn);
+    printf("[apps] %s\nQA DONE\n", ok ? "PASS" : "FAIL");
+    for (;;) {
+        disp_drain(2);
+        asm volatile("svc #0" ::: "memory");
+    }
+}
+
 void shell_main(void)
 {
     printf("[boot] shell task running\n");
     klog_flush(); /* Boot records are printed without blocking realtime IRQs. */
     const char *args = dtb_bootargs();
+    if (!strcmp(args, "apps") || !strcmp(args, "apps-video")) {
+        app_demo_run(!strcmp(args, "apps-video"));
+        for (;;) asm volatile("wfi");
+    }
     if (strcmp(args, "logtest") == 0) {
         printf("[klog-test] %s\n", klog_selftest() ? "PASS" : "FAIL");
         printf("QA DONE\n");

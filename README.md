@@ -8,6 +8,24 @@ AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中�
 
 License: [Apache-2.0](LICENSE)
 
+## 分级应用演示
+
+![分级应用的三块显示区域](docs/screenshots/app-demo.png)
+
+[20 次演示实测记录](docs/tests/optimization/app-demo/REPORT.md)
+
+在 QEMU 的 `virt` 机器上使用 `-device ramfb -append apps-video` 启动三个应用。使用 `-append apps` 可省略视频。保持原有的桌面启动方式即可进入 LVGL。
+
+| 应用 | 调度和显示 |
+|---|---|
+| 仪表盘 | 一级，演示模式复用 500 µs 的显示槽。顶部绿色条每 10 ms 更新一次。 |
+| 可选视频 | 二级，经准入取得每 10 ms 的 600 µs 最低 CPU 配额。中部蓝色模拟帧目标 25 次/秒，测试会主动停帧 1 秒虚拟时间再恢复。 |
+| 音乐 | 三级 EL0，底部独立的 32×32 模拟播放状态区域。提交受现有进程绘图配额约束。 |
+
+演示使用模拟读数、帧和播放状态。音乐未接音频设备，视频未接解码器。独立区域由固定坐标和音乐进程的视口限制实现。仪表与视频当前是独立的 EL1 调度任务，完整的应用地址空间隔离仍待实现。更新频率指虚拟时间内的帧缓冲写入，不测屏幕面板刷新。
+
+回归命令：`python3 tools/app-demo-check.py build/quotaos-lvgl.bin /tmp/quota-app-demo --rounds 10`。
+
 ## 虚拟平台验收
 
 默认验收配置为 QEMU TCG、Cortex-A72、virt/GICv2、128 MiB，使用 `-icount shift=4,sleep=off`。运行 `python3 tools/optimization-cycle.py prebuilt/quotaos.bin /tmp/quota-acceptance --rounds 100`。

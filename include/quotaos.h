@@ -273,6 +273,7 @@ int resource_running_count(void);
 struct running_app *resource_running(int index);
 const struct app_manifest *resource_catalog(int *count);
 
+void app_demo_dashboard_frame(void);
 void sched_init(void);
 struct task *sched_current(void);
 struct task *task_create(const char *name, int tier, int kind);
