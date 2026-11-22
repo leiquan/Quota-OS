@@ -21,8 +21,9 @@ static uint64_t base, submitted, last_period;
 static unsigned submitted_once, inflight;
 static uint16_t completed;
 static int slot;
-enum phase { OFFLINE, IDENTIFY, READ_A, READ_B, READY, WRITE, FLUSH, FAILED };
+enum phase { OFFLINE, IDENTIFY, READ_A, READ_B, READY, WRITE, FLUSH, VERIFY, FAILED };
 static enum phase phase;
+static int verify_result;
 static void address(uint32_t offset, uintptr_t addr)
 {
     mmio_wr(base + offset, (uint32_t)addr);
@@ -78,6 +79,7 @@ static void submit(void)
     int flush = phase == FLUSH;
     header.type = phase == IDENTIFY ? 8 : phase == WRITE ? 1 : flush ? 4 : 0;
     header.sector = phase == READ_B || (phase == WRITE && !slot);
+    if (phase == VERIFY) header.sector = slot;
     if (phase == IDENTIFY || flush) header.sector = 0;
     status = 255;
     desc[0] = (struct descriptor){(uintptr_t)&header, sizeof header, 1, flush ? 2 : 1};
@@ -116,6 +118,11 @@ void note_disk_poll(void)
             }
             phase = phase == READ_A ? READ_B : READY;
             if (phase == READY) printf("[files] mounted bytes=%u checksum=%u\n", saved.length, saved.checksum);
+        } else if (phase == VERIFY) {
+            verify_result = transfer.magic == MAGIC && transfer.generation == saved.generation &&
+                transfer.length == saved.length && transfer.checksum == saved.checksum &&
+                checksum(&transfer) == saved.checksum && !transfer.text[transfer.length] ? 1 : -1;
+            phase = READY;
         } else if (phase == WRITE) phase = FLUSH;
         else if (phase == FLUSH) {
             saved = transfer;
@@ -147,12 +154,25 @@ int note_disk_save(const char *text)
     return 0;
 }
 
+unsigned note_disk_bytes(void) { return saved.length; }
+
+int note_disk_verify(void)
+{
+    if (phase != READY || !saved.magic) return -1;
+    verify_result = 0;
+    phase = VERIFY;
+    return 0;
+}
+
+int note_disk_verify_result(void) { return phase == FAILED ? -1 : verify_result; }
+
 const char *note_disk_text(void) { return saved.magic ? saved.text : 0; }
 const char *note_disk_status(void)
 {
     if (phase == READY) return saved.magic ? "Saved" : "Ready";
     if (phase == WRITE || phase == FLUSH) return "Saving...";
     if (phase == FAILED) return "Disk error";
+    if (phase == VERIFY) return "Verifying...";
     if (phase == OFFLINE) return "No Notes disk";
     return "Opening disk...";
 }

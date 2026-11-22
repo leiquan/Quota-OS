@@ -21,7 +21,7 @@ static lv_obj_t *detail;
 static lv_obj_t *page_home;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover, *page_apps, *page_files;
-static lv_obj_t *note_status, *file_entry, *file_empty;
+static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata;
 static uint64_t save_since;
 static struct app_display_stats save_before;
 static lv_obj_t *task_body;
@@ -318,10 +318,68 @@ static void select_monitor_tab(enum monitor_page tab)
         lv_obj_set_style_bg_color(tabs[i], lv_color_hex(i == tab ? 0xe0edff : 0xffffff), 0);
 }
 
+static struct {
+    int active, selected, protected, disk, video;
+    uint64_t period;
+    struct app_display_stats apps;
+    struct sched_system_info system;
+} checks;
+
+static void start_checks(void)
+{
+    if (checks.active) return;
+    checks.selected = checks.active = 1;
+    checks.video = vehicle_app_running(TIER2);
+    checks.protected = vehicle_app_running(TIER1) && vehicle_app_set_running(TIER1, 0) < 0 &&
+                       vehicle_app_running(TIER1);
+    checks.disk = note_disk_verify() == 0;
+    checks.period = sched_period_now();
+    app_display_read(&checks.apps);
+    sched_read_system_info(&checks.system);
+    lv_label_set_text(detail, "Checks running...");
+}
+
+static void poll_checks(void)
+{
+    if (!checks.active) return;
+    uint64_t periods = sched_period_now() - checks.period;
+    if (periods < 100 || (checks.disk && !note_disk_verify_result())) return;
+    struct app_display_stats a;
+    struct sched_system_info sys;
+    app_display_read(&a);
+    sched_read_system_info(&sys);
+    unsigned misses = a.speed_misses - checks.apps.speed_misses;
+    unsigned frames = a.frames[0] - checks.apps.frames[0];
+    unsigned long shortfalls = sys.tier2_short - checks.system.tier2_short;
+    unsigned long overruns = sys.tier2_over - checks.system.tier2_over;
+    unsigned long crossings = sys.tier3_over - checks.system.tier3_over;
+    const char *protection = !app_desktop_mode() ? "SKIP" : checks.protected ? "PASS" : "FAIL";
+    const char *speed = !app_desktop_mode() ? "SKIP" : !misses && frames >= periods - 1 ? "PASS" : "FAIL";
+    const char *video = !checks.video || !vehicle_app_running(TIER2) ? "SKIP" :
+                        !shortfalls && !overruns ? "PASS" : "FAIL";
+    const char *disk = !checks.disk ? "SKIP" : note_disk_verify_result() == 1 ? "PASS" : "FAIL";
+    lv_label_set_text_fmt(detail,
+        "LIVE RESULTS  /  %lu periods\n\n"
+        "%s    Tier 1 stop protection\n%s    Speedometer: %u commits, %u misses\n"
+        "%s    Tier 2: %lu shortfalls, %lu overruns\n%s    Tier 3: %lu pool crossings\n"
+        "%s    Note.txt disk readback", (unsigned long)periods, protection, speed, frames, misses,
+        video, shortfalls, overruns, crossings ? "FAIL" : "PASS", crossings, disk);
+    printf("[checks] protection=%s speed=%s frames=%u misses=%u tier2=%s short=%lu over=%lu pool_crossings=%lu disk=%s\n",
+           protection, speed, frames, misses, video, shortfalls, overruns, crossings, disk);
+    checks.active = 0;
+}
+
 static void on_group(lv_event_t *e)
 {
     int id = (int)(uintptr_t)lv_event_get_user_data(e);
     printf("[menu] button %d\n", id);
+    if (id == 215) {
+        start_checks();
+        return;
+    }
+    if (id == 9 || id == 209 || id == 103) {
+        checks.active = checks.selected = 0;
+    }
     if (id == 212) {
         show_page(4);
         printf("[files] directory opened\n");
@@ -984,10 +1042,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_pad_all(menu_list, 12, 0);
     lv_obj_set_style_radius(menu_list, 0, 0);
     lv_obj_remove_flag(menu_list, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *load9 = add_row(menu_list, 20, 0xe0edff, 0xc5d9fa, "Run workload", 9);
-    add_row(menu_list, 74, 0xffffff, 0xdbe3f0, "Stop workload", 103);
-    add_row(menu_list, 128, 0xffffff, 0xdbe3f0, "Service check", 5);
-    add_row(menu_list, 182, 0xffffff, 0xdbe3f0, "App reservation", 2);
+    lv_obj_t *load9 = add_row(menu_list, 20, 0xe0edff, 0xc5d9fa, "Scheduler stress", 9);
+    add_row(menu_list, 74, 0xffffff, 0xdbe3f0, "Stop stress", 103);
+    add_row(menu_list, 128, 0xe0edff, 0xc5d9fa, "Run system checks", 215);
     lv_obj_t *watch = add_row(menu_list, 236, 0xe0edff, 0xc5d9fa, "Run & view tasks", 209);
     detail = desk_label(page_home, 252, 124, "No workload results", 0x263552);
     lv_obj_set_size(detail, 436, 338);
@@ -1120,9 +1177,23 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     select_monitor_tab(SYSTEM_TASK);
 
     page_files = desktop_window(screen, 180, 156, 500, 286, "Files");
-    file_entry = add_row(page_files, 82, 0xffffff, 0xdbe3f0, "Note.txt", 213);
-    lv_obj_set_pos(file_entry, 20, 82);
-    file_empty = desk_label(page_files, 24, 86, "", 0x64748b);
+    desk_label(page_files, 24, 68, "On this device", 0x536782);
+    file_entry = lv_button_create(page_files);
+    lv_obj_set_pos(file_entry, 20, 96);
+    lv_obj_set_size(file_entry, 458, 78);
+    lv_obj_set_style_pad_all(file_entry, 0, 0);
+    lv_obj_set_style_radius(file_entry, 12, 0);
+    lv_obj_set_style_shadow_width(file_entry, 0, 0);
+    lv_obj_set_style_bg_color(file_entry, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_color(file_entry, lv_color_hex(0xdbe3f0), 0);
+    lv_obj_set_style_border_width(file_entry, 1, 0);
+    lv_obj_add_event_cb(file_entry, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)213);
+    lv_obj_t *file_icon = desk_label(file_entry, 18, 22, LV_SYMBOL_FILE, 0x327b90);
+    lv_obj_set_style_text_font(file_icon, &lv_font_montserrat_24, 0);
+    desk_label(file_entry, 64, 15, "Note.txt", 0x243650);
+    file_metadata = desk_label(file_entry, 64, 42, "", 0x64748b);
+    desk_label(file_entry, 428, 30, LV_SYMBOL_RIGHT, 0x75839a);
+    file_empty = desk_label(page_files, 28, 116, "", 0x64748b);
     lv_obj_add_flag(file_entry, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
@@ -1219,6 +1290,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         if (disk_status != previous_disk_status) {
             previous_disk_status = disk_status;
             lv_label_set_text(note_status, disk_status);
+            if (note_disk_text())
+                lv_label_set_text_fmt(file_metadata, "Plain text  /  %u bytes", note_disk_bytes());
             monitor_visible(file_entry, note_disk_text() != NULL);
             monitor_visible(file_empty, note_disk_text() == NULL);
             lv_label_set_text(file_empty, !strcmp(disk_status, "Ready") ? "No saved files" : disk_status);
@@ -1249,6 +1322,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                 refresh_app_stats(tasks_at ? panel_now - tasks_at : 0);
             tasks_at = panel_now;
         }
+        poll_checks();
+        if (checks.selected) continue;
         demo_menu_detail(&d);
         if (d.running) {
             lv_snprintf(text, sizeof text,
@@ -1272,9 +1347,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                 d.t1_miss || (d.t2_ok && (d.t2_short || d.job_miss)) ? "Timing requirements were not met." : "No misses in this observed window.");
         } else {
             lv_snprintf(text, sizeof text,
-                "No workload results.\nSelect Run workload to measure deadlines.");
+                "SYSTEM CHECKS\n\nCheck stop protection, speedometer timing, CPU quotas and saved note integrity.\n\nScheduler stress adds competing tasks for 100 periods.");
         }
-        if (strcmp(text, shown) != 0) {
+        if (strcmp(text, shown) != 0 || strcmp(text, lv_label_get_text(detail))) {
             lv_label_set_text(detail, text);
             int n = 0;
             while (text[n] && n < (int)sizeof shown - 1) {
