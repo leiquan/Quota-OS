@@ -6,6 +6,21 @@ Run `bash tools/run-webkit.sh` with QEMU ARM64 installed. This branch brings up 
 
 [Serial log](docs/tests/webkit-stack/guest.log) · [Actual QEMU output](docs/tests/webkit-stack/frame.png) · [LVGL desktop branch](https://github.com/leiquan/Quota-OS/tree/Desktop-LVGL-120X800)
 
+## Load a local HTML file
+
+Run the launcher from your checkout:
+
+```sh
+printf '<h1>Hello, Quota OS</h1>' > hello.html
+bash tools/run-webkit.sh --page hello.html
+```
+
+This mode boots a separate document-loader image built from this branch. The guest reads the file bytes through QEMU fw_cfg, prints their byte count and FNV-1a checksum on the serial console, and exposes the buffer and its length to the engine host interface. Files from 1 to 16,384 bytes are accepted. Empty and oversized files are rejected. The loader image exercises the transport only; it does not link JavaScriptCore or render HTML. With no `--page`, the launcher still boots the previously verified JavaScriptCore and CSS-color image.
+
+使用 `--page` 可从宿主机传入本地 HTML，核对来宾串口输出的长度和校验值。当前画面是显示设备自测，页面内容尚未进入 WebCore 排版。
+
+Build the loader with the repository's GNU ARM64 cross-toolchain using `make`; its image is `build/quotaos.bin`. The packaged copy is `prebuilt/quotaos-webkit-loader.bin`. Run `python3 tools/webkit-document-check.py` to verify the packaged loader with QEMU.
+
 ## LVGL desktop baseline
 
 ![Quota OS desktop with the Apps directory and three vehicle demo applications](docs/screenshots/apps.png)

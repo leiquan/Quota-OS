@@ -42,6 +42,17 @@ void webkit_autostart(void)
     printf("[webkit] app mem capacity %lu KB\n", resource_app_mem_capacity_kb());
     printf("[webkit] inspected 4d967f4ca7bd tag WebKit-7625.2.8.18.3\n");
     printf("[webkit] that tree's WPE project version is 2.53.3\n");
+    static uint8_t document[16384];
+    uint32_t document_bytes;
+    int load = fw_read_file("opt/quota/document", document, sizeof document, &document_bytes);
+    if (!load) {
+        uint32_t hash = 2166136261u;
+        for (uint32_t i = 0; i < document_bytes; i++)
+            hash = (hash ^ document[i]) * 16777619u;
+        printf("[document] loaded bytes=%u fnv1a=%x\n", document_bytes, hash);
+    } else if (load == -2) {
+        printf("[document] rejected: expected 1..16384 bytes\n");
+    }
     int linked = webkit_engine_linked();
     printf("[webkit] engine linked: %s\n", linked ? "yes" : "no");
     if (!linked)
@@ -82,6 +93,8 @@ void webkit_autostart(void)
         host.poll_key = input_poll;
         host.heap = 0;
         host.heap_bytes = 0;
+        host.document = document_bytes ? document : 0;
+        host.document_bytes = document_bytes;
         printf("[webkit] calling engine (heap 0 bytes)\n");
         int rc = webkit_engine_main(&host);
         printf("[webkit] engine returned %d\n", rc);

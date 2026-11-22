@@ -18,6 +18,8 @@ struct webkit_host {
     int (*poll_key)(uint16_t *code, uint16_t *value);
     void *heap;
     uint64_t heap_bytes;
+    const uint8_t *document;
+    uint32_t document_bytes;
 };
 
 int webkit_engine_linked(void);

@@ -495,6 +495,7 @@ void handle_unhandled(uint64_t frame_sp, uint64_t kind);
 void kmain(uint64_t dtb);
 void shell_main(void);
 void webkit_autostart(void);
+int fw_read_file(const char *name, void *dest, uint32_t capacity, uint32_t *length);
 int kernel_reserve_alloc(uint64_t bytes, uint64_t align, uint64_t *pa);
 int wk_reserve(uint64_t bytes, int executable, unsigned guard_pages, uint64_t *pa);
 void *wk_os_reserve(uint64_t bytes, uint64_t align, int executable, unsigned guard_pages);

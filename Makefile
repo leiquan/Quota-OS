@@ -2,6 +2,7 @@
 # 产物：build/quotaos.elf / build/quotaos.bin，并复制到 prebuilt/
 # 构建可逐字节复现：逐个文件编译到 build/，不留临时文件名、构建路径和 build-id。
 CROSS ?= aarch64-linux-gnu-
+RUNTIME_LIB ?= -lgcc
 CC := $(CROSS)gcc
 CXX := $(CROSS)g++
 
@@ -88,7 +89,7 @@ webkit-jsc-flags-check:
 		-c port/quotaos/jsc_interpreter_only.cpp -o build/jsc_interpreter_only.o
 
 build/quotaos.elf: $(OBJS) boot/linker.ld
-	$(CC) $(CFLAGS) $(LDFLAGS) -T boot/linker.ld -o $@ $(OBJS) -lgcc
+	$(CC) $(CFLAGS) $(LDFLAGS) -T boot/linker.ld -o $@ $(OBJS) $(RUNTIME_LIB)
 
 build/quotaos.bin: build/quotaos.elf
 	$(CROSS)objcopy -O binary $< $@

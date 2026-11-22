@@ -79,7 +79,7 @@ static int fw_dma(uint64_t base, uint32_t control, void *buf, uint32_t len)
     return -1;
 }
 
-static int ramfb_publish(uint64_t fw, uint64_t pixels, uint32_t w, uint32_t h, uint32_t stride)
+static int fw_file(uint64_t fw, const char *name, uint32_t *size)
 {
     char sig[4];
     if (fw_dma(fw, (0u << 16) | 0x08u | 0x02u, sig, 4) != 0)
@@ -92,21 +92,45 @@ static int ramfb_publish(uint64_t fw, uint64_t pixels, uint32_t w, uint32_t h, u
     if (fw_dma(fw, (0x19u << 16) | 0x08u | 0x02u, &count_be, 4) != 0)
         return -1;
     uint32_t count = bswap32(count_be);
-    int selector = -1;
     for (uint32_t i = 0; i < count && i < 64; i++) {
         uint8_t ent[64];
         if (fw_dma(fw, 0x02u, ent, 64) != 0)
             return -1;
         ent[63] = 0;
-        if (strcmp((const char *)(ent + 8), "etc/ramfb") == 0) {
-            selector = (ent[4] << 8) | ent[5];
-            break;
+        if (strcmp((const char *)(ent + 8), name) == 0) {
+            if (size)
+                *size = ((uint32_t)ent[0] << 24) | ((uint32_t)ent[1] << 16) |
+                        ((uint32_t)ent[2] << 8) | ent[3];
+            return (ent[4] << 8) | ent[5];
         }
     }
-    if (selector < 0) {
-        printf("[fb] etc/ramfb not in fw_cfg (%u files)\n", count);
+    return -1;
+}
+
+/* The caller owns the destination. Reject the whole file if it will not fit. */
+int fw_read_file(const char *name, void *dest, uint32_t capacity, uint32_t *length)
+{
+    uint64_t fw;
+    uint32_t size;
+    *length = 0;
+    if (dtb_find_bases("qemu,fw-cfg-mmio", &fw, 1) < 1)
         return -1;
-    }
+    int selector = fw_file(fw, name, &size);
+    if (selector < 0)
+        return -1;
+    if (!size || size > capacity)
+        return -2;
+    if (fw_dma(fw, ((uint32_t)selector << 16) | 0x0au, dest, size))
+        return -1;
+    *length = size;
+    return 0;
+}
+
+static int ramfb_publish(uint64_t fw, uint64_t pixels, uint32_t w, uint32_t h, uint32_t stride)
+{
+    int selector = fw_file(fw, "etc/ramfb", 0);
+    if (selector < 0)
+        return -1;
     uint8_t cfg[28];
     uint64_t addr = bswap64(pixels);
     uint32_t fields[5];
