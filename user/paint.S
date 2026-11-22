@@ -21,12 +21,24 @@ _start:
     mov     x24, x5
     mov     x25, xzr
     mov     x26, #0x1000
+    cmp     x19, #15
+    b.eq    cpu_loop
+    cmp     x19, #16
+    b.eq    cooperative
     cmp     x19, #9
     b.eq    do_exec
     cmp     x19, #14
     b.eq    scripted
     cmp     x19, #7
     b.eq    probes
+    b       run
+
+cpu_loop:
+    b       cpu_loop
+cooperative:
+    mov     x8, #0
+    svc     #0
+    b       cooperative
 
 run:
     bl      submit_frame

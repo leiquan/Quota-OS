@@ -49,9 +49,13 @@ def boot(round_no):
                     time.sleep(.16)
             wait(r"\[apps\] PASS")
             mount = wait(r"\[files\] mounted bytes=(\d+)")
+            box = wait(r"launcher box (\d+),(\d+) (\d+)x(\d+)")
+            x,y,w,h = map(int,box.groups())
+            click(x+w//2,y+h//2)
+            wait(r"Apps opened")
             if round_no == 1:
                 assert int(mount[1]) == 0
-                click(970,736)
+                click(575,232)
                 wait(r"\[lvgl\] input page")
                 click(490,390)
                 for c in "quota":
@@ -59,8 +63,6 @@ def boot(round_no):
                     time.sleep(.14)
             else:
                 assert int(mount[1]) == 5
-                click(310,735)
-                wait(r"\[desktop\] Apps opened")
                 click(405,232)
                 wait(r"\[files\] directory opened")
                 time.sleep(.5)

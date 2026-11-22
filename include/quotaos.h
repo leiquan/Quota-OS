@@ -287,6 +287,7 @@ const struct app_manifest *resource_catalog(int *count);
 #define APP_METER_H 8
 #define APP_MUSIC_SIZE 32
 int app_desktop_mode(void);
+void app_demo_run(int with_video, int stall);
 void app_desktop_poll(void);
 int vehicle_app_running(int tier);
 int vehicle_app_set_running(int tier, int start);

@@ -1006,6 +1006,13 @@ static struct task *pick_t2(int sugg)
         if (prev_stint_sc == t)
             used += disp_now + EXIT_MARGIN_T - cur_entry;
         uint64_t room = bw_room(t);
+        /* A flexible reservation can finish its minimum in the surplus pass.
+         * Keep a full timer-exit interval inside each dispatch boundary. */
+        if (t->sugg_t && !resource_pressure()) {
+            if (used >= cap || cap - used <= 2 * MIN_REL_T)
+                continue;
+            room = room < cap - used - MIN_REL_T ? room : cap - used - MIN_REL_T;
+        }
         if (used < cap && room) {
             rr2 = i;
             t->run_cap = cap;

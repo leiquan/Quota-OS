@@ -33,7 +33,30 @@ static lv_obj_t *clock_label;
 static uint64_t rtc_base;
 enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_TESTS };
 static enum monitor_page monitor_tab;
-static lv_obj_t *minimized_dots[3];
+enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_COUNT };
+static lv_obj_t *dock, *icons[APP_COUNT], *dots[APP_COUNT];
+enum window_state { CLOSED, OPEN, MINIMIZED };
+static enum window_state states[APP_COUNT];
+static enum app_key recent[5];
+static unsigned recent_count;
+static int screen_width;
+static void sync_dock(void);
+static void dock_state(enum app_key key, enum window_state state)
+{
+    if (key == APP_COUNT) return;
+    states[key] = state;
+    if (state == OPEN && key != APP_LAUNCHER) {
+        unsigned i = 0;
+        while (i < recent_count && recent[i] != key) i++;
+        if (i == recent_count && recent_count < 5) recent_count++;
+        if (i == 5) i--;
+        while (i) { recent[i] = recent[i-1]; i--; }
+        recent[0] = key;
+    }
+    if (dock) sync_dock();
+}
+static const enum app_key page_keys[] = {APP_SYSTEM, APP_NOTES, APP_COUNT, APP_LAUNCHER, APP_FILES};
+
 static lv_obj_t *task_lists[3];
 static lv_obj_t *task_items[MAX_TASKS];
 static lv_obj_t *empty_tasks[3];
@@ -43,14 +66,35 @@ static const char app_music[] = "Music Player";
 static const char app_monitor[] = "System";
 enum { DOCK_STEP = 132, DOCK_ITEM_WIDTH = 120 };
 
+static void sync_dock(void)
+{
+    enum app_key visible[APP_COUNT] = {APP_LAUNCHER};
+    unsigned count = 1;
+    for (int key = 0; key < APP_COUNT; key++) {
+        lv_obj_add_flag(icons[key], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(dots[key], LV_OBJ_FLAG_HIDDEN);
+        if (key != APP_LAUNCHER && states[key] != CLOSED) visible[count++] = key;
+    }
+    if (count == 1)
+        for (unsigned i = 0; i < recent_count; i++) visible[count++] = recent[i];
+    int width = count * DOCK_STEP + 12;
+    lv_obj_set_width(dock, width);
+    lv_obj_set_x(dock, (screen_width - width) / 2);
+    for (unsigned i = 0; i < count; i++) {
+        enum app_key key = visible[i];
+        int x = 12 + i * DOCK_STEP;
+        lv_obj_set_x(icons[key], x);
+        lv_obj_remove_flag(icons[key], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_x(dots[key], x + (DOCK_ITEM_WIDTH - 6) / 2);
+        if (states[key] == MINIMIZED) lv_obj_remove_flag(dots[key], LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 static void show_page(int which)
 {
     lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : page_files;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
-    if (which == 3 && minimized_dots[2])
-        lv_obj_add_flag(minimized_dots[2], LV_OBJ_FLAG_HIDDEN);
-    if (which < 2 && minimized_dots[which])
-        lv_obj_add_flag(minimized_dots[which], LV_OBJ_FLAG_HIDDEN);
+    dock_state(page_keys[which], OPEN);
     lv_obj_move_foreground(win);
 }
 
@@ -307,9 +351,11 @@ static void monitor_visible(lv_obj_t *obj, int visible)
         lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
+static void trial_buttons_visible(int visible);
 static void select_monitor_tab(enum monitor_page tab)
 {
     monitor_tab = tab;
+    trial_buttons_visible(tab == SYSTEM_TESTS);
     monitor_visible(task_body, tab == SYSTEM_TASK);
     monitor_visible(menu_list, tab == SYSTEM_TESTS);
     monitor_visible(detail, tab == SYSTEM_TESTS);
@@ -369,10 +415,130 @@ static void poll_checks(void)
     checks.active = 0;
 }
 
+/* Test workloads are single-instance and release their resources after sampling. */
+static struct {
+    int active, pending;
+    uint64_t period;
+    struct sched_system_info before;
+    struct app_display_stats display;
+    struct running_app *reservation;
+    struct task *task;
+    int64_t process;
+} trial;
+static lv_obj_t *approve, *cancel_trial;
+
+static void trial_buttons_visible(int visible)
+{
+    if (approve) { monitor_visible(approve, visible && trial.pending); monitor_visible(cancel_trial, visible && trial.pending); }
+}
+
+static void trial_result(int number, const char *result)
+{
+    lv_label_set_text(detail, result);
+    printf("[quota-test] %d %s\n", number, result);
+}
+
+static void begin_trial(int number, int approved)
+{
+    if (trial.active) return;
+    trial.pending = 0;
+    monitor_visible(approve, 0);
+    monitor_visible(cancel_trial, 0);
+    if (!number) {
+        trial_result(0, "Cancelled");
+        return;
+    }
+    if (number == 2 || number == 3) {
+        if (!approved) {
+            trial.pending = number;
+            lv_label_set_text(detail, number == 2 ?
+                "Periodic job requests 400 us per 10 ms and 16 KiB." :
+                "CPU-bound job requests 400 us guaranteed, up to 800 us per 10 ms, and 16 KiB.");
+            monitor_visible(approve, 1);
+            monitor_visible(cancel_trial, 1);
+            return;
+        }
+    }
+    if (number <= 3) {
+        struct app_manifest manifest = {"quota-test", "Test", 16, 16,
+            number == 1 ? PERIOD_US : 400, number == 1 ? PERIOD_US : number == 3 ? 800 : 400};
+        int reason = resource_check(&manifest);
+        if (number == 1) {
+            struct running_app *unexpected = resource_commit(&manifest);
+            trial_result(number, !unexpected && (reason == ADMIT_DEVICE || reason == ADMIT_OVERSUB)
+                ? "PASS  Launch refused: insufficient CPU quota." : "FAIL  Unexpected admission result.");
+            if (unexpected) resource_release(unexpected);
+            return;
+        }
+        trial.reservation = resource_commit(&manifest);
+        if (!trial.reservation) { trial_result(number, resource_reason()); return; }
+        trial.task = task_try_create("quota-test", TIER2, number == 3 ? KIND_SPIN : KIND_JOB);
+        if (!trial.task) {
+            resource_release(trial.reservation);
+            trial_result(number, "Unable to allocate task.");
+            return;
+        }
+        trial.task->min_t = us_to_ticks(400);
+        trial.task->sugg_t = us_to_ticks(number == 3 ? 400 : 0);
+        trial.task->deadline_t = us_to_ticks(PERIOD_US);
+        trial.task->work_t = us_to_ticks(100);
+        trial.reservation->task = trial.task;
+        task_start(trial.task);
+    } else {
+        trial.process = proc_spawn("quota-test", number == 5 ? 15 : 16, 0,0,0,0,0,0,1,1);
+        if (trial.process < 0) { trial_result(number, "Unable to launch EL0 process."); return; }
+        trial.task = sched_find("quota-test");
+    }
+    trial.active = number;
+    trial.period = sched_period_now();
+    sched_read_system_info(&trial.before);
+    app_display_read(&trial.display);
+    trial_result(number, "Running  /  sampling 100 periods");
+}
+
+static void poll_trial(void)
+{
+    int number = trial.active;
+    uint64_t elapsed = sched_period_now() - trial.period;
+    if (!number || elapsed < 100) return;
+    struct sched_system_info sys;
+    struct app_display_stats display;
+    sched_read_system_info(&sys);
+    app_display_read(&display);
+    unsigned frames = display.frames[0] - trial.display.frames[0];
+    unsigned misses = display.speed_misses - trial.display.speed_misses;
+    unsigned long crossings = sys.tier3_over - trial.before.tier3_over;
+    unsigned long over = sys.tier2_over - trial.before.tier2_over;
+    unsigned long shortfalls = sys.tier2_short - trial.before.tier2_short;
+    uint64_t peak = trial.task ? trial.task->used_max_all : 0;
+    int ok = peak && frames + 1 >= elapsed && !misses && !crossings && !shortfalls && !over;
+    if (number < 4) {
+        if (number == 2) ok = ok && trial.task->jobs && !trial.task->misses;
+        ok = ok && peak <= us_to_ticks(number == 3 ? 800 : 400);
+        task_kill(trial.task);
+        resource_release(trial.reservation);
+    } else {
+        ok = ok && proc_alive(trial.process);
+        if (proc_kill(trial.process)) ok = 0;
+    }
+    char result[300];
+    lv_snprintf(result, sizeof result,
+        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeedometer %u commits, %u misses\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu",
+        ok ? "PASS" : "FAIL", (unsigned long)elapsed, (unsigned long)ticks_to_us(peak),
+        frames, misses, shortfalls, over, crossings);
+    trial.active = 0;
+    trial_result(number, result);
+}
+
 static void on_group(lv_event_t *e)
 {
     int id = (int)(uintptr_t)lv_event_get_user_data(e);
     printf("[menu] button %d\n", id);
+    if (id >= 220 && id <= 226) {
+        if (id < 225) begin_trial(id - 219, 0);
+        else if (trial.pending) begin_trial(id == 225 ? trial.pending : 0, 1);
+        return;
+    }
     if (id == 215) {
         start_checks();
         return;
@@ -435,6 +601,9 @@ static void on_group(lv_event_t *e)
     if (id >= 205 && id <= 207) {
         lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
         if (app_cards[id - 205]) {
+            int tier = id - 204;
+            if (!vehicle_app_running(tier) && vehicle_app_set_running(tier, 1)) return;
+            dock_state(APP_SPEED + tier - 1, OPEN);
             for (int i = 0; i < 3; i++)
                 lv_obj_set_style_outline_width(app_cards[i], i == id - 205 ? 2 : 0, 0);
             printf("[desktop] app selected %d\n", id - 205 + 1);
@@ -493,11 +662,9 @@ static void hide_window(lv_event_t *e, int minimized)
 {
     lv_obj_t *win = lv_event_get_user_data(e);
     lv_obj_add_flag(win, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *marker = win == page_home ? minimized_dots[0] :
-                       win == page_input ? minimized_dots[1] :
-                       win == page_apps ? minimized_dots[2] : NULL;
-    if (marker)
-        monitor_visible(marker, minimized);
+    enum app_key key = win == page_home ? APP_SYSTEM : win == page_input ? APP_NOTES :
+                       win == page_apps ? APP_LAUNCHER : win == page_files ? APP_FILES : APP_COUNT;
+    dock_state(key, minimized ? MINIMIZED : CLOSED);
     printf("[desktop] window hidden\n");
 }
 
@@ -574,7 +741,6 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     return win;
 }
 
-enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC };
 static const struct app_entry {
     const char *name;
     const char *glyph;
@@ -775,6 +941,7 @@ static void apply_context(lv_event_t *event)
         return;
     }
     lv_obj_add_flag(context_layer, LV_OBJ_FLAG_HIDDEN);
+    dock_state(APP_SPEED + context_tier - 1, context_start ? OPEN : CLOSED);
     refresh_tasks();
 }
 
@@ -1042,12 +1209,29 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_pad_all(menu_list, 12, 0);
     lv_obj_set_style_radius(menu_list, 0, 0);
     lv_obj_remove_flag(menu_list, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *load9 = add_row(menu_list, 20, 0xe0edff, 0xc5d9fa, "Scheduler stress", 9);
+    lv_obj_t *load9 = NULL, *watch = NULL;
+    if (apps) {
+        static const char *const scenarios[] = {
+            "T2  Oversized request", "T2  Approved launch", "T2  CPU saturation",
+            "T3  Normal task", "T3  Infinite loop"
+        };
+        for (int i = 0; i < 5; i++) add_row(menu_list, 12 + i * 54, 0xe0edff, 0xc5d9fa, scenarios[i], 220+i);
+    } else {
+    load9 = add_row(menu_list, 20, 0xe0edff, 0xc5d9fa, "Scheduler stress", 9);
     add_row(menu_list, 74, 0xffffff, 0xdbe3f0, "Stop stress", 103);
     add_row(menu_list, 128, 0xe0edff, 0xc5d9fa, "Run system checks", 215);
-    lv_obj_t *watch = add_row(menu_list, 236, 0xe0edff, 0xc5d9fa, "Run & view tasks", 209);
-    detail = desk_label(page_home, 252, 124, "No workload results", 0x263552);
-    lv_obj_set_size(detail, 436, 338);
+    watch = add_row(menu_list, 236, 0xe0edff, 0xc5d9fa, "Run & view tasks", 209);
+    }
+    detail = desk_label(page_home, 252, 124, "Select a test", 0x263552);
+    lv_obj_set_size(detail, 436, 220);
+    approve = add_row(menu_list, 290, 0xe0edff, 0xc5d9fa, "Allow launch", 225);
+    cancel_trial = add_row(menu_list, 290, 0xffffff, 0xdbe3f0, "Cancel", 226);
+    lv_obj_set_parent(approve, page_home);
+    lv_obj_set_parent(cancel_trial, page_home);
+    lv_obj_set_pos(approve, 252, 365);
+    lv_obj_set_pos(cancel_trial, 455, 365);
+    monitor_visible(approve, 0);
+    monitor_visible(cancel_trial, 0);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
     static const char *const tab_names[] = {"Task", "Info", "Test"};
     static const int tab_ids[] = {203, 208, 204};
@@ -1208,7 +1392,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         }
     }
     lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *dock = lv_obj_create(screen);
+    screen_width = w;
+    dock = lv_obj_create(screen);
     int dock_width = (apps ? 6 : 3) * DOCK_STEP + 12;
     lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - 96);
     lv_obj_set_size(dock, dock_width, 84);
@@ -1218,26 +1403,13 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_color(dock, lv_color_hex(0xe1e2f7), 0);
     lv_obj_set_style_border_width(dock, 1, 0);
     lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
-    static const enum app_key dock_order[] = {
-        APP_LAUNCHER, APP_SYSTEM, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_NOTES
-    };
-    int dock_x = 12;
-    lv_obj_t *notes_icon = NULL;
-    for (unsigned i = 0; i < sizeof dock_order / sizeof dock_order[0]; i++) {
-        enum app_key key = dock_order[i];
-        if (key >= APP_SPEED && !apps)
-            continue;
-        lv_obj_t *button = app_icon(dock, key, dock_x, 5, 44);
-        if (key == APP_LAUNCHER)
-            minimized_dots[2] = dock_minimized_dot(dock, dock_x);
-        else if (key == APP_SYSTEM)
-            minimized_dots[0] = dock_minimized_dot(dock, dock_x);
-        else if (key == APP_NOTES) {
-            minimized_dots[1] = dock_minimized_dot(dock, dock_x);
-            notes_icon = button;
-        }
-        dock_x += DOCK_STEP;
+    for (int key = 0; key < APP_COUNT; key++) {
+        icons[key] = app_icon(dock, key, 0, 5, 44);
+        dots[key] = dock_minimized_dot(dock, 0);
     }
+    for (int tier = 1; apps && tier <= 3; tier++)
+        if (vehicle_app_running(tier)) dock_state(APP_SPEED + tier - 1, OPEN);
+    dock_state(APP_SYSTEM, OPEN);
     build_cursor();
     lv_obj_t *cursor = lv_image_create(lv_layer_sys());
     lv_image_set_src(cursor, &cursor_dsc);
@@ -1253,14 +1425,16 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         lv_obj_get_coords(tabs[0], &box);
         printf("[lvgl] activity box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
+        if (watch && load9) {
         lv_obj_get_coords(watch, &box);
         printf("[lvgl] watch box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(load9, &box);
         printf("[lvgl] load9 box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
-        lv_obj_get_coords(notes_icon, &box);
-        printf("[lvgl] input box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
+        }
+        lv_obj_get_coords(icons[APP_LAUNCHER], &box);
+        printf("[lvgl] launcher box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(about_button, &box);
         printf("[lvgl] cover box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
@@ -1322,6 +1496,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                 refresh_app_stats(tasks_at ? panel_now - tasks_at : 0);
             tasks_at = panel_now;
         }
+        if (apps) { poll_trial(); continue; }
         poll_checks();
         if (checks.selected) continue;
         demo_menu_detail(&d);
