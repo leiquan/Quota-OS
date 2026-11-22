@@ -22,7 +22,8 @@ static lv_obj_t *page_home;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover, *page_apps, *page_files, *page_shell;
 static lv_obj_t *shell_input, *shell_output, *source_entry, *source_icon;
-static char shell_last_command[81];
+static lv_obj_t *shell_history, *source_dialog, *source_name, *source_error;
+static char shell_transcript[2048];
 static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata;
 static uint64_t save_since;
 static struct app_display_stats save_before;
@@ -538,9 +539,28 @@ static void poll_trial(void)
     trial_result(number, result);
 }
 
+static void shell_append(const char *line)
+{
+    unsigned used = 0, added = 0;
+    while (shell_transcript[used]) used++;
+    while (line[added] && added < sizeof shell_transcript - 2) added++;
+    if (used + added + 2 > sizeof shell_transcript) {
+        unsigned skip = used + added + 2 - sizeof shell_transcript;
+        while (skip < used && shell_transcript[skip++] != '\n') {}
+        for (unsigned i = skip; i < used; i++) shell_transcript[i - skip] = shell_transcript[i];
+        used -= skip;
+    }
+    memcpy(shell_transcript + used, line, added);
+    shell_transcript[used + added] = '\n';
+    shell_transcript[used + added + 1] = 0;
+    lv_label_set_text(shell_output, shell_transcript);
+    lv_obj_update_layout(shell_history);
+    lv_obj_scroll_to_y(shell_history, lv_obj_get_height(shell_output), LV_ANIM_OFF);
+}
+
 static const char shell_help[] =
     "help / pwd / ls / clear\n"
-    "cc hello.c -o hello   Compile saved C source\n"
+    "cc FILE.c -o hello   Compile saved C source\n"
     "./hello               Run in Tier 3";
 
 static void on_group(lv_event_t *e)
@@ -567,24 +587,40 @@ static void on_group(lv_event_t *e)
     }
     if (id == 231) {
         const char *command = lv_textarea_get_text(shell_input);
-        const char *result = "Commands: cc hello.c -o hello   |   ./hello";
+        if (!command[0]) return;
+        char output[112], compile[96];
+        const char *name = note_disk_source_name();
+        const char *result = "Unknown command. Type help.";
+        lv_snprintf(compile, sizeof compile, "cc %s -o hello", name ? name : "hello.c");
         if (!strcmp(command, "help"))
             result = shell_help;
         else if (!strcmp(command, "pwd"))
             result = "/Desktop";
-        else if (!strcmp(command, "ls"))
-            result = note_disk_source() ? (note_disk_text() ? "Note.txt  hello.c" : "hello.c") :
-                                          (note_disk_text() ? "Note.txt" : "Desktop is empty");
+        else if (!strcmp(command, "ls")) {
+            lv_snprintf(output, sizeof output, "%s%s%s",
+                        note_disk_text() ? "Note.txt" : "",
+                        note_disk_text() && name ? "  " : "",
+                        name ? name : "");
+            result = output[0] ? output : "Desktop is empty";
+        }
         else if (!strcmp(command, "clear")) {
+            shell_transcript[0] = 0;
             lv_label_set_text(shell_output, "");
             lv_textarea_set_text(shell_input, "");
             return;
-        } else if (!strcmp(command, "cc hello.c -o hello"))
-            result = c_demo_compile(note_disk_source()) ? "Compile error: expected int main(void) { puts(\"text\"); return 0; }" : "Compiled hello.c to hello";
+        } else if (!strcmp(command, compile)) {
+            if (c_demo_compile(note_disk_source()))
+                result = "Compile error: check the saved C source.";
+            else {
+                lv_snprintf(output, sizeof output, "Compiled %s to hello", name);
+                result = output;
+            }
+        }
         else if (!strcmp(command, "./hello"))
             result = c_demo_run() < 0 ? "Run failed: compile first or wait for a free process slot." : "Running hello (Tier 3)";
-        str_copy(shell_last_command, command, sizeof shell_last_command);
-        lv_label_set_text_fmt(shell_output, "quota> %s\n%s", command, result);
+        char entry[256];
+        lv_snprintf(entry, sizeof entry, "quota> %s\n%s", command, result);
+        shell_append(entry);
         printf("[shell] %s: %s\n", command, result);
         lv_textarea_set_text(shell_input, "");
         return;
@@ -612,15 +648,35 @@ static void on_group(lv_event_t *e)
         }
         return;
     }
-    if (id == 214 || id == 232) {
-        int rc = id == 232 ? note_disk_save_source(lv_textarea_get_text(field)) :
+    if (id == 232) {
+        const char *name = note_disk_source_name();
+        lv_textarea_set_text(source_name, name ? name : "");
+        lv_label_set_text(source_error, "Name the source file");
+        monitor_visible(source_dialog, 1);
+        lv_obj_move_foreground(source_dialog);
+        lv_group_focus_obj(source_name);
+        return;
+    }
+    if (id == 235) {
+        monitor_visible(source_dialog, 0);
+        lv_group_focus_obj(field);
+        return;
+    }
+    if (id == 214 || id == 234) {
+        int rc = id == 234 ? note_disk_save_source(lv_textarea_get_text(field), lv_textarea_get_text(source_name)) :
                              note_disk_save(lv_textarea_get_text(field));
         if (!rc) {
+            monitor_visible(source_dialog, 0);
+            lv_group_focus_obj(field);
             save_since = now_us();
             app_display_read(&save_before);
             lv_label_set_text(note_status, "Saving...");
         } else {
-            lv_label_set_text(note_status, rc == -2 ? "Limit: 495 bytes" : note_disk_status());
+            if (id == 234)
+                lv_label_set_text(source_error, rc == -3 ? "Use a .c name with letters, digits, - or _." :
+                    rc == -2 ? "Source limit: 463 bytes." : note_disk_status());
+            else
+                lv_label_set_text(note_status, rc == -2 ? "Limit: 495 bytes" : note_disk_status());
         }
         return;
     }
@@ -1343,7 +1399,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *save = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save", 214);
     lv_obj_set_pos(save, 398, 283);
     lv_obj_set_size(save, 112, 40);
-    lv_obj_t *save_source = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save hello.c", 232);
+    lv_obj_t *save_source = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save As…", 232);
     lv_obj_set_pos(save_source, 156, 283);
     lv_obj_set_width(save_source, 156);
     lv_obj_t *btn = lv_button_create(page_input);
@@ -1357,6 +1413,27 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_center(bl);
     lv_group_t *group = lv_group_create();
     lv_group_add_obj(group, field);
+    source_dialog = lv_obj_create(page_input);
+    lv_obj_set_size(source_dialog, 440, 156);
+    lv_obj_center(source_dialog);
+    lv_obj_set_style_pad_all(source_dialog, 0, 0);
+    lv_obj_remove_flag(source_dialog, LV_OBJ_FLAG_SCROLLABLE);
+    source_error = desk_label(source_dialog, 16, 12, "", 0x334765);
+    source_name = lv_textarea_create(source_dialog);
+    lv_textarea_set_one_line(source_name, true);
+    lv_textarea_set_max_length(source_name, 31);
+    lv_textarea_set_placeholder_text(source_name, "File name (.c)");
+    lv_obj_set_pos(source_name, 16, 42);
+    lv_obj_set_size(source_name, 406, 42);
+    lv_group_add_obj(group, source_name);
+    lv_obj_add_event_cb(source_name, on_group, LV_EVENT_READY, (void *)(uintptr_t)234);
+    lv_obj_t *cancel_source = add_row(source_dialog, 100, 0xffffff, 0xdbe3f0, "Cancel", 235);
+    lv_obj_set_pos(cancel_source, 198, 100);
+    lv_obj_set_width(cancel_source, 104);
+    lv_obj_t *confirm_source = add_row(source_dialog, 100, 0xe0edff, 0xc5d9fa, "Save", 234);
+    lv_obj_set_pos(confirm_source, 314, 100);
+    lv_obj_set_width(confirm_source, 108);
+    monitor_visible(source_dialog, 0);
     lv_indev_set_group(keypad, group);
     lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
 
@@ -1442,45 +1519,52 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     file_empty = desk_label(page_files, 28, 116, "", 0x64748b);
     lv_obj_add_flag(file_entry, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
-    source_entry = add_row(page_files, 185, 0xffffff, 0xdbe3f0, "hello.c", 233);
+    source_entry = add_row(page_files, 185, 0xffffff, 0xdbe3f0, "C source", 233);
     lv_obj_set_pos(source_entry, 20, 185);
-    source_icon = add_row(screen, 66, 0xe0edff, 0xc5d9fa, "hello.c", 233);
+    source_icon = add_row(screen, 66, 0xe0edff, 0xc5d9fa, "C source", 233);
     lv_obj_set_pos(source_icon, 24, 66);
     lv_obj_set_width(source_icon, 96);
     monitor_visible(source_entry, 0);
     monitor_visible(source_icon, 0);
-    page_shell = desktop_window(screen, 160, 176, 600, 300, "Shell");
+    page_shell = desktop_window(screen, 160, 148, 670, 390, "Shell");
     lv_obj_t *terminal = lv_obj_create(page_shell);
     lv_obj_set_pos(terminal, 12, 58);
-    lv_obj_set_size(terminal, 576, 222);
+    lv_obj_set_size(terminal, 646, 310);
     lv_obj_set_style_bg_color(terminal, lv_color_hex(0x111b2c), 0);
     lv_obj_set_style_radius(terminal, 10, 0);
     lv_obj_set_style_border_width(terminal, 0, 0);
     lv_obj_remove_flag(terminal, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    shell_output = desk_label(page_shell, 24, 72, "Quota OS Shell  |  /Desktop\n\n"
+    shell_history = lv_obj_create(page_shell);
+    lv_obj_set_pos(shell_history, 22, 68);
+    lv_obj_set_size(shell_history, 626, 232);
+    lv_obj_set_style_bg_opa(shell_history, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(shell_history, 0, 0);
+    lv_obj_set_style_pad_all(shell_history, 0, 0);
+    lv_obj_set_scroll_dir(shell_history, LV_DIR_VER);
+    shell_output = desk_label(shell_history, 2, 4, "", 0xe4edf9);
+    lv_obj_set_width(shell_output, 610);
+    lv_label_set_long_mode(shell_output, LV_LABEL_LONG_WRAP);
+    shell_append("Quota OS Shell  |  /Desktop\n\n"
         "help     Show commands\n"
         "ls       List desktop files\n"
-        "cc hello.c -o hello   Compile C source\n"
-        "./hello               Run in Tier 3", 0xe4edf9);
-    lv_obj_set_style_text_font(shell_output, &lv_font_montserrat_14, 0);
-    lv_obj_t *prompt = desk_label(page_shell, 24, 224, "quota>", 0x9ce3ce);
+        "cc FILE.c -o hello   Compile C source\n"
+        "./hello               Run in Tier 3");
+    lv_obj_t *prompt = desk_label(page_shell, 24, 326, "quota>", 0x9ce3ce);
     lv_obj_set_style_text_font(prompt, &lv_font_montserrat_14, 0);
-    lv_obj_set_width(shell_output, 552);
-    lv_label_set_long_mode(shell_output, LV_LABEL_LONG_WRAP);
     shell_input = lv_textarea_create(page_shell);
     lv_textarea_set_one_line(shell_input, true);
     lv_textarea_set_max_length(shell_input, 80);
     lv_textarea_set_placeholder_text(shell_input, "Command");
-    lv_obj_set_pos(shell_input, 88, 212);
-    lv_obj_set_size(shell_input, 366, 42);
+    lv_obj_set_pos(shell_input, 88, 314);
+    lv_obj_set_size(shell_input, 440, 42);
     lv_obj_set_style_text_font(shell_input, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(shell_input, lv_color_hex(0xe4edf9), 0);
     lv_obj_set_style_bg_color(shell_input, lv_color_hex(0x1b2a40), 0);
     lv_obj_set_style_border_color(shell_input, lv_color_hex(0x526984), 0);
     lv_group_add_obj(group, shell_input);
     lv_obj_add_event_cb(shell_input, on_group, LV_EVENT_READY, (void *)(uintptr_t)231);
-    lv_obj_t *run = add_row(page_shell, 212, 0xe0edff, 0xc5d9fa, "Enter", 231);
-    lv_obj_set_pos(run, 466, 212);
+    lv_obj_t *run = add_row(page_shell, 314, 0xe0edff, 0xc5d9fa, "Enter", 231);
+    lv_obj_set_pos(run, 540, 314);
     lv_obj_set_size(run, 108, 42);
     monitor_visible(page_shell, 0);
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
@@ -1564,7 +1648,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         note_disk_poll();
         const char *console = proc_console_text();
         if (console) {
-            lv_label_set_text_fmt(shell_output, "quota> %s\n%s", shell_last_command, console);
+            shell_append(console);
             printf("[shell] output: %s", console);
         }
         const char *disk_status = note_disk_status();
@@ -1575,7 +1659,12 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             if (note_disk_text())
                 lv_label_set_text_fmt(file_metadata, "Plain text  /  %u bytes", note_disk_bytes());
             monitor_visible(file_entry, note_disk_text() != NULL);
-            monitor_visible(source_entry, note_disk_source() != NULL);
+            const char *name = note_disk_source_name();
+            if (name) {
+                lv_label_set_text(lv_obj_get_child(source_entry, 0), name);
+                lv_label_set_text(lv_obj_get_child(source_icon, 0), name);
+            }
+            monitor_visible(source_entry, name != NULL);
             monitor_visible(source_icon, note_disk_source() != NULL);
             monitor_visible(file_empty, note_disk_text() == NULL && note_disk_source() == NULL);
             lv_label_set_text(file_empty, !strcmp(disk_status, "Ready") ? "No saved files" : disk_status);

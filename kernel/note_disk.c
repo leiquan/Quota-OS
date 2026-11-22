@@ -3,7 +3,7 @@
  * Alternate two records so a torn update leaves the prior version readable. */
 #include "quotaos.h"
 
-enum { BLOCK = 512, MAGIC = 0x514e5431, FLUSH_FEATURE = 1u << 9 };
+enum { BLOCK = 512, MAGIC = 0x514e5431, FLUSH_FEATURE = 1u << 9, SOURCE_MAGIC = 0x514e5432, SOURCE_NAME = 32 };
 struct record {
     uint32_t magic, generation, length, checksum;
     char text[BLOCK - 16];
@@ -74,7 +74,23 @@ static uint32_t checksum(const struct record *r)
     uint32_t hash = (2166136261u ^ r->generation) * 16777619u;
     for (unsigned i = 0; i < r->length; ++i)
         hash = (hash ^ (uint8_t)r->text[i]) * 16777619u;
+    if (r->magic == SOURCE_MAGIC)
+        for (unsigned i = sizeof r->text - SOURCE_NAME; i < sizeof r->text; i++)
+            hash = (hash ^ (uint8_t)r->text[i]) * 16777619u;
     return hash;
+}
+
+static int valid_source_name(const char *name)
+{
+    unsigned n = 0;
+    for (; n < SOURCE_NAME && name[n]; n++) {
+        char c = name[n];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.'))
+            return 0;
+    }
+    return n > 2 && n < SOURCE_NAME && name[0] != '.' &&
+           name[n - 2] == '.' && name[n - 1] == 'c';
 }
 
 static void submit(void)
@@ -114,7 +130,10 @@ void note_disk_poll(void)
         if (phase == IDENTIFY) {
             phase = !strcmp(serial, "QUOTA-NOTES") ? READ_A : OFFLINE;
         } else if (phase == READ_A || phase == READ_B) {
-            if (transfer.magic == MAGIC && transfer.length < sizeof transfer.text &&
+            if ((transfer.magic == MAGIC || (document && transfer.magic == SOURCE_MAGIC &&
+                transfer.length < sizeof transfer.text - SOURCE_NAME &&
+                valid_source_name(transfer.text + sizeof transfer.text - SOURCE_NAME))) &&
+                transfer.length < sizeof transfer.text &&
                 !transfer.text[transfer.length] && transfer.checksum == checksum(&transfer) &&
                 (!saved.magic || (int32_t)(transfer.generation-saved.generation)>0)) {
                 saved = transfer;
@@ -149,25 +168,34 @@ void note_disk_poll(void)
     submit();
 }
 
-static int save_document(const char *text, unsigned index)
+static int save_document(const char *text, unsigned index, const char *name)
 {
     if (phase != READY || sched_current()->tier != TIER3) return -1;
+    if (name && !valid_source_name(name)) return -3;
+    unsigned limit = sizeof transfer.text - (name ? SOURCE_NAME : 0);
     unsigned n = 0;
-    while (n < sizeof transfer.text && text[n]) n++;
-    if (n == sizeof transfer.text) return -2;
+    while (n < limit && text[n]) n++;
+    if (n == limit) return -2;
     document = index;
     memset(&transfer, 0, sizeof transfer);
-    transfer.magic = MAGIC;
+    transfer.magic = name ? SOURCE_MAGIC : MAGIC;
     transfer.generation = saved.generation+1;
     transfer.length = n;
     memcpy(transfer.text, text, n);
+    if (name) str_copy(transfer.text + limit, name, SOURCE_NAME);
     transfer.checksum = checksum(&transfer);
     phase = WRITE;
     return 0;
 }
 
-int note_disk_save(const char *text) { return save_document(text, 0); }
-int note_disk_save_source(const char *text) { return save_document(text, 1); }
+int note_disk_save(const char *text) { return save_document(text, 0, NULL); }
+int note_disk_save_source(const char *text, const char *name) { return save_document(text, 1, name); }
+const char *note_disk_source_name(void)
+{
+    const struct record *source = &documents[1];
+    if (!source->magic) return NULL;
+    return source->magic == SOURCE_MAGIC ? source->text + sizeof source->text - SOURCE_NAME : "hello.c";
+}
 const char *note_disk_source(void) { return documents[1].magic ? documents[1].text : 0; }
 
 unsigned note_disk_bytes(void) { return documents[0].length; }

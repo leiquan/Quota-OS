@@ -50,15 +50,15 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 64M \
   -nic none -device ramfb -device virtio-tablet-device -device virtio-keyboard-device \
   -icount shift=4,sleep=off -kernel build/quotaos-lvgl.bin -append apps-video</code></pre>
 <h3>在 Quota OS 内开发 C 应用</h3>
-<p>在 Notes 输入以下代码，点击 Save hello.c。打开 Apps → Shell，输入命令后点击 Enter。</p>
+<p>在 Notes 输入以下代码，点击 Save As…，命名为 demo.c。打开 Apps → Shell，输入命令后点击 Enter。</p>
 <pre><code>int main(void) {
-    puts("Hello, Quota OS!");
+    puts("Custom source works!");
     return 0;
 }</code></pre>
-<pre><code>cc hello.c -o hello
+<pre><code>cc demo.c -o hello
 ./hello</code></pre>
 <p>首版支持无头文件的 int main(void)、单条 puts 字符串和 return 0。程序按三级启动，当前不支持二级启动参数。</p>
-<div class="showcase"><div class="gallery" tabindex="0" aria-label="Notes 保存 hello.c"><figure><img src="screenshots/dev-source.png" width="1280" height="800" loading="lazy" alt="Notes 保存 hello.c"><figcaption>Notes 保存 hello.c</figcaption></figure><figure><img src="screenshots/dev-compile.png" width="1280" height="800" loading="lazy" alt="Shell 编译 hello.c"><figcaption>Shell 编译 hello.c</figcaption></figure><figure><img src="screenshots/dev-run.png" width="1280" height="800" loading="lazy" alt="EL0 执行并输出"><figcaption>EL0 执行并输出</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="下一张">→</button><button type="button" class="playback"></button></div></div>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="Notes 保存 demo.c"><figure><img src="screenshots/dev-source.png" width="1280" height="800" loading="lazy" alt="Notes 保存 demo.c"><figcaption>Notes 保存 demo.c</figcaption></figure><figure><img src="screenshots/dev-compile.png" width="1280" height="800" loading="lazy" alt="Shell 编译 demo.c"><figcaption>Shell 编译 demo.c</figcaption></figure><figure><img src="screenshots/dev-run.png" width="1280" height="800" loading="lazy" alt="EL0 执行并输出"><figcaption>EL0 执行并输出</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="下一张">→</button><button type="button" class="playback"></button></div></div>
 </section>
 </main>
 <footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>

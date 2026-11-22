@@ -50,15 +50,15 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 64M \
   -nic none -device ramfb -device virtio-tablet-device -device virtio-keyboard-device \
   -icount shift=4,sleep=off -kernel build/quotaos-lvgl.bin -append apps-video</code></pre>
 <h3>C development inside Quota OS</h3>
-<p>Enter this example in Notes and choose Save hello.c. Open Apps → Shell and submit each command with Enter.</p>
+<p>Enter this example in Notes and choose Save As… and enter demo.c. Open Apps → Shell and submit each command with Enter.</p>
 <pre><code>int main(void) {
-    puts("Hello, Quota OS!");
+    puts("Custom source works!");
     return 0;
 }</code></pre>
-<pre><code>cc hello.c -o hello
+<pre><code>cc demo.c -o hello
 ./hello</code></pre>
 <p>The initial C subset accepts a header-free int main(void), one puts string literal, and return 0. The executable runs in Tier 3. Tier 2 launch parameters are pending.</p>
-<div class="showcase"><div class="gallery" tabindex="0" aria-label="Save hello.c in Notes"><figure><img src="screenshots/dev-source.png" width="1280" height="800" loading="lazy" alt="Save hello.c in Notes"><figcaption>Save hello.c in Notes</figcaption></figure><figure><img src="screenshots/dev-compile.png" width="1280" height="800" loading="lazy" alt="Compile hello.c in Shell"><figcaption>Compile hello.c in Shell</figcaption></figure><figure><img src="screenshots/dev-run.png" width="1280" height="800" loading="lazy" alt="Run hello in EL0"><figcaption>Run hello in EL0</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="Save demo.c in Notes"><figure><img src="screenshots/dev-source.png" width="1280" height="800" loading="lazy" alt="Save demo.c in Notes"><figcaption>Save demo.c in Notes</figcaption></figure><figure><img src="screenshots/dev-compile.png" width="1280" height="800" loading="lazy" alt="Compile demo.c in Shell"><figcaption>Compile demo.c in Shell</figcaption></figure><figure><img src="screenshots/dev-run.png" width="1280" height="800" loading="lazy" alt="Run hello in EL0"><figcaption>Run hello in EL0</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
 </section>
 </main>
 <footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>

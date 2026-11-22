@@ -70,11 +70,11 @@ The launcher uses the prebuilt kernel and creates a dedicated image at `~/.local
 
 ## Develop a C application in Quota OS
 
-Start with the Notes disk attached using `bash tools/run-files.sh`. Enter this program in Notes and click **Save hello.c**.
+Start with the Notes disk attached using `bash tools/run-files.sh`. Enter this program in Notes and choose **Save As…**, enter `demo.c`, and press Enter. The saved source appears on the desktop and in Files.
 
 ```c
 int main(void) {
-    puts("Hello, Quota OS!");
+    puts("Custom source works!");
     return 0;
 }
 ```
@@ -82,11 +82,11 @@ int main(void) {
 Open **Apps → Shell**. Submit each command with **Enter**.
 
 ```sh
-cc hello.c -o hello
+cc demo.c -o hello
 ./hello
 ```
 
-The compiler emits ARM64 instructions inside Quota OS. The program runs in Tier 3 EL0 and writes `Hello, Quota OS!` to Shell. This first release accepts the small C subset shown above. It supports one saved source file, at most 495 bytes, alongside the existing note. The compiled binary stays in memory until reboot. Tier 2 admission from Shell and a general C compiler remain future work. Tier 1 is vendor reserved. [QEMU serial log](docs/tests/c-workflow/qemu.log)
+The compiler emits ARM64 instructions inside Quota OS. The program runs in Tier 3 EL0 and writes `Custom source works!` to Shell. This first release accepts the small C subset shown above. It supports one saved source file, at most 463 bytes, alongside the existing note. The compiled binary stays in memory until reboot. Tier 2 admission from Shell and a general C compiler remain future work. Tier 1 is vendor reserved. [First boot](docs/tests/c-workflow/qemu.log) · [Cold reboot](docs/tests/c-workflow/source-reopen.log)
 
 | Source saved in Notes | Compilation in Shell | Output from EL0 |
 | --- | --- | --- |
