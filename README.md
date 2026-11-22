@@ -6,6 +6,22 @@ Quota OS is an experimental single-core ARM64 operating system built around reso
 
 Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
 
+## Desktop editions / 桌面发行版
+
+The default build on main runs the LVGL desktop. Both WebKit editions are under development. In those editions, WebKit must lay out and draw pages inside the guest.
+
+main 当前默认运行 LVGL 桌面。两个使用 WebKit 的发行版均在开发中，目标是在来宾系统内完成网页排版和绘制。
+
+| Edition / 发行版 | Tier 1 / 一级 | Tier 2 / 二级 | Tier 3 / 三级 |
+|---|---|---|---|
+| Quota OS LVGL | LVGL | LVGL | LVGL |
+| Quota OS WebKit | WebKit | WebKit | WebKit |
+| Quota OS LVGL+WebKit | LVGL | LVGL | WebKit |
+
+The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. Speed must submit a frame every 10 ms. Once admitted, Dashcam must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.
+
+Quota OS LVGL+WebKit 的验收场景是在同一桌面上运行三个应用：一级速度表每 10 ms 提交一帧；二级行车记录仪获准后拿足预留 CPU 时间，每 40 ms 提交一帧；三级网页同时触发 JavaScript 垃圾回收。三者在同一镜像中运行时的配额和帧间隔仍待验证。
+
 ## Run the desktop
 
 [Download the desktop preview](https://github.com/leiquan/Quota-OS/releases/latest) for the standalone ARM64 image and launch commands. If you prefer a local checkout, use the launcher below.
