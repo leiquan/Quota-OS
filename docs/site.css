@@ -99,3 +99,16 @@ article p:last-child { margin-bottom: 0; }
 .platform dt { font-size: .76rem; color: #a9bedb; }
 .platform dd { margin: 5px 0 0; font-size: .9rem; line-height: 1.5; }
 @media (max-width: 640px) { .platform { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+header.bar { min-height: 80px; }
+.hero { text-align: center; }
+.hero h1 { max-width: 20ch; margin-inline: auto; text-wrap: balance; }
+.hero .intro { margin-inline: auto; text-wrap: pretty; }
+.hero .actions { justify-content: center; }
+.showcase { text-align: left; }
+.gallery figcaption { font-size: .9rem; font-weight: 650; letter-spacing: .01em; }
+.platform { text-align: left; }
+.section + .section { border-top: 1px solid #29374c; padding-top: clamp(40px, 7vw, 76px); }
+@media (max-width: 640px) {
+  .hero h1 { font-size: clamp(2.2rem, 8vw, 3rem); }
+}
