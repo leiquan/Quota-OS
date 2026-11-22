@@ -14,7 +14,17 @@ License: [Apache-2.0](LICENSE)
 
 [系统测试标签截图](docs/screenshots/vehicle-tests.png)
 
-Dock 首位的 Apps 列出镜像内置应用。System 的 Task、Info、Test 三个标签分别显示调度任务、资源统计和系统测试。顶栏的 UTC 日期与时间来自 QEMU RTC。
+Dock 首位的 Apps 列出镜像内置应用。System 的 Task、Info、Test 三个标签分别显示调度任务、资源统计和系统测试。顶栏将 QEMU RTC 转为上海本地时间。
+
+### Files 和 Notes
+
+在仓库根目录运行 `bash tools/run-files.sh`。在 Notes 输入内容并点 Save，看到 Saved 后可以退出。再次运行同一命令，在 Apps → Files 打开 Note.txt。专用笔记盘默认位于 `~/.local/share/quota-os/notes.raw`，也可用 `QUOTA_NOTES_DISK` 指定路径。首版支持一份最多 495 字节的 UTF-8 笔记，使用两个交替写入的 512 字节记录，校验内容并等待设备 flush 完成后显示 Saved。
+
+![重启后 Files 中保存的笔记](docs/screenshots/files.png)
+
+![从 Files 重新打开的 Notes](docs/screenshots/notes.png)
+
+慢盘回归使用 128 B/s 写入限制，连续保存以消耗突发额度。两次实测分别等待 13.283 秒和 12.707 秒虚拟时间，速度表分别更新 1329 和 1270 帧，截止期错过均为零。此测试覆盖虚拟帧缓冲提交。磁盘请求运行在三级桌面任务，最多一个在途请求，每个 10 ms 周期至多提交一次，数据请求最多 512 字节。当前设备仅提供三级服务，尚未测得实体 SSD 的最坏持久化时延。[第一次启动日志](docs/tests/optimization/files/save.log) · [重启读回日志](docs/tests/optimization/files/reopen.log)
 
 [车载桌面验收记录](docs/tests/optimization/vehicle-desktop/REPORT.md)
 
@@ -600,7 +610,7 @@ UTM 是沙盒应用，在 QEMU 参数里手写 `-kernel /路径/quotaos.bin` 会
 2. 打开 UTM，点「+」→ Emulate → Linux。
 3. 勾选 Boot from kernel image。在 Kernel 一栏点 Browse，选中 `quotaos.bin`。initrd、启动参数都留空。
 4. 架构选 ARM64 (aarch64)。内存设 **128 MB**，CPU 1 核。旧设备场景把内存改成 64 MB。
-5. 不加磁盘，向导加了就删掉，这个系统不读盘。保存。
+5. 此串口配置无需磁盘。Notes 持久化请使用上面的 Files 启动脚本。
 6. 编辑这台虚拟机：
    - System 里机器类型确认是 `virt`。
    - **QEMU Machine Properties** 填 `gic-version=2`（新版在 QEMU 页、Arguments 上方；旧版在 System 页，要先打开 Show Advanced Settings）。从 252a90d 起内核也能从设备树认出 GICv3，不填也能启动（命令行 QEMU 10.0 的 `gic-version=2/3/max` 验证过，日志 `docs/gic-C/`；UTM 上还没有实测）。

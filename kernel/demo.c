@@ -1183,6 +1183,7 @@ void app_display_read(struct app_display_stats *stats)
     stats->frames[1] = video_frames;
     stats->frames[2] = music_frames;
     stats->speed_misses = dashboard_demo ? dashboard_demo->misses : 0;
+    stats->max_gap_us = ticks_to_us(display_max_gap);
     stats->video_paused = video_stalled;
     stats->music_held = music_held;
 }

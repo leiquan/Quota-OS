@@ -20,7 +20,7 @@ SRCS := boot/startup.S boot/vectors.S \
 	kernel/main.c kernel/uart.c kernel/printf.c kernel/string.c \
 	kernel/dtb.c kernel/gic.c kernel/timer.c kernel/resource.c kernel/mmu.c \
 	kernel/sched.c kernel/demo.c kernel/decl.c kernel/ipc.c kernel/dev.c kernel/color.c kernel/e4.c \
-	kernel/fb.c kernel/input.c kernel/lvgl_boot.c kernel/webkit.c kernel/wkalloc.c \
+	kernel/note_disk.c kernel/fb.c kernel/input.c kernel/lvgl_boot.c kernel/webkit.c kernel/wkalloc.c \
 	kernel/proc.c kernel/isolate.c \
 	kernel/cxxrt.cpp kernel/cxxtest.cpp
 OBJS := $(patsubst %,build/%.o,$(basename $(SRCS)))

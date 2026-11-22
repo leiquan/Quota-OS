@@ -20,9 +20,13 @@ static lv_obj_t *menu_list;
 static lv_obj_t *detail;
 static lv_obj_t *page_home;
 static lv_obj_t *page_input;
-static lv_obj_t *page_cover, *page_apps;
+static lv_obj_t *page_cover, *page_apps, *page_files;
+static lv_obj_t *note_status, *file_entry, *file_empty;
+static uint64_t save_since;
+static struct app_display_stats save_before;
 static lv_obj_t *task_body;
-static lv_obj_t *tabs[3], *info_panel, *info_text;
+static lv_obj_t *tabs[3], *info_panel;
+static lv_obj_t *info_values[16], *info_crossings;
 static lv_obj_t *app_cards[3];
 static lv_obj_t *app_rate[3], *app_status[3];
 static lv_obj_t *clock_label;
@@ -41,7 +45,7 @@ enum { DOCK_STEP = 132, DOCK_ITEM_WIDTH = 120 };
 
 static void show_page(int which)
 {
-    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : page_apps;
+    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : page_files;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
     if (which == 3 && minimized_dots[2])
         lv_obj_add_flag(minimized_dots[2], LV_OBJ_FLAG_HIDDEN);
@@ -318,6 +322,31 @@ static void on_group(lv_event_t *e)
 {
     int id = (int)(uintptr_t)lv_event_get_user_data(e);
     printf("[menu] button %d\n", id);
+    if (id == 212) {
+        show_page(4);
+        printf("[files] directory opened\n");
+        return;
+    }
+    if (id == 213) {
+        const char *text = note_disk_text();
+        if (text) {
+            lv_textarea_set_text(field, text);
+            show_page(1);
+            printf("[files] opened Note.txt in Notes\n");
+        }
+        return;
+    }
+    if (id == 214) {
+        int rc = note_disk_save(lv_textarea_get_text(field));
+        if (!rc) {
+            save_since = now_us();
+            app_display_read(&save_before);
+            lv_label_set_text(note_status, "Saving...");
+        } else {
+            lv_label_set_text(note_status, rc == -2 ? "Limit: 495 bytes" : note_disk_status());
+        }
+        return;
+    }
     if (id == 103) {
         demo_menu_stop();
         return;
@@ -487,7 +516,7 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     return win;
 }
 
-enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC };
+enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC };
 static const struct app_entry {
     const char *name;
     const char *glyph;
@@ -496,6 +525,7 @@ static const struct app_entry {
 } app_entries[] = {
     [APP_SYSTEM] = {app_monitor, LV_SYMBOL_SETTINGS, 0x5368af, 202},
     [APP_LAUNCHER] = {"Apps", LV_SYMBOL_LIST, 0x31798b, 210},
+    [APP_FILES] = {"Files", LV_SYMBOL_DIRECTORY, 0x326e91, 212},
     [APP_NOTES] = {"Notes", LV_SYMBOL_EDIT, 0xae743b, 200},
     [APP_SPEED] = {app_speed, LV_SYMBOL_CHARGE, 0x267757, 205},
     [APP_VIDEO] = {app_video, LV_SYMBOL_VIDEO, 0x476bb4, 206},
@@ -563,7 +593,9 @@ static void refresh_clock(void)
     if (seconds == last)
         return;
     last = seconds;
-    unsigned days = seconds / 86400u, year = 1970, month = 0;
+    /* PL031 supplies UTC. This image uses the Asia/Shanghai display zone. */
+    uint64_t local = (uint64_t)seconds + 8u * 3600u;
+    unsigned days = (unsigned)(local / 86400u), year = 1970, month = 0;
     while (days >= 365u + leap_year(year))
         days -= 365u + leap_year(year++);
     static const unsigned month_days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
@@ -574,8 +606,8 @@ static void refresh_clock(void)
         days -= n;
         month++;
     }
-    unsigned time = seconds % 86400u;
-    lv_label_set_text_fmt(clock_label, "%04u-%02u-%02u  %02u:%02u:%02u UTC",
+    unsigned time = (unsigned)(local % 86400u);
+    lv_label_set_text_fmt(clock_label, "%04u-%02u-%02u  %02u:%02u:%02u",
                           year, month + 1, days + 1, time / 3600,
                           time / 60 % 60, time % 60);
 }
@@ -624,28 +656,20 @@ static void refresh_system_info(void)
     uint64_t reserved = ram - resource_app_mem_capacity_kb() + resource_mem_min_sum_kb();
     unsigned cpu_percent = (unsigned)(cpu_busy >= PERIOD_US ? 100 : cpu_busy * 100 / PERIOD_US);
     unsigned mem_percent = ram ? (unsigned)(reserved * 100 / ram) : 0;
-    char text[512];
-    lv_snprintf(text, sizeof text,
-        "CPU %u%% BUSY  /  LAST 10 ms PERIOD\n"
-        "Tier 1  %lu us    Tier 2  %lu us    Tier 3  %lu / %lu us\n"
-        "Kernel  %lu us    Scheduler clock  %s\n\n"
-        "MEMORY %u%% RESERVED\n"
-        "RAM  %lu KiB    System reserve  %u KiB    Tier 1  %u KiB\n"
-        "App minima  %lu / %lu KiB available\n\n"
-        "RESOURCE EVENTS  /  SINCE BOOT\n"
-        "Tier 1 deadline misses  %lu\n"
-        "Tier 2 runnable minimum shortfalls  %lu    Budget overruns  %lu\n"
-        "Tier 3 throttled periods  %lu    Pool crossings  %lu",
-        cpu_percent, (unsigned long)v.cpu_us[0], (unsigned long)v.cpu_us[1],
-        (unsigned long)v.cpu_us[2], (unsigned long)v.tier3_limit_us,
-        (unsigned long)v.kernel_us, clock_is_icount() ? "icount" : "host",
-        mem_percent, (unsigned long)ram, system_reserve_kb(), resource_t1_mem_kb(),
-        (unsigned long)resource_mem_min_sum_kb(), (unsigned long)resource_app_mem_capacity_kb(),
-        (unsigned long)v.tier1_misses, (unsigned long)v.tier2_short,
-        (unsigned long)v.tier2_over, (unsigned long)v.tier3_throttled,
-        (unsigned long)v.tier3_over);
-    if (strcmp(text, lv_label_get_text(info_text)))
-        lv_label_set_text(info_text, text);
+    const uint64_t values[] = {cpu_percent, v.cpu_us[0], v.cpu_us[1], v.cpu_us[2],
+        v.tier3_limit_us, v.kernel_us, v.tier1_misses, v.tier2_short,
+        mem_percent, ram, system_reserve_kb(), resource_t1_mem_kb(),
+        resource_mem_min_sum_kb(), resource_app_mem_capacity_kb(), v.tier2_over, v.tier3_throttled};
+    for (unsigned i = 0; i < sizeof values / sizeof values[0]; i++) {
+        char number[32];
+        lv_snprintf(number, sizeof number, "%lu", (unsigned long)values[i]);
+        if (strcmp(number, lv_label_get_text(info_values[i])))
+            lv_label_set_text(info_values[i], number);
+    }
+    char crossings[32];
+    lv_snprintf(crossings, sizeof crossings, "%lu", (unsigned long)v.tier3_over);
+    if (strcmp(crossings, lv_label_get_text(info_crossings)))
+        lv_label_set_text(info_crossings, crossings);
 }
 
 static lv_obj_t *dock_minimized_dot(lv_obj_t *dock, int item_x)
@@ -715,8 +739,8 @@ static void open_context(int tier, lv_point_t point)
     }
     context_tier = tier;
     context_start = !vehicle_app_running(tier);
-    if (tier == TIER1) {
-        lv_label_set_text(context_label, "Protected by kernel");
+    if (tier == TIER1 || tier == 4) {
+        lv_label_set_text(context_label, tier == TIER1 ? "Protected by kernel" : "Hosts desktop UI");
         lv_obj_add_state(context_button, LV_STATE_DISABLED);
     } else {
         lv_obj_remove_state(context_button, LV_STATE_DISABLED);
@@ -737,6 +761,7 @@ static int row_tier(lv_obj_t *row)
         const struct task *t = sched_task_at(i);
         if (!t || t->state == TASK_DEAD) return 0;
         if (t->tier == TIER1) return TIER1;
+        if (!strcmp(t->name, "shell")) return 4;
         if (!strcmp(t->name, "video")) return TIER2;
         if (!strcmp(t->name, "music")) return TIER3;
         return 0;
@@ -783,7 +808,7 @@ static void refresh_tasks(void)
             irq_restore(flags);
             unsigned mem_grant = 0;
             unsigned mapped = proc_task_memory_kib((struct task *)t, &mem_grant);
-            char allocation[64] = "CPU grant unavailable";
+            unsigned long reservation = 0;
             if (tier == TIER1 && t->slot >= 0) {
                 int count;
                 const struct tier1_decl *decl = resource_tier1(&count);
@@ -792,12 +817,11 @@ static void refresh_tasks(void)
                     if (!decl[j].cpu_us || slot-- != 0)
                         continue;
                     mem_grant = decl[j].mem_kb;
-                    lv_snprintf(allocation, sizeof allocation, "Fixed %u us", decl[j].cpu_us);
+                    reservation = decl[j].cpu_us;
                     break;
                 }
             } else if (tier == TIER2) {
-                lv_snprintf(allocation, sizeof allocation, "Min %lu / grant %lu us",
-                    (unsigned long)ticks_to_us(t->min_t), grant);
+                reservation = ticks_to_us(t->min_t);
                 for (int j = 0; ; j++) {
                     const struct running_app *app = resource_running(j);
                     if (!app)
@@ -807,23 +831,26 @@ static void refresh_tasks(void)
                         break;
                     }
                 }
-            } else {
-                lv_snprintf(allocation, sizeof allocation, "%s",
-                    tier == TIER3 ? "Shared CPU pool" : "CPU grant unavailable");
             }
-            char memory[48];
-            if (mapped)
-                lv_snprintf(memory, sizeof memory, "RAM %u KiB app pages", mapped);
-            else if (mem_grant)
-                lv_snprintf(memory, sizeof memory, "RAM %u KiB reserved", mem_grant);
-            else
-                lv_snprintf(memory, sizeof memory, "RAM use unavailable");
-            char text[192];
-            lv_snprintf(text, sizeof text, "%s%s\n%s  /  CPU %lu us\n%s\n%s",
-                task_display_name(t->name), tier == TIER1 ? "  /  Protected" : "", state, cpu, allocation, memory);
+            const char *ram_label = mapped ? "Mapped KiB" : "Reserved KiB";
+            char memory[24] = "--";
+            if (mapped || mem_grant)
+                lv_snprintf(memory, sizeof memory, "%u", mapped ? mapped : mem_grant);
+            char keys[96], values[112];
+            if (tier == TIER2) {
+                lv_snprintf(keys, sizeof keys, "State\nCPU us\nMinimum us\nGrant us\n%s", ram_label);
+                lv_snprintf(values, sizeof values, "%s\n%lu\n%lu\n%lu\n%s", state, cpu, reservation, grant, memory);
+            } else if (tier == TIER1) {
+                lv_snprintf(keys, sizeof keys, "State\nCPU us\nFixed us\n%s", ram_label);
+                lv_snprintf(values, sizeof values, "%s\n%lu\n%lu\n%s", state, cpu, reservation, memory);
+            } else {
+                lv_snprintf(keys, sizeof keys, "State\nCPU us\nCPU pool\n%s", ram_label);
+                lv_snprintf(values, sizeof values, "%s\n%lu\nShared\n%s", state, cpu, memory);
+            }
             lv_obj_t *item = task_items[i];
             if (!item) {
-                task_items[i] = item = lv_label_create(list);
+                task_items[i] = item = lv_obj_create(list);
+                lv_obj_remove_flag(item, LV_OBJ_FLAG_SCROLLABLE);
                 lv_obj_add_flag(item, LV_OBJ_FLAG_CLICKABLE);
                 lv_obj_add_event_cb(item, row_long_press, LV_EVENT_LONG_PRESSED, NULL);
                 lv_obj_set_width(item, lv_pct(100));
@@ -834,12 +861,27 @@ static void refresh_tasks(void)
                 lv_obj_set_style_border_width(item, 1, 0);
                 lv_obj_set_style_border_color(item, lv_color_hex(0xdbe3f0), 0);
                 lv_obj_set_style_text_color(item, lv_color_hex(0x263552), 0);
+                lv_obj_t *title = desk_label(item, 0, 0, "", 0x203853);
+                lv_obj_set_width(title, lv_pct(100));
+                lv_label_set_long_mode(title, LV_LABEL_LONG_CLIP);
+                lv_obj_t *left = desk_label(item, 0, 22, "", 0x475a7a);
+                lv_obj_set_width(left, 98);
+                lv_obj_t *right = desk_label(item, 98, 22, "", 0x263552);
+                lv_obj_set_width(right, 63);
+                lv_obj_set_style_text_align(right, LV_TEXT_ALIGN_RIGHT, 0);
+                lv_label_set_long_mode(right, LV_LABEL_LONG_CLIP);
             } else if (lv_obj_get_parent(item) != list) {
                 lv_obj_set_parent(item, list);
             }
             lv_obj_remove_flag(item, LV_OBJ_FLAG_HIDDEN);
-            if (strcmp(text, lv_label_get_text(item)))
-                lv_label_set_text(item, text);
+            int height = tier == TIER2 ? 130 : 112;
+            if (lv_obj_get_height(item) != height) lv_obj_set_height(item, height);
+            const char *fields[] = {task_display_name(t->name), keys, values};
+            for (unsigned col = 0; col < 3; col++) {
+                lv_obj_t *field_label = lv_obj_get_child(item, col);
+                if (strcmp(fields[col], lv_label_get_text(field_label)))
+                    lv_label_set_text(field_label, fields[col]);
+            }
             visible++;
         }
         if (tier > TIER1 && stopped_rows[tier - TIER2]) {
@@ -966,11 +1008,29 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(info_panel, 1, 0);
     lv_obj_set_style_pad_all(info_panel, 0, 0);
     lv_obj_remove_flag(info_panel, LV_OBJ_FLAG_SCROLLABLE);
-    info_text = desk_label(info_panel, 20, 16, "", 0x263552);
-    lv_obj_set_width(info_text, 650);
+    static const char *const info_names[] = {
+        "CPU busy (%)", "Tier 1 CPU (us)", "Tier 2 CPU (us)", "Tier 3 CPU (us)",
+        "Tier 3 limit (us)", "Kernel CPU (us)", "Tier 1 misses", "Tier 2 shortfalls",
+        "RAM reserved (%)", "Guest RAM (KiB)", "System reserve (KiB)", "Tier 1 reserve (KiB)",
+        "App minima (KiB)", "App capacity (KiB)", "Tier 2 overruns", "Tier 3 throttled periods"
+    };
+    desk_label(info_panel, 16, 10, clock_is_icount() ? "CPU  /  10 ms  /  icount" : "CPU  /  10 ms  /  host", 0x374e90);
+    desk_label(info_panel, 356, 10, "Memory and resource events", 0x374e90);
+    for (unsigned i = 0; i < sizeof info_names / sizeof info_names[0]; i++) {
+        int x = i < 8 ? 16 : 356, y = 42 + (i % 8) * 29;
+        desk_label(info_panel, x, y, info_names[i], 0x475a7a);
+        info_values[i] = desk_label(info_panel, x + 186, y, "", 0x263552);
+        lv_obj_set_width(info_values[i], 122);
+        lv_obj_set_style_text_align(info_values[i], LV_TEXT_ALIGN_RIGHT, 0);
+    }
+    desk_label(info_panel, 356, 274, "Tier 3 pool crossings", 0x475a7a);
+    info_crossings = desk_label(info_panel, 542, 274, "", 0x263552);
+    lv_obj_set_width(info_crossings, 122);
+    lv_obj_set_style_text_align(info_crossings, LV_TEXT_ALIGN_RIGHT, 0);
 
     page_input = desktop_window(screen, app_desktop_mode() ? 260 : 650, 238, 540, 358, "Notes");
-    desk_label(page_input, 28, 70, "Notes are cleared on restart.", 0x64748b);
+    note_status = desk_label(page_input, 28, 70, "", 0x64748b);
+    note_disk_init();
     field = lv_textarea_create(page_input);
     lv_obj_set_pos(field, 28, 108);
     lv_obj_set_size(field, 482, 148);
@@ -980,6 +1040,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_color(field, lv_color_hex(0xd9e1ee), 0);
     lv_obj_set_style_border_width(field, 1, 0);
     lv_obj_set_style_text_color(field, lv_color_hex(0x263552), 0);
+    lv_obj_t *save = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save", 214);
+    lv_obj_set_pos(save, 398, 283);
+    lv_obj_set_size(save, 112, 40);
     lv_obj_t *btn = lv_button_create(page_input);
     lv_obj_set_pos(btn, 28, 283);
     lv_obj_set_size(btn, 112, 40);
@@ -1017,7 +1080,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(task_body, 0, 0);
     lv_obj_set_style_pad_all(task_body, 0, 0);
     lv_obj_remove_flag(task_body, LV_OBJ_FLAG_SCROLLABLE);
-    static const char *const tiers[] = {"Tier 1", "Tier 2", "Tier 3"};
+    static const char *const tiers[] = {"Tier 1 / Protected", "Tier 2", "Tier 3"};
     static const char *const captions[] = {"Vendor reserved", "User selected", "Shared resources"};
     static const uint32_t accent[] = {0x23785c, 0x395cc0, 0x7851a8};
     for (int i = 0; i < 3; i++) {
@@ -1056,8 +1119,14 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     }
     select_monitor_tab(SYSTEM_TASK);
 
+    page_files = desktop_window(screen, 180, 156, 500, 286, "Files");
+    file_entry = add_row(page_files, 82, 0xffffff, 0xdbe3f0, "Note.txt", 213);
+    lv_obj_set_pos(file_entry, 20, 82);
+    file_empty = desk_label(page_files, 24, 86, "", 0x64748b);
+    lv_obj_add_flag(file_entry, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
-    static const enum app_key catalog[] = {APP_SYSTEM, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC};
+    static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC};
     for (unsigned i = 0; i < sizeof catalog / sizeof catalog[0]; i++) {
         enum app_key key = catalog[i];
         lv_obj_t *entry = app_icon(page_apps, key, 34 + (int)(i % 3) * 174,
@@ -1144,6 +1213,24 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     /* The UI is a service, not a 45-second demonstration. IRQs remain enabled
      * and the scheduler still charges all rendering/input to Tier 3. */
     for (;;) {
+        note_disk_poll();
+        const char *disk_status = note_disk_status();
+        static const char *previous_disk_status;
+        if (disk_status != previous_disk_status) {
+            previous_disk_status = disk_status;
+            lv_label_set_text(note_status, disk_status);
+            monitor_visible(file_entry, note_disk_text() != NULL);
+            monitor_visible(file_empty, note_disk_text() == NULL);
+            lv_label_set_text(file_empty, !strcmp(disk_status, "Ready") ? "No saved files" : disk_status);
+            if (save_since && strcmp(disk_status, "Saving...")) {
+                struct app_display_stats after;
+                app_display_read(&after);
+                printf("[files] %s elapsed_us=%lu frames=%u misses=%u boot_max_gap_us=%u\n",
+                       disk_status, now_us()-save_since, after.frames[0]-save_before.frames[0],
+                       after.speed_misses-save_before.speed_misses, after.max_gap_us);
+                save_since = 0;
+            }
+        }
         take_inputs();
         lv_timer_handler();
         app_desktop_stall_probe();
