@@ -637,7 +637,13 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     leg_shown[0] = 0;
     /* The UI is a service, not a 45-second demonstration. IRQs remain enabled
      * and the scheduler still charges all rendering/input to Tier 3. */
+    const bool instruction_clock = clock_is_icount();
     for (;;) {
+        /* On a live clock, the scheduler timer wakes this Tier-3 task.
+         * Avoid continuously polling MMIO between input/refresh deadlines.
+         * Instruction-count mode must execute instructions to move time. */
+        if (!instruction_clock)
+            asm volatile("wfi" ::: "memory");
         take_inputs();
         lv_timer_handler();
         uint64_t panel_now = now_us();

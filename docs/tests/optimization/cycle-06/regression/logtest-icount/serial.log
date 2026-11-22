@@ -1,0 +1,68 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 2 pool 16 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x40143000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (fe4fdff)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x44000000 physical RAM span 128 MB (probed)
+[boot] DTB at 0x44000000
+[boot] DTB snapshot 7824 bytes (header said 1048576)
+[boot] DTB memory 134217728 bytes
+[boot] system reserve 350 us/period, 16384 KB;
+       tier-1 1500 us/period, 13312 KB; guard 80 us/period
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 7 own colors, padding 11776 KB
+[boot] kernel image+bss 2103 KB of the 16384 KB system reserve
+[boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
+[boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
+[boot] clock: icount (counter driven by instruction count)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 396/400 us, stop 7/20 us (measured/declared)
+[dev] sim-blk: job 1991/2000 us, stop 1770/2000 us (measured/declared)
+[dev] sim-cam: job 291/300 us, stop 8/30 us (measured/declared)
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 display-vsync and timer-server bound to their slots
+[boot] slot table from tick 3750000, period 625000 ticks, guard 1250 ticks
+[boot] shell task running
+[klog-test] partial record
+[klog-test] second record
+[klog-test] overflow 0
+[klog-test] overflow 1
+[klog-test] overflow 2
+[klog-test] overflow 3
+[klog-test] overflow 4
+[klog-test] overflow 5
+[klog-test] overflow 6
+[klog-test] overflow 7
+[klog-test] overflow 8
+[klog-test] overflow 9
+[klog-test] overflow 10
+[klog-test] overflow 11
+[klog-test] overflow 12
+[klog-test] overflow 13
+[klog-test] overflow 14
+[klog-test] overflow 15
+[klog-test] overflow 16
+[klog-test] overflow 17
+[klog-test] overflow 18
+[klog-test] overflow 19
+[klog-test] overflow 20
+[klog-test] overflow 21
+[klog-test] overflow 22
+[klog-test] overflow 23
+[log] 3 more lines not kept
+[klog-test] partial=1 masked=1 overflow=1 recycled=1
+[klog-test] PASS
+QA DONE
