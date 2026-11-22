@@ -20,6 +20,14 @@ bash tools/run-files.sh
 
 The launcher boots the included ARM64 image and creates a persistent Notes disk on first use. No cross-compiler is required.
 
+## Vehicle instruments
+
+Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Dashcam draws simulated lane markings at a target of 25 frames per second in Tier 2. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. The labels and history are sampled by the desktop; Speed continues to commit while that desktop is stalled.
+
+![Quota OS desktop showing the Speed gauge, simulated dashcam lanes and music frame history](docs/screenshots/vehicle-instruments.png)
+
+[100 desktop-stall cold boots with these instruments](docs/tests/cortex-a35/instrument-regression.tar.gz)
+
 ## Tasks and application control
 
 System groups scheduler tasks by tier. Each row shows CPU use in the sampled 10 ms period and the applicable reservation, grant or shared pool. Right-click or long-press a demo task to inspect its controls. The kernel protects Tier 1 tasks. Stopping the dashcam or music player releases its reservations, and restarting it goes through admission again.

@@ -282,12 +282,12 @@ const struct app_manifest *resource_catalog(int *count);
 #define APP_DESK_EDGE 840
 #define APP_DRAW_X 890
 #define APP_DASH_Y 205
-#define APP_DASH_W 60
+#define APP_DASH_W 128
 #define APP_DASH_H 28
 #define APP_VIDEO_Y 370
 #define APP_MUSIC_Y 535
 #define APP_METER_W 128
-#define APP_METER_H 8
+#define APP_METER_H 24
 #define APP_MUSIC_SIZE 32
 int app_desktop_mode(void);
 void app_demo_run(int with_video, int stall);

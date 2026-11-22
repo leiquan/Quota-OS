@@ -65,17 +65,6 @@ int app_desktop_mode(void)
     return app_surface ? (video_configured ? 2 : 1) : 0;
 }
 
-static void app_meter(uint32_t x, uint32_t y, uint32_t frame, uint32_t color)
-{
-    uint32_t *fb = app_surface;
-    if (!fb)
-        return;
-    unsigned filled = 8 + (frame % 29) * 4;
-    for (unsigned row = 0; row < APP_METER_H; row++)
-        for (unsigned col = 0; col < APP_METER_W; col++)
-            fb[(y + row) * app_stride + x + col] = col < filled ? color : 0x182338;
-}
-
 void app_display_core_frame(void)
 {
     if (!app_surface)
@@ -105,6 +94,15 @@ void app_display_core_frame(void)
                        APP_DRAW_X + i * 20 + r[0] + x] = 0x35dfa0;
         }
     }
+    /* The linear gauge shares the Tier-1 commit with the numeric readout. */
+    unsigned marker = 64 + speed / 2;
+    for (unsigned y = 0; y < 8; y++) {
+        uint32_t *line = fb + (APP_DASH_Y + 11 + y) * app_stride + APP_DRAW_X;
+        for (unsigned x = marker - y / 2; x <= marker + y / 2; x++)
+            line[x] = 0x70ebc1;
+    }
+    for (unsigned x = 64; x < APP_DASH_W; x++)
+        fb[(APP_DASH_Y + 20) * app_stride + APP_DRAW_X + x] = 0x82a4ad;
     /* Complete framebuffer stores before recording a Tier-1 commit. */
     asm volatile("dsb st" ::: "memory");
     uint64_t now = ticks_now();
@@ -159,8 +157,18 @@ static void app_demo_video_frame(void)
 {
     for (;;) {
         uint64_t period = sched_period_now();
-        if (!video_stalled && period % 4 == 0)
-            app_meter(APP_DRAW_X, APP_VIDEO_Y, ++video_frames, 0x559dff);
+        if (!video_stalled && period % 4 == 0) {
+            uint32_t frame = video_frames + 1;
+            for (unsigned y = 0; y < APP_METER_H; y++) {
+                uint32_t *center = app_surface + (APP_VIDEO_Y + y) * app_stride + APP_DRAW_X + 63;
+                /* Redraw only the lane markings, including after display initialization. */
+                unsigned edge = 7 + y * 2;
+                center[1 - (int)edge] = center[1 + edge] = 0x98c8cf;
+                uint32_t color = ((y + frame) & 7) < 4 ? 0xb6e4ed : 0x273449;
+                center[0] = center[1] = color;
+            }
+            video_frames = frame;
+        }
         observe_desktop_stall(period);
         asm volatile("svc #0" ::: "memory");
     }

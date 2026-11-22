@@ -42,6 +42,7 @@
 </section>
 <section class="wrap section" id="evidence">
 <h2>桌面忙等时，速度表继续更新</h2>
+<figure style="margin:1rem 0"><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/vehicle-instruments.png" alt="桌面实拍：速度表、模拟行车记录仪和音乐播放器"><figcaption>速度表显示累计错过的截止期；行车记录仪目标为每秒 25 个模拟画面；音乐播放器的紫色柱条表示最近八次采样的画面提交速率。</figcaption></figure>
 <div class="stats"><div><strong>100 / 100</strong><span>速度表提交帧数 / 采样周期</span></div><div><strong>0</strong><span>速度表错过截止期</span></div><div><strong>0</strong><span>三级总池越线</span></div></div>
 <p>这组结果来自 QEMU TCG 的 <code>icount</code> 桌面忙等测试，测量的是虚拟机内的帧缓冲提交。GPU 队列、宿主窗口呈现和物理屏幕延迟仍待验证。</p>
 <p><a href="https://github.com/leiquan/Quota-OS/blob/main/docs/tests/cortex-a35/03-apps-desktop-stall.log">查看原始串口日志 ↗</a></p>
