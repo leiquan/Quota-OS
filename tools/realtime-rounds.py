@@ -192,8 +192,13 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0, task_manager=Fal
             if not a or not b:
                 raise AssertionError('missing T1/T2 results')
             vals = list(map(int,a.groups()+b.groups()))
+            pool = re.search(r"\[budget\] t3 throttled=(\d+) exceeded=(\d+)", t)
+            pool_ok = not pool or int(pool[2]) == 0
+
             return dict(zip(['t1_miss','class_a','class_b','skipped','t2_short','t2_job_miss'],vals),
-                        input_moves=events, task_manager=task_manager, requested_pause_ms=pause_ms, host_stop_to_cont_ms=pause, completed=True, longevity_seconds=hold, longevity_pass=longevity_ok, passed=not any(vals) and (events > 0 or not pointer_traffic) and 'PANIC' not in t and longevity_ok is not False,
+                        t3_throttled=int(pool[1]) if pool else None,
+                        t3_exceeded=int(pool[2]) if pool else None,
+                        input_moves=events, task_manager=task_manager, requested_pause_ms=pause_ms, host_stop_to_cont_ms=pause, completed=True, longevity_seconds=hold, longevity_pass=longevity_ok, passed=pool_ok and not any(vals) and (events > 0 or not pointer_traffic) and 'PANIC' not in t and longevity_ok is not False,
                         panic='PANIC' in t)
         finally:
             p.kill()

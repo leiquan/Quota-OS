@@ -55,6 +55,36 @@ static void rebuild_lists(void)
 }
 
 static uint64_t P, G, Q3, SR_T, JUMP_T;
+static uint64_t t3_limit, t3_used;
+static uint64_t t3_throttled, t3_over;
+static uint64_t t3_window_throttled, t3_window_over;
+static int t3_blocked;
+
+static void t3_reset_period(void)
+{
+    uint32_t capacity = resource_app_cpu_capacity_us();
+    uint32_t reserved = resource_cpu_min_sum_us();
+    t3_limit = us_to_ticks(capacity > reserved ? capacity - reserved : 0);
+    t3_used = 0;
+    t3_blocked = 0;
+}
+
+static void t3_charge(const struct task *owner, uint64_t ticks)
+{
+    if (owner->tier != TIER3)
+        return;
+    uint64_t before = t3_used;
+    t3_used += ticks;
+    if (before <= t3_limit && t3_used > t3_limit)
+        t3_over++;
+}
+
+void sched_print_t3_pool(void)
+{
+    printf("[budget] t3 throttled=%lu exceeded=%lu\n",
+           t3_throttled - t3_window_throttled, t3_over - t3_window_over);
+}
+
 static uint64_t epoch, pk, pstart;
 static int nslots;
 static uint64_t slot_off[MAX_SLOTS], slot_len[MAX_SLOTS];
@@ -574,6 +604,7 @@ static void charge(struct task *t, uint64_t a, uint64_t b)
         return;
     struct task *x = t->sc ? t->sc : t;
     /* 服务端在替调用者干活：记在调用者的预算上，服务端自己的不动 */
+    t3_charge(x, b - a);
     x->used_t += b - a;
     x->used_total += b - a;
     if (t->sc) {
@@ -849,10 +880,13 @@ static void ipc_release_held(void);
 
 static void begin_period(void)
 {
+    t3_reset_period();
     dev_period();
     ipc_release_held();
     if (bench_state == 1) {
         rec = 1;
+        t3_window_throttled = t3_throttled;
+        t3_window_over = t3_over;
         kstat_reset(&ks[1]);
         for (int i = 0; i < nslots; i++)
             str_copy(ks[1].slot_who[i], slot_owner[i] ? slot_owner[i]->name : "(empty)", NAME_LEN);
@@ -956,6 +990,17 @@ static struct task *pick_t2(int sugg)
 
 static struct task *pick_t3(void)
 {
+    /* Leave room for timer entry and an in-flight IPC kernel path. */
+    uint64_t margin = us_to_ticks(IPC_HEADROOM_US);
+    uint64_t room_pool = t3_used < t3_limit ? t3_limit - t3_used : 0;
+    if (room_pool <= margin + MIN_REL_T) {
+        if (!t3_blocked && n3) {
+            t3_blocked = 1;
+            t3_throttled++;
+        }
+        return 0;
+    }
+    room_pool -= margin;
     for (int n = 1; n <= n3; n++) {
         int i = rr3 + n;
         if (i >= n3)
@@ -965,6 +1010,8 @@ static struct task *pick_t3(void)
         if (runnable(t) && room) {
             rr3 = i;
             k_arm_rel = Q3 < room ? Q3 : room;
+            if (k_arm_rel > room_pool)
+                k_arm_rel = room_pool;
             return runner(t);
         }
     }
@@ -1246,6 +1293,7 @@ static uint64_t schedule(uint64_t sp, int timer)
                 x->ipc_hold = 1;    /* v014：本周期不再接新调用 */
             }
         }
+        t3_charge(x, c);
         x->used_t += c;
         x->used_total += c;
         ipc.kern_sum += c;
@@ -1683,6 +1731,7 @@ void sched_start(void (*shell_entry)(void))
     epoch = now + P - now % P;
     pk = 0;
     pstart = epoch;
+    t3_reset_period();
     for (int i = 0; i < MAX_TASKS; i++) {
         struct task *t = &tasks[i];
         if (t->kind == KIND_JOB && t->tier == TIER1 && t->slot >= 0) {

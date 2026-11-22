@@ -784,6 +784,8 @@ static void menu_finish_window(void)
     menu_phase = 0;
     menu_stop = 0;
     menu_note_set("window done");
+    if (menu_id == 9)
+        sched_print_t3_pool();
     printf("[menu] done %d\n", menu_id);
 }
 

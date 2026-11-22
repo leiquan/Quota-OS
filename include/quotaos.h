@@ -293,6 +293,7 @@ struct app_display_stats {
 };
 void app_display_read(struct app_display_stats *stats);
 void app_demo_dashboard_frame(void);
+void sched_print_t3_pool(void);
 void sched_init(void);
 struct task *sched_current(void);
 struct task *task_create(const char *name, int tier, int kind);
