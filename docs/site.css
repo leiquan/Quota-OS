@@ -112,3 +112,23 @@ header.bar { min-height: 80px; }
 @media (max-width: 640px) {
   .hero h1 { font-size: clamp(2.2rem, 8vw, 3rem); }
 }
+
+/* A light exterior gives the dark guest desktop its own visual frame. */
+:root { color-scheme: light; color: #142039; background: #faf9f6; }
+body { background: radial-gradient(ellipse 70rem 32rem at 65% 0%, #e8effb, transparent 84%); }
+p, figcaption, .controls output, .platform-title { color: #4a5870; }
+a, .eyebrow { color: #285996; }
+a:focus-visible, .controls button:focus-visible { outline-color: #285996; }
+h1 span, .stats strong { color: #285996; }
+.bar, footer.bar, .section + .section, .platform { border-color: #d7deea; }
+nav a { color: #243651; }
+.language { border-color: #b6c4da; background: #ffffff96; }
+.primary { background: #244e84; color: #fff; }
+article, .stats div, pre { border-color: #dbe2ed; background: #fff; }
+.showcase { background: #fff; border-color: #d5deec; box-shadow: 0 20px 54px #253b6520; }
+.gallery { background: #f0f3f9; }
+img { border-color: #ced8e8; }
+.controls button { border-color: #bfcbdf; background: #f3f6fb; color: #233653; }
+.indicator::before { background: #7083a0; }
+.indicator[aria-current="true"]::before { background: #285996; }
+.platform dt { color: #536781; }

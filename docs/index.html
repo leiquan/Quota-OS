@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="An experimental ARM64 operating system built around CPU quotas.">
 <title>Quota OS — A resource-partitioned operating system</title>
-<link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="site.css?v=light">
 <script src="site.js" defer></script>
 </head>
 <body>
@@ -17,7 +17,7 @@
 <p class="intro">Quota OS is an experimental ARM64 operating system. It reserves CPU time for critical tasks, admits applications against available capacity, and shares spare time among ordinary workloads.</p>
 <p class="actions"><a class="primary" href="#run">Run Quota OS</a><a href="https://github.com/leiquan/Quota-OS">Browse source ↗</a></p>
 <div class="showcase"><div class="gallery" tabindex="0" aria-label="Desktop screenshots"><figure><img src="screenshots/pages-apps.png" width="1280" height="800" alt="Apps"><figcaption>Apps</figcaption></figure><figure><img src="screenshots/pages-task.png" width="1280" height="800" alt="System Task"><figcaption>System Task</figcaption></figure><figure><img src="screenshots/pages-info.png" width="1280" height="800" alt="System Info"><figcaption>System Info</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
-<h3 class="platform-title">Demo configuration</h3><dl class="platform"><div><dt>Processor</dt><dd>ARM64 · emulated Cortex-A72</dd></div><div><dt>Memory</dt><dd>128 MiB · single-core guest</dd></div><div><dt>Display</dt><dd>1280 × 800 · LVGL / ramfb</dd></div><div><dt>Timing</dt><dd>QEMU TCG · icount guest clock</dd></div></dl>
+<h3 class="platform-title">Demo configuration</h3><dl class="platform"><div><dt>Processor</dt><dd>ARM64 · Cortex-A72 (QEMU, 1 core)</dd></div><div><dt>Memory</dt><dd>128 MiB</dd></div><div><dt>Display</dt><dd>1280 × 800 · LVGL / ramfb</dd></div><div><dt>Timing</dt><dd>QEMU TCG · icount guest clock</dd></div></dl>
 </section>
 <section class="wrap section" id="model">
 <h2>Three tiers of CPU allocation</h2>
