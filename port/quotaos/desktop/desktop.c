@@ -1334,19 +1334,31 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_indev_set_read_cb(keypad, keypad_read);
 
     lv_obj_t *screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x182b57), 0);
-    lv_obj_set_style_bg_grad_color(screen, lv_color_hex(0x6c4d92), 0);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x142a49), 0);
+    lv_obj_set_style_bg_grad_color(screen, lv_color_hex(0x7893a4), 0);
     lv_obj_set_style_bg_grad_dir(screen, LV_GRAD_DIR_VER, 0);
     lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-    for (int i = 0; i < 3; i++) {
-        lv_obj_t *hill = lv_obj_create(screen);
-        lv_obj_set_size(hill, 1480, 640);
-        lv_obj_set_pos(hill, -300 + i * 330, 300 + i * 108);
-        lv_obj_set_style_radius(hill, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(hill, 0, 0);
-        lv_obj_set_style_bg_color(hill, lv_color_hex(i == 0 ? 0x345388 : i == 1 ? 0x555eaa : 0x9b76b0), 0);
-        lv_obj_remove_flag(hill, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    }
+
+    /* Static horizon and cockpit sill keep wallpaper work off the frame timers. */
+    lv_obj_t *terrain = lv_obj_create(screen);
+    lv_obj_set_pos(terrain, 0, h * 51 / 100);
+    lv_obj_set_size(terrain, w, h / 2);
+    lv_obj_set_style_radius(terrain, 0, 0);
+    lv_obj_set_style_border_width(terrain, 0, 0);
+    lv_obj_set_style_bg_color(terrain, lv_color_hex(0x607c82), 0);
+    lv_obj_set_style_bg_grad_color(terrain, lv_color_hex(0x233b48), 0);
+    lv_obj_set_style_bg_grad_dir(terrain, LV_GRAD_DIR_VER, 0);
+    lv_obj_remove_flag(terrain, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *sill = lv_obj_create(screen);
+    lv_obj_set_pos(sill, -(int)w / 5, h * 81 / 100);
+    lv_obj_set_size(sill, w * 7 / 5, h / 2);
+    lv_obj_set_style_radius(sill, h / 5, 0);
+    lv_obj_set_style_border_width(sill, 2, 0);
+    lv_obj_set_style_border_color(sill, lv_color_hex(0x526779), 0);
+    lv_obj_set_style_bg_color(sill, lv_color_hex(0x121e30), 0);
+    lv_obj_remove_flag(sill, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
     lv_obj_t *top = lv_obj_create(screen);
     lv_obj_set_pos(top, 0, 0);
     lv_obj_set_size(top, (int)w, 40);
