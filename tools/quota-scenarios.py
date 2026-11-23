@@ -49,6 +49,7 @@ def boot():
             click(455,198)
             wait(r"\[desktop\] system events opened")
             click_logged("launcher")
+            wait(r"\[desktop\] Apps opened")
             click_logged("tests")
             wait(r"\[desktop\] Test opened")
             for number in range(1,6):

@@ -8,7 +8,6 @@ static volatile int video_stalled;
 static uint64_t video_tick, video_max_gap;
 static unsigned video_epoch;
 static uint32_t music_frames;
-static int music_held;
 static struct task *dashboard_demo;
 static struct running_app *video_demo;
 static int64_t music_demo = -1;
@@ -67,7 +66,6 @@ void app_display_read(struct app_display_stats *stats)
     stats->max_gap_us = ticks_to_us(speed_gap);
     stats->video_max_gap_us = ticks_to_us(camera_gap);
     stats->video_paused = video_stalled;
-    stats->music_held = music_held;
 }
 
 int app_desktop_mode(void)
@@ -215,9 +213,7 @@ void app_desktop_poll(void)
         return;
     uint64_t period = sched_period_now();
     /* Defer only the music viewport to demonstrate a bounded Tier-3 queue. */
-    music_held = period % 100 >= 50;
-    if (!music_held)
-        music_frames += (uint32_t)disp_drain(2);
+    music_frames += (uint32_t)disp_drain(2);
     if (desktop_probe != PROBE_OFF)
         return;
     if (!app_test_phase) {

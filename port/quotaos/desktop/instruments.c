@@ -107,8 +107,6 @@ void instruments_refresh(void)
                 status = "Not running";
             else if (i == 1 && current.video_paused)
                 status = "Test pause";
-            else if (i == 2 && current.music_held)
-                status = "Demo hold (Tier 3)";
             if (strcmp(status, lv_label_get_text(app_status[i])))
                 lv_label_set_text(app_status[i], status);
         }

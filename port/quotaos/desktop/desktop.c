@@ -519,9 +519,10 @@ static void poll_trial(void)
     }
     char result[300];
     lv_snprintf(result, sizeof result,
-        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu",
+        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu\nMusic Player %u commits",
         ok ? "PASS" : "FAIL", (unsigned long)elapsed, (unsigned long)ticks_to_us(peak),
-        frames, misses, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings);
+        frames, misses, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings,
+        display.frames[2] - trial.display.frames[2]);
     trial.active = 0;
     trial_result(number, result);
 }
