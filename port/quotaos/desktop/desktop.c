@@ -558,8 +558,11 @@ static void poll_trial(void)
         if (proc_kill(trial.process)) ok = 0;
     }
     char camera[64];
-    if (display.video_running && trial.display.video_running &&
-        display.video_epoch == trial.display.video_epoch) {
+    int camera_measured = display.video_running && trial.display.video_running &&
+                          display.video_epoch == trial.display.video_epoch;
+    unsigned speed_late = display.speed_late_gaps - trial.display.speed_late_gaps;
+    unsigned camera_late = display.video_late_gaps - trial.display.video_late_gaps;
+    if (camera_measured) {
         unsigned camera_frames = display.frames[1] - trial.display.frames[1];
         unsigned camera_missed = display.video_missed - trial.display.video_missed;
         ok = ok && camera_frames && !camera_missed;
@@ -568,12 +571,15 @@ static void poll_trial(void)
     } else {
         lv_snprintf(camera, sizeof camera, "Flight Camera not measured");
     }
-    char result[360];
+    const char *timing = speed_late || misses || (camera_measured && camera_late) ||
+                         (camera_measured && display.video_missed != trial.display.video_missed)
+        ? "FAIL" : camera_measured ? "PASS" : "Camera not measured";
+    char result[436];
     lv_snprintf(result, sizeof result,
-        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\n%s\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu\nMusic Player %u commits",
+        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\n%s\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu\nMusic Player %u commits\nStrict frame timing: %s\nLong gaps: GPS Speed %u, Flight Camera %u",
         ok ? "PASS" : "FAIL", (unsigned long)elapsed, (unsigned long)ticks_to_us(peak),
         frames, misses, camera, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings,
-        display.frames[2] - trial.display.frames[2]);
+        display.frames[2] - trial.display.frames[2], timing, speed_late, camera_late);
     trial.active = 0;
     trial_result(number, result);
 }

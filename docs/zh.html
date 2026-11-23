@@ -51,7 +51,11 @@
 <section class="wrap section" id="evidence">
 <h2>桌面忙等时，速度表继续更新</h2>
 <p>从 Apps 打开 Test。第 1–3 项测试二级超额申请、正常启动和 CPU 限额。第 1 项显示申请量、当前可用量和总量。第 4–5 项运行三级普通任务和 10 秒死循环。结果显示 Music Player 实际提交帧数。GPS Speed 的 10 ms 和 Flight Camera 的 40 ms 目标需单独核对最大帧间隔。</p>
+<p>两张关键仪表卡分别显示漏帧和超长间隔。Test 同时报告严格帧时限和配额结果，System → Events 记录最近的异常。</p>
 <figure><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/system-test.png" alt="QEMU 实拍的 Test 应用与三级忙循环测试结果"></figure>
+<figure><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/system-events.png" alt="System Events 分组显示帧间隔异常"><figcaption>System Events 分组显示帧间隔异常</figcaption></figure>
+<figure><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/test-admission.png" alt="二级超额申请显示拒绝原因"><figcaption>二级超额申请显示拒绝原因</figcaption></figure>
+<figure><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/test-countdown.png" alt="三级压力测试倒计时与仪表实时帧率"><figcaption>三级压力测试倒计时与仪表实时帧率</figcaption></figure>
 <figure style="margin:1rem 0"><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/vehicle-instruments.png" alt="桌面实拍：速度表、模拟行车记录仪和音乐播放器"><figcaption>速度表显示累计错过的截止期；行车记录仪目标为每秒 25 个模拟画面；音乐播放器的紫色柱条表示最近八次采样的画面提交速率。 <a href="screenshots/instruments-live.gif">查看 QEMU 连续实拍</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">运行对应的 LVGL 版本</a></figcaption></figure>
 <div class="stats"><div><strong>100 / 100</strong><span>速度表提交帧数 / 采样周期</span></div><div><strong>0</strong><span>速度表错过截止期</span></div><div><strong>0</strong><span>三级总池越线</span></div></div>
 <p>这组结果来自 QEMU TCG 的 <code>icount</code> 桌面忙等测试，测量的是虚拟机内的帧缓冲提交。GPU 队列、宿主窗口呈现和物理屏幕延迟仍待验证。</p>

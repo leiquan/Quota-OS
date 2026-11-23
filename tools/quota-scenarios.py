@@ -48,6 +48,8 @@ def boot():
                 click(x + w // 2, y + h // 2)
             click(455,198)
             wait(r"\[desktop\] system events opened")
+            time.sleep(.3)
+            q.call("screendump", {"filename": str((args.out / "events.ppm").resolve())})
             click_logged("launcher")
             wait(r"\[desktop\] Apps opened")
             click_logged("tests")
@@ -74,6 +76,8 @@ def boot():
                     cpu = wait(r"CPU per 10 ms \(us\)\nRequested (\d+) +Available (\d+) +Total (\d+)", offset)
                     requested, available, total = map(int, cpu.groups())
                     assert requested > total >= available, cpu.group()
+                    time.sleep(.25)
+                    q.call("screendump", {"filename": str((args.out / "admission.ppm").resolve())})
                 if number > 1:
                     assert int(result[2]) >= (1000 if number == 5 else 100), result.group()
                     camera = wait(r"Flight Camera (\d+) commits, (\d+) missed", offset)
