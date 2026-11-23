@@ -107,6 +107,10 @@ void instruments_refresh(void)
                 status = "Not running";
             else if (i == 1 && current.video_paused)
                 status = "Test pause";
+            else if (i == 1) {
+                lv_snprintf(deadlines, sizeof deadlines, "%u missed frames", (unsigned)current.video_missed);
+                status = deadlines;
+            }
             if (strcmp(status, lv_label_get_text(app_status[i])))
                 lv_label_set_text(app_status[i], status);
         }

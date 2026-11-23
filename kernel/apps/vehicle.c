@@ -5,7 +5,8 @@ static uint32_t *volatile app_surface;
 static uint32_t app_stride;
 static volatile uint32_t dashboard_frames, video_frames;
 static volatile int video_stalled;
-static uint64_t video_tick, video_max_gap;
+static uint64_t video_tick, video_max_gap, video_period;
+static uint32_t video_missed, speed_late_gaps, video_late_gaps;
 static unsigned video_epoch;
 static uint32_t music_frames;
 static struct task *dashboard_demo;
@@ -60,6 +61,13 @@ void app_display_read(struct app_display_stats *stats)
     stats->frames[1] = video_frames;
     stats->frames[2] = music_frames;
     stats->video_epoch = video_epoch;
+    stats->video_missed = video_missed;
+    stats->video_running = video_demo != NULL;
+    stats->speed_late_gaps = speed_late_gaps;
+    stats->video_late_gaps = video_late_gaps;
+    uint64_t period = sched_period_now();
+    if (video_demo && !video_stalled && video_tick && period > video_period)
+        stats->video_missed += (uint32_t)(((period - 1) - video_period) / 4);
     stats->speed_misses = dashboard_demo ? dashboard_demo->misses : 0;
     uint64_t speed_gap = display_max_gap, camera_gap = video_max_gap;
     irq_restore(flags);
@@ -114,8 +122,11 @@ void app_display_core_frame(void)
     /* Complete framebuffer stores before recording a Tier-1 commit. */
     asm volatile("dsb st" ::: "memory");
     uint64_t now = ticks_now();
-    if (display_commit_tick && now - display_commit_tick > display_max_gap)
-        display_max_gap = now - display_commit_tick;
+    if (display_commit_tick) {
+        uint64_t gap = now - display_commit_tick;
+        if (gap > display_max_gap) display_max_gap = gap;
+        if (gap > us_to_ticks(PERIOD_US)) speed_late_gaps++;
+    }
     display_commit_tick = now;
     dashboard_frames++;
 }
@@ -165,7 +176,7 @@ static void app_demo_video_frame(void)
 {
     for (;;) {
         uint64_t period = sched_period_now();
-        if (!video_stalled && period % 4 == 0) {
+        if (!video_stalled && period % 4 == 0 && (!video_tick || period != video_period)) {
             uint32_t frame = video_frames + 1;
             int first = !video_tick;
             unsigned phase = frame & 63;
@@ -195,8 +206,14 @@ static void app_demo_video_frame(void)
             asm volatile("dsb st" ::: "memory");
             uint64_t flags = irq_save();
             uint64_t now = ticks_now();
-            if (video_tick && now - video_tick > video_max_gap)
-                video_max_gap = now - video_tick;
+            if (video_tick) {
+                uint64_t gap = now - video_tick;
+                if (gap > video_max_gap) video_max_gap = gap;
+                if (gap > us_to_ticks(4 * PERIOD_US)) video_late_gaps++;
+            }
+            if (video_tick)
+                video_missed += (uint32_t)((period - video_period) / 4 - 1);
+            video_period = period;
             video_tick = now;
             video_frames = frame;
             irq_restore(flags);

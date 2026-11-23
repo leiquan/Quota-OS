@@ -557,11 +557,22 @@ static void poll_trial(void)
         ok = ok && proc_alive(trial.process);
         if (proc_kill(trial.process)) ok = 0;
     }
-    char result[300];
+    char camera[64];
+    if (display.video_running && trial.display.video_running &&
+        display.video_epoch == trial.display.video_epoch) {
+        unsigned camera_frames = display.frames[1] - trial.display.frames[1];
+        unsigned camera_missed = display.video_missed - trial.display.video_missed;
+        ok = ok && camera_frames && !camera_missed;
+        lv_snprintf(camera, sizeof camera, "Flight Camera %u commits, %u missed",
+                    camera_frames, camera_missed);
+    } else {
+        lv_snprintf(camera, sizeof camera, "Flight Camera not measured");
+    }
+    char result[360];
     lv_snprintf(result, sizeof result,
-        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu\nMusic Player %u commits",
+        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\n%s\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu\nMusic Player %u commits",
         ok ? "PASS" : "FAIL", (unsigned long)elapsed, (unsigned long)ticks_to_us(peak),
-        frames, misses, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings,
+        frames, misses, camera, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings,
         display.frames[2] - trial.display.frames[2]);
     trial.active = 0;
     trial_result(number, result);
@@ -1130,7 +1141,8 @@ static void refresh_system_events(void)
 {
     static const char *const names[] = {
         "Tier 1 deadline misses", "Tier 2 quota shortfalls", "Tier 2 quota overruns",
-        "Tier 3 pool overruns", "Kernel budget overruns"
+        "Tier 3 pool overruns", "Kernel budget overruns", "GPS Speed frame gap > 10 ms",
+        "Flight Camera missed frames", "Flight Camera frame gap > 40 ms"
     };
     enum { EVENT_ROWS = 8 };
     static struct {
@@ -1142,8 +1154,11 @@ static void refresh_system_events(void)
     static int dirty;
     struct sched_system_info info;
     sched_read_system_info(&info);
+    struct app_display_stats display;
+    app_display_read(&display);
     const uint64_t totals[] = {info.tier1_misses, info.tier2_short, info.tier2_over,
-                               info.tier3_over, info.kernel_overruns};
+                               info.tier3_over, info.kernel_overruns, display.speed_late_gaps,
+                               display.video_missed, display.video_late_gaps};
     for (unsigned i = 0; i < sizeof totals / sizeof totals[0]; i++) {
         if (totals[i] > previous[i]) {
             rows[next].kind = i;
@@ -1642,7 +1657,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(task_body, 0, 0);
     lv_obj_set_style_pad_all(task_body, 0, 0);
     lv_obj_remove_flag(task_body, LV_OBJ_FLAG_SCROLLABLE);
-    static const char *const tiers[] = {"Tier 1 / Protected", "Tier 2", "Tier 3"};
+    static const char *const tiers[] = {"Tier 1", "Tier 2", "Tier 3"};
     static const char *const captions[] = {"Vendor reserved", "User selected", "Shared resources"};
     static const uint32_t accent[] = {0x23785c, 0x395cc0, 0x7851a8};
     for (int i = 0; i < 3; i++) {

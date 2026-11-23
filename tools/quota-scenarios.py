@@ -76,6 +76,8 @@ def boot():
                     assert requested > total >= available, cpu.group()
                 if number > 1:
                     assert int(result[2]) >= (1000 if number == 5 else 100), result.group()
+                    camera = wait(r"Flight Camera (\d+) commits, (\d+) missed", offset)
+                    assert int(camera[1]) > 0 and int(camera[2]) == 0, camera.group()
                     gaps = wait(r"Peak gap: Speed (\d+) us, Dashcam (\d+) us", offset)
                     speed_us, camera_us = map(int, gaps.groups())
                     assert 0 < speed_us < 11000 and 0 < camera_us < 41000, gaps.group()

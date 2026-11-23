@@ -298,9 +298,9 @@ int vehicle_app_set_running(int tier, int start);
 struct app_display_stats {
     uint32_t frames[3];
     uint64_t sample_tick, commit_tick[2];
-    uint32_t video_epoch, video_max_gap_us;
-    uint32_t speed_misses, max_gap_us;
-    int video_paused;
+    uint32_t video_epoch, video_max_gap_us, video_missed;
+    uint32_t speed_misses, max_gap_us, speed_late_gaps, video_late_gaps;
+    int video_paused, video_running;
 };
 void app_display_read(struct app_display_stats *stats);
 void app_display_core_frame(void);
