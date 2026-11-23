@@ -247,6 +247,16 @@ struct running_app *resource_running(int index)
     return 0;
 }
 
+void resource_app_available(uint32_t *cpu_us, uint64_t *mem_kb)
+{
+    uint32_t cpu_cap = resource_app_cpu_capacity_us();
+    uint32_t cpu_used = resource_cpu_min_sum_us();
+    uint64_t mem_cap = resource_app_mem_capacity_kb();
+    uint64_t mem_used = resource_mem_min_sum_kb();
+    *cpu_us = kernel_target == kernel_reserve && cpu_cap > cpu_used ? cpu_cap - cpu_used : 0;
+    *mem_kb = mem_cap > mem_used ? mem_cap - mem_used : 0;
+}
+
 int resource_check(const struct app_manifest *m)
 {
     reason[0] = 0;
@@ -285,9 +295,9 @@ int resource_check(const struct app_manifest *m)
         return ADMIT_DEVICE;
     }
 
-    uint64_t mem_left = mem_cap - resource_mem_min_sum_kb();
-    uint32_t used = resource_cpu_min_sum_us();
-    uint32_t cpu_left = kernel_target == kernel_reserve && cpu_cap > used ? cpu_cap - used : 0;
+    uint64_t mem_left;
+    uint32_t cpu_left;
+    resource_app_available(&cpu_left, &mem_left);
     if (m->mem_min_kb <= mem_left && m->cpu_min_us <= cpu_left)
         return ADMIT_OK;
 

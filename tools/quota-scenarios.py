@@ -70,6 +70,10 @@ def boot():
                     pattern += r"  /  (\d+) periods"
                 result = wait(pattern, offset, timeout=120 if number == 5 else 25)
                 if result[1] != "PASS": raise AssertionError(f"scenario {number} failed")
+                if number == 1:
+                    cpu = wait(r"CPU per 10 ms \(us\)\nRequested (\d+) +Available (\d+) +Total (\d+)", offset)
+                    requested, available, total = map(int, cpu.groups())
+                    assert requested > total >= available, cpu.group()
                 if number > 1:
                     assert int(result[2]) >= (1000 if number == 5 else 100), result.group()
                     gaps = wait(r"Peak gap: Speed (\d+) us, Dashcam (\d+) us", offset)

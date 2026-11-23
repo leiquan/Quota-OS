@@ -270,6 +270,7 @@ uint64_t resource_mem_min_sum_kb(void);
 uint64_t resource_ram_kb(void);
 int resource_pressure(void);
 void resource_set_pressure(int on);
+void resource_app_available(uint32_t *cpu_us, uint64_t *mem_kb);
 int resource_check(const struct app_manifest *m);
 const char *resource_reason(void);
 struct running_app *resource_commit(const struct app_manifest *m);

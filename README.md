@@ -103,11 +103,11 @@ Open **Test** from **Apps** on the vehicle desktop. **System** shows tasks, syst
 
 | Scenario | What the guest checks |
 | --- | --- |
-| T2 Reject over-quota | Request 10,000 µs of CPU per 10 ms period. Admission must refuse the launch. |
-| T2 Admit periodic job | Reserve 400 µs per period and 16 KiB. Verify the periodic job runs and meets its deadline. |
-| T2 Cap busy task | Run a CPU-bound task with a 400 µs minimum and an 800 µs ceiling per period. Check shortfalls, overruns and measured peak use. |
-| T3 Run yielding task | Launch an EL0 process that yields voluntarily. Verify it receives CPU time. |
-| T3 Contain busy loop | Launch an EL0 process that never yields. Observe speedometer commits, deadline misses and shared-pool crossings while it runs. |
+| 1. T2 Request too much | Request 10,000 µs of CPU per 10 ms period. Admission must refuse the launch. The result shows requested, currently available and total application CPU and memory. |
+| 2. T2 Start a job | Reserve 400 µs per period and 16 KiB. Verify the periodic job runs and meets its deadline. |
+| 3. T2 Limit CPU use | Run a CPU-bound task with a 400 µs minimum and an 800 µs ceiling per period. Check shortfalls, overruns and measured peak use. |
+| 4. T3 Run normal task | Launch an EL0 process that yields voluntarily. Verify it receives CPU time. |
+| 5. T3 Run busy loop | Launch an EL0 process that never yields. Observe speedometer commits, deadline misses and shared-pool crossings while it runs. |
 
 The Tier 3 busy loop runs for at least 1,000 guest periods (10 seconds of guest time). Other runnable workloads run for at least 100 periods. Each result includes actual Music Player commits. During contention, the player continues to submit as CPU time becomes available. The scenario PASS reports the checks listed above and the tier counters. Check the peak gaps separately against the 10 ms GPS Speed and 40 ms Flight Camera targets. The reported gaps are boot-to-date maxima, so they cannot attribute a long gap to the current scenario alone.
 

@@ -427,7 +427,7 @@ static struct {
     int64_t process;
 } trial;
 static lv_obj_t *approve, *cancel_trial, *busy_loop_label;
-static const char busy_loop_title[] = "T3  Contain busy loop";
+static const char busy_loop_title[] = "5. T3 Run busy loop";
 static unsigned busy_loop_seconds;
 
 static void update_busy_loop_countdown(unsigned seconds)
@@ -435,7 +435,7 @@ static void update_busy_loop_countdown(unsigned seconds)
     if (seconds == busy_loop_seconds) return;
     busy_loop_seconds = seconds;
     if (seconds)
-        lv_label_set_text_fmt(busy_loop_label, "T3  Busy loop  %u s", seconds);
+        lv_label_set_text_fmt(busy_loop_label, "5. T3 Busy loop  %u s", seconds);
     else
         lv_label_set_text(busy_loop_label, busy_loop_title);
 }
@@ -477,9 +477,22 @@ static void begin_trial(int number, int approved)
             number == 1 ? PERIOD_US : 400, number == 1 ? PERIOD_US : number == 3 ? 800 : 400};
         int reason = resource_check(&manifest);
         if (number == 1) {
+            uint32_t cpu_total = resource_app_cpu_capacity_us(), cpu_left;
+            uint64_t mem_total = resource_app_mem_capacity_kb(), mem_left;
+            resource_app_available(&cpu_left, &mem_left);
             struct running_app *unexpected = resource_commit(&manifest);
-            trial_result(number, !unexpected && (reason == ADMIT_DEVICE || reason == ADMIT_OVERSUB)
-                ? "PASS  Launch refused: insufficient CPU quota." : "FAIL  Unexpected admission result.");
+            int refused = !unexpected && (reason == ADMIT_DEVICE || reason == ADMIT_OVERSUB);
+            char result[300];
+            lv_snprintf(result, sizeof result,
+                "%s\n\nCPU per 10 ms (us)\n"
+                "Requested %u   Available %u   Total %u\n\n"
+                "Memory (KiB)\n"
+                "Requested %u   Available %lu   Total %lu",
+                refused ? "PASS  Launch refused: insufficient CPU quota." :
+                          "FAIL  Unexpected admission result.",
+                manifest.cpu_min_us, cpu_left, cpu_total, manifest.mem_min_kb,
+                (unsigned long)mem_left, (unsigned long)mem_total);
+            trial_result(number, result);
             if (unexpected) resource_release(unexpected);
             return;
         }
@@ -1483,8 +1496,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *load9 = NULL, *watch = NULL;
     if (apps) {
         static const char *const scenarios[] = {
-            "T2  Reject over-quota", "T2  Admit periodic job", "T2  Cap busy task",
-            "T3  Run yielding task"
+            "1. T2 Request too much", "2. T2 Start a job", "3. T2 Limit CPU use",
+            "4. T3 Run normal task"
         };
         for (unsigned i = 0; i < sizeof scenarios / sizeof scenarios[0]; i++)
             add_row(menu_list, 12 + (int)i * 54, 0xe0edff, 0xc5d9fa, scenarios[i], 220 + (int)i);
