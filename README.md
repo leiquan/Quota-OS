@@ -99,7 +99,7 @@ Quota OS 是面向车载仪表和 eVTOL 显示场景的资源隔离原型。关�
 
 ## Live system checks
 
-Open **Test** from **Apps** on the vehicle desktop. **System** shows tasks and system information. Select one workload at a time. The two admissible Tier 2 workloads require **Allow launch**. Cancel dismisses the request before it reserves resources.
+Open **Test** from **Apps** on the vehicle desktop. **System** shows tasks, system information and the last eight observed quota or deadline event groups. Select one workload at a time. The two admissible Tier 2 workloads require **Allow launch**. Cancel dismisses the request before it reserves resources.
 
 | Scenario | What the guest checks |
 | --- | --- |

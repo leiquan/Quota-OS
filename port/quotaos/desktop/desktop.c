@@ -28,11 +28,11 @@ static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata, *source_
 static uint64_t save_since;
 static struct app_display_stats save_before;
 static lv_obj_t *task_body;
-static lv_obj_t *tabs[2], *info_panel;
+static lv_obj_t *tabs[3], *info_panel, *events_panel, *events_text;
 static lv_obj_t *info_values[24], *info_crossings;
 static lv_obj_t *clock_label;
 static uint64_t rtc_base;
-enum monitor_page { SYSTEM_TASK, SYSTEM_INFO };
+enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_EVENTS };
 static enum monitor_page monitor_tab;
 enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST, APP_COUNT };
 static lv_obj_t *dock, *icons[APP_COUNT], *dots[APP_COUNT];
@@ -360,7 +360,8 @@ static void select_monitor_tab(enum monitor_page tab)
     monitor_tab = tab;
     monitor_visible(task_body, tab == SYSTEM_TASK);
     monitor_visible(info_panel, tab == SYSTEM_INFO);
-    for (int i = 0; i < 2; i++)
+    monitor_visible(events_panel, tab == SYSTEM_EVENTS);
+    for (int i = 0; i < 3; i++)
         lv_obj_set_style_bg_color(tabs[i], lv_color_hex(i == tab ? 0xe0edff : 0xffffff), 0);
 }
 
@@ -714,6 +715,12 @@ static void on_group(lv_event_t *e)
     }
     if (id == 103) {
         demo_menu_stop();
+        return;
+    }
+    if (id == 237) {
+        show_page(0);
+        select_monitor_tab(SYSTEM_EVENTS);
+        printf("[desktop] system events opened\n");
         return;
     }
     if (id == 208) {
@@ -1078,6 +1085,54 @@ static void refresh_system_info(void)
         lv_label_set_text(info_crossings, crossings);
 }
 
+static void refresh_system_events(void)
+{
+    static const char *const names[] = {
+        "Tier 1 deadline misses", "Tier 2 quota shortfalls", "Tier 2 quota overruns",
+        "Tier 3 pool overruns", "Kernel budget overruns"
+    };
+    enum { EVENT_ROWS = 8 };
+    static struct {
+        unsigned kind;
+        uint64_t period, count;
+    } rows[EVENT_ROWS];
+    static uint64_t previous[sizeof names / sizeof names[0]];
+    static unsigned next, used;
+    static int dirty;
+    struct sched_system_info info;
+    sched_read_system_info(&info);
+    const uint64_t totals[] = {info.tier1_misses, info.tier2_short, info.tier2_over,
+                               info.tier3_over, info.kernel_overruns};
+    for (unsigned i = 0; i < sizeof totals / sizeof totals[0]; i++) {
+        if (totals[i] > previous[i]) {
+            rows[next].kind = i;
+            rows[next].period = info.period;
+            rows[next].count = totals[i] - previous[i];
+            next = (next + 1) % EVENT_ROWS;
+            if (used < EVENT_ROWS) used++;
+            dirty = 1;
+        }
+        previous[i] = totals[i];
+    }
+    if (!dirty || monitor_tab != SYSTEM_EVENTS ||
+        lv_obj_has_flag(page_home, LV_OBJ_FLAG_HIDDEN))
+        return;
+
+    static char text[640];
+    unsigned length = 0;
+    for (unsigned i = 0; i < used; i++) {
+        unsigned row = (next + EVENT_ROWS - 1 - i) % EVENT_ROWS;
+        int written = lv_snprintf(text + length, sizeof text - length,
+                                 "Period %lu   %s   +%lu\n",
+                                 (unsigned long)rows[row].period, names[rows[row].kind],
+                                 (unsigned long)rows[row].count);
+        if (written < 0 || (unsigned)written >= sizeof text - length) break;
+        length += (unsigned)written;
+    }
+    lv_label_set_text(events_text, text);
+    dirty = 0;
+}
+
 static lv_obj_t *dock_minimized_dot(lv_obj_t *dock, int item_x)
 {
     lv_obj_t *dot = lv_obj_create(dock);
@@ -1421,9 +1476,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     monitor_visible(approve, 0);
     monitor_visible(cancel_trial, 0);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    static const char *const tab_names[] = {"Task", "Info"};
-    static const int tab_ids[] = {203, 208};
-    for (int i = 0; i < 2; i++) {
+    static const char *const tab_names[] = {"Task", "Info", "Events"};
+    static const int tab_ids[] = {203, 208, 237};
+    for (int i = 0; i < 3; i++) {
         tabs[i] = add_row(page_home, 55, 0xffffff, 0xc5d9fa, tab_names[i], tab_ids[i]);
         lv_obj_set_pos(tabs[i], 12 + i * 145, 55);
         lv_obj_set_width(tabs[i], 136);
@@ -1580,6 +1635,17 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         task_lists[i] = list;
         empty_tasks[i] = desk_label(list, 0, 0, "No active tasks", 0x64748b);
     }
+    events_panel = lv_obj_create(page_home);
+    lv_obj_set_pos(events_panel, 12, 108);
+    lv_obj_set_size(events_panel, 694, 336);
+    lv_obj_set_style_bg_color(events_panel, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_color(events_panel, lv_color_hex(0xdbe3f0), 0);
+    lv_obj_set_style_border_width(events_panel, 1, 0);
+    lv_obj_set_style_pad_all(events_panel, 0, 0);
+    lv_obj_remove_flag(events_panel, LV_OBJ_FLAG_SCROLLABLE);
+    desk_label(events_panel, 18, 16, "Recent quota and timing events", 0x263552);
+    events_text = desk_label(events_panel, 18, 58, "No events recorded", 0x475a7a);
+    lv_obj_set_style_text_line_space(events_text, 10, 0);
     select_monitor_tab(SYSTEM_TASK);
 
     page_files = desktop_window(screen, 180, 156, 500, 286, "Files");
@@ -1752,6 +1818,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         if (panel_now - tasks_at >= 500000) {
             refresh_tasks();
             refresh_system_info();
+            refresh_system_events();
             if (clock_label)
                 refresh_clock();
             if (apps)

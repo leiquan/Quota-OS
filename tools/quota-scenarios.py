@@ -46,6 +46,8 @@ def boot():
                 box = wait(r"\[lvgl\] "+name+r" box (\d+),(\d+) (\d+)x(\d+)")
                 x, y, w, h = map(int, box.groups())
                 click(x + w // 2, y + h // 2)
+            click(455,198)
+            wait(r"\[desktop\] system events opened")
             click_logged("launcher")
             click_logged("tests")
             wait(r"\[desktop\] Test opened")
