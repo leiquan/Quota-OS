@@ -18,7 +18,7 @@ static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *field;
 static lv_obj_t *menu_list;
 static lv_obj_t *detail;
-static lv_obj_t *page_home;
+static lv_obj_t *page_home, *page_test;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover, *page_apps, *page_files, *page_shell;
 static lv_obj_t *shell_input, *shell_output, *source_entry, *source_icon, *source_caption, *note_icon;
@@ -28,13 +28,13 @@ static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata, *source_
 static uint64_t save_since;
 static struct app_display_stats save_before;
 static lv_obj_t *task_body;
-static lv_obj_t *tabs[3], *info_panel;
+static lv_obj_t *tabs[2], *info_panel;
 static lv_obj_t *info_values[24], *info_crossings;
 static lv_obj_t *clock_label;
 static uint64_t rtc_base;
-enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_TESTS };
+enum monitor_page { SYSTEM_TASK, SYSTEM_INFO };
 static enum monitor_page monitor_tab;
-enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_COUNT };
+enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST, APP_COUNT };
 static lv_obj_t *dock, *icons[APP_COUNT], *dots[APP_COUNT];
 enum window_state { CLOSED, OPEN, MINIMIZED };
 static enum window_state states[APP_COUNT];
@@ -56,7 +56,7 @@ static void dock_state(enum app_key key, enum window_state state)
     }
     if (dock) sync_dock();
 }
-static const enum app_key page_keys[] = {APP_SYSTEM, APP_NOTES, APP_COUNT, APP_LAUNCHER, APP_FILES, APP_SHELL};
+static const enum app_key page_keys[] = {APP_SYSTEM, APP_NOTES, APP_COUNT, APP_LAUNCHER, APP_FILES, APP_SHELL, APP_TEST};
 
 static lv_obj_t *task_lists[3];
 static lv_obj_t *task_items[MAX_TASKS];
@@ -90,7 +90,7 @@ static void sync_dock(void)
 
 static void show_page(int which)
 {
-    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : which == 4 ? page_files : page_shell;
+    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : which == 4 ? page_files : which == 5 ? page_shell : page_test;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
     dock_state(page_keys[which], OPEN);
     lv_obj_move_foreground(win);
@@ -355,16 +355,12 @@ static void monitor_visible(lv_obj_t *obj, int visible)
         lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void trial_buttons_visible(int visible);
 static void select_monitor_tab(enum monitor_page tab)
 {
     monitor_tab = tab;
-    trial_buttons_visible(tab == SYSTEM_TESTS);
     monitor_visible(task_body, tab == SYSTEM_TASK);
-    monitor_visible(menu_list, tab == SYSTEM_TESTS);
-    monitor_visible(detail, tab == SYSTEM_TESTS);
     monitor_visible(info_panel, tab == SYSTEM_INFO);
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 2; i++)
         lv_obj_set_style_bg_color(tabs[i], lv_color_hex(i == tab ? 0xe0edff : 0xffffff), 0);
 }
 
@@ -430,11 +426,6 @@ static struct {
     int64_t process;
 } trial;
 static lv_obj_t *approve, *cancel_trial;
-
-static void trial_buttons_visible(int visible)
-{
-    if (approve) { monitor_visible(approve, visible && trial.pending); monitor_visible(cancel_trial, visible && trial.pending); }
-}
 
 static void trial_result(int number, const char *result)
 {
@@ -733,14 +724,20 @@ static void on_group(lv_event_t *e)
     }
     if (id == 209) {
         demo_menu_start(9);
+        show_page(0);
         select_monitor_tab(SYSTEM_TASK);
         printf("[desktop] task manager opened\n");
         return;
     }
-    if (id == 203 || id == 204) {
+    if (id == 204) {
+        show_page(6);
+        printf("[desktop] Test opened\n");
+        return;
+    }
+    if (id == 203) {
         show_page(0);
-        select_monitor_tab(id == 204 ? SYSTEM_TESTS : SYSTEM_TASK);
-        printf("[desktop] %s\n", id == 203 ? "task manager opened" : "system tests opened");
+        select_monitor_tab(SYSTEM_TASK);
+        printf("[desktop] task manager opened\n");
         return;
     }
     if (id == 210) {
@@ -873,7 +870,7 @@ static void hide_window(lv_event_t *e, int minimized)
     lv_obj_t *win = lv_event_get_user_data(e);
     lv_obj_add_flag(win, LV_OBJ_FLAG_HIDDEN);
     enum app_key key = win == page_home ? APP_SYSTEM : win == page_input ? APP_NOTES :
-                       win == page_apps ? APP_LAUNCHER : win == page_files ? APP_FILES : win == page_shell ? APP_SHELL : APP_COUNT;
+                       win == page_apps ? APP_LAUNCHER : win == page_files ? APP_FILES : win == page_shell ? APP_SHELL : win == page_test ? APP_TEST : APP_COUNT;
     dock_state(key, minimized ? MINIMIZED : CLOSED);
     printf("[desktop] window hidden\n");
 }
@@ -964,6 +961,7 @@ static const struct app_entry {
     uint32_t color;
     int action;
 } app_entries[] = {
+    [APP_TEST] = {"Test", LV_SYMBOL_OK, 0x426b8f, 204},
     [APP_SYSTEM] = {app_monitor, LV_SYMBOL_SETTINGS, 0x5368af, 202},
     [APP_LAUNCHER] = {"Apps", LV_SYMBOL_LIST, 0x31798b, 210},
     [APP_SHELL] = {"Shell", LV_SYMBOL_RIGHT, 0x334765, 230},
@@ -1389,7 +1387,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     int apps = app_desktop_mode();
     if (apps) instruments_create(screen, apps);
     page_home = desktop_window(screen, 88, 124, 720, 460, app_monitor);
-    menu_list = lv_obj_create(page_home);
+    page_test = desktop_window(screen, 88, 124, 720, 460, "Test");
+    monitor_visible(page_test, 0);
+    menu_list = lv_obj_create(page_test);
     lv_obj_set_pos(menu_list, 0, 100);
     lv_obj_set_size(menu_list, 220, 360);
     lv_obj_set_style_bg_color(menu_list, lv_color_hex(0xeaf0fa), 0);
@@ -1410,20 +1410,20 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     add_row(menu_list, 128, 0xe0edff, 0xc5d9fa, "Run system checks", 215);
     watch = add_row(menu_list, 236, 0xe0edff, 0xc5d9fa, "Run & view tasks", 209);
     }
-    detail = desk_label(page_home, 252, 124, "Select a test", 0x263552);
+    detail = desk_label(page_test, 252, 124, "Select a test", 0x263552);
     lv_obj_set_size(detail, 436, 220);
     approve = add_row(menu_list, 290, 0xe0edff, 0xc5d9fa, "Allow launch", 225);
     cancel_trial = add_row(menu_list, 290, 0xffffff, 0xdbe3f0, "Cancel", 226);
-    lv_obj_set_parent(approve, page_home);
-    lv_obj_set_parent(cancel_trial, page_home);
+    lv_obj_set_parent(approve, page_test);
+    lv_obj_set_parent(cancel_trial, page_test);
     lv_obj_set_pos(approve, 252, 365);
     lv_obj_set_pos(cancel_trial, 455, 365);
     monitor_visible(approve, 0);
     monitor_visible(cancel_trial, 0);
     lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
-    static const char *const tab_names[] = {"Task", "Info", "Test"};
-    static const int tab_ids[] = {203, 208, 204};
-    for (int i = 0; i < 3; i++) {
+    static const char *const tab_names[] = {"Task", "Info"};
+    static const int tab_ids[] = {203, 208};
+    for (int i = 0; i < 2; i++) {
         tabs[i] = add_row(page_home, 55, 0xffffff, 0xc5d9fa, tab_names[i], tab_ids[i]);
         lv_obj_set_pos(tabs[i], 12 + i * 145, 55);
         lv_obj_set_width(tabs[i], 136);
@@ -1624,11 +1624,13 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     shell_refresh();
     monitor_visible(page_shell, 0);
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
-    static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL};
+    lv_obj_t *test_entry = NULL;
+    static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST};
     for (unsigned i = 0; i < sizeof catalog / sizeof catalog[0]; i++) {
         enum app_key key = catalog[i];
         lv_obj_t *entry = app_icon(page_apps, key, 34 + (int)(i % 3) * 174,
                                    70 + (int)(i / 3) * 108, 56);
+        if (key == APP_TEST) test_entry = entry;
         if ((key >= APP_SPEED && key <= APP_MUSIC && !apps) || (key == APP_VIDEO && apps != 2)) {
             lv_obj_add_state(entry, LV_STATE_DISABLED);
             lv_obj_set_style_opa(entry, LV_OPA_50, 0);
@@ -1662,7 +1664,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_update_layout(screen);
     {
         lv_area_t box;
-        lv_obj_get_coords(tabs[SYSTEM_TESTS], &box);
+        lv_obj_get_coords(test_entry, &box);
         printf("[lvgl] tests box %d,%d %dx%d\n", (int)box.x1, (int)box.y1,
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
         lv_obj_get_coords(tabs[0], &box);

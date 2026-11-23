@@ -100,9 +100,10 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0, task_manager=Fal
                 bx, by, bw, bh = map(int, box.groups())
                 return bx + bw // 2, by + bh // 2
 
-            tests_tab, watch_button = center("tests"), center("watch")
-            if tests_tab:
-                press(*tests_tab)
+            test_icon, watch_button = center("tests"), center("watch")
+            if test_icon:
+                press(*center("launcher"))
+                press(*test_icon)
                 if task_manager:
                     if not watch_button:
                         raise AssertionError('Run & view activity button missing')

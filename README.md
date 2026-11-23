@@ -37,7 +37,7 @@ The launcher boots the included ARM64 image and creates a persistent Notes disk 
 
 ## Vehicle instruments
 
-GPS Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Flight Camera animates simulated lane markings at a target of 25 frames per second in Tier 2, updating only changing pixels after initialization. The GPS Speed, Flight Camera and Music Player cards display their tier at the right. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. GPS Speed and Flight Camera FPS use timestamps from completed framebuffer commits. System → Test also reports their longest observed gaps; the intentional camera pause starts a new interval on resume. The labels and history are sampled by the desktop; GPS Speed continues to commit while that desktop is stalled.
+GPS Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Flight Camera animates simulated lane markings at a target of 25 frames per second in Tier 2, updating only changing pixels after initialization. The GPS Speed, Flight Camera and Music Player cards display their tier at the right. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. GPS Speed and Flight Camera FPS use timestamps from completed framebuffer commits. The Test app also reports their longest observed gaps; the intentional camera pause starts a new interval on resume. The labels and history are sampled by the desktop; GPS Speed continues to commit while that desktop is stalled.
 
 ![Quota OS desktop showing the GPS Speed gauge, simulated dashcam lanes and music frame history](docs/screenshots/vehicle-instruments.png)
 
@@ -99,7 +99,7 @@ Quota OS 是面向车载仪表和 eVTOL 显示场景的资源隔离原型。关�
 
 ## Live system checks
 
-Open **System → Test** on the vehicle desktop. Select one workload at a time. The two admissible Tier 2 workloads require **Allow launch**. Cancel dismisses the request before it reserves resources.
+Open **Test** from **Apps** on the vehicle desktop. **System** shows tasks and system information. Select one workload at a time. The two admissible Tier 2 workloads require **Allow launch**. Cancel dismisses the request before it reserves resources.
 
 | Scenario | What the guest checks |
 | --- | --- |

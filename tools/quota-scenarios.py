@@ -1,4 +1,4 @@
-"""Exercise the five System Test scenarios via QEMU tablet input."""
+"""Exercise the five Test app scenarios via QEMU tablet input."""
 import argparse
 from pathlib import Path
 import re
@@ -42,7 +42,13 @@ def boot():
                     q.call("input-send-event", {"events":[{"type":"btn","data":{"button":"left","down":down}}]})
                     time.sleep(.16)
             wait(r"\[apps\] PASS")
-            click(455,198)
+            def click_logged(name):
+                box = wait(r"\[lvgl\] "+name+r" box (\d+),(\d+) (\d+)x(\d+)")
+                x, y, w, h = map(int, box.groups())
+                click(x + w // 2, y + h // 2)
+            click_logged("launcher")
+            click_logged("tests")
+            wait(r"\[desktop\] Test opened")
             for number in range(1,6):
                 offset = len(log.read_text())
                 click(195,269+(number-1)*54)
