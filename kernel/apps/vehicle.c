@@ -212,7 +212,7 @@ void app_desktop_poll(void)
     if (!app_surface)
         return;
     uint64_t period = sched_period_now();
-    /* Defer only the music viewport to demonstrate a bounded Tier-3 queue. */
+    /* Present queued pixels in a bounded batch on the Tier-3 desktop. */
     music_frames += (uint32_t)disp_drain(2);
     if (desktop_probe != PROBE_OFF)
         return;
