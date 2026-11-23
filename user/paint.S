@@ -21,12 +21,24 @@ _start:
     mov     x24, x5
     mov     x25, xzr
     mov     x26, #0x1000
+    cmp     x19, #15
+    b.eq    cpu_loop
+    cmp     x19, #16
+    b.eq    cooperative
     cmp     x19, #9
     b.eq    do_exec
     cmp     x19, #14
     b.eq    scripted
     cmp     x19, #7
     b.eq    probes
+    b       run
+
+cpu_loop:
+    b       cpu_loop
+cooperative:
+    mov     x8, #0
+    svc     #0
+    b       cooperative
 
 run:
     bl      submit_frame
@@ -116,9 +128,10 @@ submit_frame:
     lsl     w11, w11, #8
 1:
     mov     x10, #0x2000
-    mov     x9, #1024
+    // Fill the same 4 KiB draw page in pixel pairs.
+    mov     x9, #512
 2:
-    str     w11, [x10], #4
+    stp     w11, w11, [x10], #8
     subs    x9, x9, #1
     b.ne    2b
     mov     x0, #0x2000

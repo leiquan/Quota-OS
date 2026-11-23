@@ -23,8 +23,8 @@ def boot(round_no):
     with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
         sock = tmp + "/qmp"
         drive = f"if=none,id=notes,format=raw,file={disk},bps_wr=128"
-        cmd = ["qemu-system-aarch64", "-machine", "virt,gic-version=2", "-cpu", "cortex-a72",
-               "-m", "128M", "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
+        cmd = ["qemu-system-aarch64", "-machine", "virt,gic-version=2", "-cpu", "cortex-a35",
+               "-m", "64M", "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
                "-device", "ramfb", "-device", "virtio-tablet-device", "-device", "virtio-keyboard-device",
                "-drive", drive, "-device", "virtio-blk-device,drive=notes,serial=QUOTA-NOTES",
                "-icount", "shift=4,sleep=off", "-kernel", str(args.kernel), "-append", "apps-video",
@@ -49,9 +49,13 @@ def boot(round_no):
                     time.sleep(.16)
             wait(r"\[apps\] PASS")
             mount = wait(r"\[files\] mounted bytes=(\d+)")
+            box = wait(r"launcher box (\d+),(\d+) (\d+)x(\d+)")
+            x,y,w,h = map(int,box.groups())
+            click(x+w//2,y+h//2)
+            wait(r"Apps opened")
             if round_no == 1:
                 assert int(mount[1]) == 0
-                click(970,736)
+                click(575,232)
                 wait(r"\[lvgl\] input page")
                 click(490,390)
                 for c in "quota":
@@ -59,8 +63,6 @@ def boot(round_no):
                     time.sleep(.14)
             else:
                 assert int(mount[1]) == 5
-                click(310,735)
-                wait(r"\[desktop\] Apps opened")
                 click(405,232)
                 wait(r"\[files\] directory opened")
                 time.sleep(.5)

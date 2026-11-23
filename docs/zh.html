@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Quota OS 是一款以资源配额为核心的 ARM64 实验操作系统。">
+<title>Quota OS — 以资源配额为核心的操作系统</title>
+<link rel="stylesheet" href="site.css?v=compare">
+<script src="site.js?v=dev" defer></script>
+<link rel="icon" href="favicon.png" type="image/png">
+</head>
+<body>
+<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="主导航"><a href="#model">Features</a><a href="#compare">Compare</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="index.html" lang="en">English</a></nav></header>
+<main>
+<section class="wrap hero" id="home">
+<p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
+<h1>让关键任务<br><span>按时拿到资源。</span></h1>
+<p class="intro">Quota OS 是一款以资源配额为核心的实验操作系统。内核为关键任务预留执行时间，按容量接纳应用，并将剩余资源交给普通任务共享。</p>
+<p class="actions"><a class="primary" href="#run">运行 Quota OS</a><a href="https://github.com/leiquan/Quota-OS">查看源码 ↗</a></p>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="桌面截图"><figure><img src="screenshots/pages-apps.png?v=desktop" width="1280" height="800" alt="应用目录"><figcaption>应用目录</figcaption></figure><figure><img src="screenshots/pages-task.png?v=desktop" width="1280" height="800" alt="系统任务"><figcaption>系统任务</figcaption></figure><figure><img src="screenshots/pages-info.png?v=desktop" width="1280" height="800" alt="系统信息"><figcaption>系统信息</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="下一张">→</button><button type="button" class="playback"></button></div></div>
+<h3 class="platform-title">演示运行环境</h3><dl class="platform"><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（QEMU 模拟，1 核）</dd></div><div><dt>内存</dt><dd>64 MiB</dd></div><div><dt>显示</dt><dd>1280 × 800 · LVGL / ramfb</dd></div><div><dt>计时</dt><dd>QEMU TCG · icount 虚拟时钟</dd></div></dl>
+</section>
+<section class="wrap section" id="model">
+<h2>三种资源承诺</h2>
+<p>GPS Speed、Flight Camera 和 Music Player 的卡片右侧标出各自的级别。Flight Camera 以 25 FPS 为目标模拟车道动画。</p>
+<div class="grid">
+<article><p class="eyebrow">TIER 1</p><h3>厂商预留</h3><p>速度表和系统定时服务使用固定 CPU 时间槽。即使桌面任务忙等，关键任务仍按槽表获得执行机会。</p></article>
+<article><p class="eyebrow">TIER 2</p><h3>用户指定</h3><p>行车记录仪声明最低需求。用户同意且容量足够才启动，内核按周期兑现已准入的最低配额。</p></article>
+<article><p class="eyebrow">TIER 3</p><h3>共享资源</h3><p>音乐播放和桌面交互共享剩余 CPU。内核限制总池，池内应用各自承担竞争和延迟。</p></article>
+</div>
+</section>
+<section class="wrap section" id="editions">
+<h2>桌面发行版</h2><p>默认构建为轻量 LVGL 桌面。Quota OS LVGL+WebKit 在此基础上增加可选的来宾运行时，由 WebKit 提供界面、Node.js 提供后台。该运行时仍在开发中。</p>
+<div class="compare-scroll" tabindex="0" aria-label="桌面发行版"><table class="compare-table"><thead><tr><th scope="col">发行版</th><th scope="col">一级</th><th scope="col">二级</th><th scope="col">三级</th></tr></thead>
+<tbody><tr><th scope="row">Quota OS LVGL</th><td>LVGL</td><td>LVGL</td><td>LVGL</td></tr>
+<tr><th scope="row">Quota OS LVGL+WebKit</th><td>LVGL</td><td>LVGL</td><td>LVGL 或 WebKit + Node.js</td></tr></tbody></table></div>
+<p>Quota OS LVGL+WebKit 的验收场景是在同一桌面上运行三个应用：一级速度表每 10 ms 提交一帧；二级行车记录仪获准后拿足预留 CPU 时间，每 40 ms 提交一帧；三级网页同时触发 JavaScript 垃圾回收。三者在同一镜像中运行时的配额和帧间隔仍待验证。</p>
+</section>
+<section class="wrap section" id="compare">
+<h2>系统对比</h2><p>Quota OS 是面向车载仪表和 eVTOL 显示场景的资源隔离原型。关键显示使用固定 CPU 槽，准入应用获得最低配额，普通工作负载共享有上限的总池。</p>
+<div class="compare-scroll" tabindex="0" aria-label="CPU 配额和准入">
+<table class="compare-table"><caption>CPU 配额和准入</caption>
+<thead><tr><th scope="col">系统</th><th scope="col">资源机制</th><th scope="col">与 Quota OS 对比</th></tr></thead>
+<tbody><tr><th scope="row">QNX</th><td>自适应分区为一组线程设置最低 CPU 份额，并共享空闲时间。</td><td>Quota OS 为应用定义三种准入方式，并限制三级共享池总量。 <a href="https://www.qnx.com/developers/docs/7.1/">官方资料</a></td></tr>
+<tr><th scope="row">seL4 MCS</th><td>调度上下文携带预算与周期，可以通过 IPC 转移执行预算。</td><td>系统集成方用这些机制制定策略。Quota OS 在系统中直接定义级别与准入规则。 <a href="https://docs.sel4.systems/Tutorials/mcs.html">官方资料</a></td></tr>
+<tr><th scope="row">Linux</th><td>SCHED_DEADLINE 提供运行预算、截止期、周期、准入控制和可选的带宽回收。</td><td>Linux 可以组合出类似隔离策略。Quota OS 直接把三级规则呈现在应用准入和运行中。 <a href="https://docs.kernel.org/scheduler/sched-deadline.html">官方资料</a></td></tr>
+<tr><th scope="row">VxWorks 653</th><td>ARINC 653 式时间和空间分区将工作负载放入预先配置的分区。</td><td>固定分区的时序接近一级。Quota OS 同时演示用户批准的二级配额和有总上限的三级池。 <a href="https://www.windriver.com/products/vxworks">官方资料</a></td></tr></tbody>
+</table></div>
+<p>已发布的 QEMU icount 测试覆盖 CPU 调度和来宾帧缓冲提交。真实硬件上的对比时延、飞行控制和安全认证均尚未验证。</p>
+</section>
+<section class="wrap section" id="evidence">
+<h2>桌面忙等时，速度表继续更新</h2>
+<p>从 Apps 打开 Test。第 1–3 项测试二级超额申请、正常启动和 CPU 限额。第 1 项显示申请量、当前可用量和总量。第 4–5 项运行三级普通任务和 10 秒死循环。结果显示 Music Player 实际提交帧数。GPS Speed 的 10 ms 和 Flight Camera 的 40 ms 目标需单独核对最大帧间隔。</p>
+<figure><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/system-test.png" alt="QEMU 实拍的 Test 应用与三级忙循环测试结果"></figure>
+<figure style="margin:1rem 0"><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/vehicle-instruments.png" alt="桌面实拍：速度表、模拟行车记录仪和音乐播放器"><figcaption>速度表显示累计错过的截止期；行车记录仪目标为每秒 25 个模拟画面；音乐播放器的紫色柱条表示最近八次采样的画面提交速率。 <a href="screenshots/instruments-live.gif">查看 QEMU 连续实拍</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">运行对应的 LVGL 版本</a></figcaption></figure>
+<div class="stats"><div><strong>100 / 100</strong><span>速度表提交帧数 / 采样周期</span></div><div><strong>0</strong><span>速度表错过截止期</span></div><div><strong>0</strong><span>三级总池越线</span></div></div>
+<p>这组结果来自 QEMU TCG 的 <code>icount</code> 桌面忙等测试，测量的是虚拟机内的帧缓冲提交。GPU 队列、宿主窗口呈现和物理屏幕延迟仍待验证。</p>
+<p><a href="https://github.com/leiquan/Quota-OS/blob/main/docs/tests/cortex-a35/03-apps-desktop-stall.log">查看原始串口日志 ↗</a></p>
+
+</section>
+<section class="wrap section" id="run">
+<h2>在 QEMU 中运行</h2>
+<p><a href="https://github.com/leiquan/Quota-OS/releases/latest">下载 ARM64 镜像并查看启动命令 ↗</a></p>
+<p>如果希望从仓库启动，先安装 Git 和支持 ARM64 系统模拟的 QEMU，再运行以下命令。</p>
+<pre><code>git clone https://github.com/leiquan/Quota-OS.git
+cd Quota-OS
+bash tools/run-files.sh</code></pre>
+<p><a href="https://github.com/leiquan/Quota-OS#readme">查看 README 和完整测试记录 ↗</a></p>
+</section>
+<section class="wrap section" id="dev">
+<h2>开发</h2>
+<h3>从源码构建桌面</h3>
+<p>在装好 Homebrew LLVM 和 LLD 的 macOS 上，从仓库根目录执行以下命令。QEMU 使用单核 Cortex-A35 和 64 MiB 内存运行构建出的内核。</p>
+<pre><code>bash tools/build-lvgl-macos.sh
+QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh</code></pre>
+<h3>在 Quota OS 内开发 C 应用</h3>
+<p>在空白的 Notes 文档中点击 <strong>C Example</strong> 插入示例，也可以手动输入下方代码。选择 <strong>Save As...</strong>，命名为 <code>demo.c</code>。打开 Apps → Shell，在 quota&gt; 提示符下输入命令，按回车执行。单独输入 <code>cc</code> 会显示使用当前文件名的命令示例。</p>
+<pre><code>int main(void) {
+    puts("Hello, Quota OS!");
+    return 0;
+}</code></pre>
+<pre><code>cc demo.c -o hello
+./hello</code></pre>
+<p>首版支持不含头文件的 <code>int main(void)</code>，函数体可包含一次 <code>puts</code> 调用和 <code>return 0</code>。程序按三级启动，当前不支持二级启动参数。</p>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="Notes 保存 demo.c"><figure><img src="screenshots/dev-source.png?v=desktop" width="1280" height="800" loading="lazy" alt="Notes 保存 demo.c"><figcaption>Notes 保存 demo.c</figcaption></figure><figure><img src="screenshots/dev-compile.png?v=desktop" width="1280" height="800" loading="lazy" alt="Shell 编译 demo.c"><figcaption>Shell 编译 demo.c</figcaption></figure><figure><img src="screenshots/dev-run.png?v=desktop" width="1280" height="800" loading="lazy" alt="EL0 执行并输出"><figcaption>EL0 执行并输出</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="下一张">→</button><button type="button" class="playback"></button></div></div>
+</section>
+</main>
+<footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>
+</body>
+</html>

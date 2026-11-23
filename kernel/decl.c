@@ -187,7 +187,7 @@ static uint64_t cap_of(int r)
 
 static uint64_t reserve_of(int r)
 {
-    return r == R_CPU ? SYS_RESERVE_US : r == R_MEM ? KERNEL_RESERVE_KB : r == R_BW ? BW_RESERVE : 0;
+    return r == R_CPU ? resource_kernel_reserve_us() : r == R_MEM ? KERNEL_RESERVE_KB : r == R_BW ? BW_RESERVE : 0;
 }
 
 static uint64_t t1_of(int r)

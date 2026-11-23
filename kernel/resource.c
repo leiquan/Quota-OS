@@ -32,6 +32,10 @@ static const struct app_manifest catalog[] = {
 static struct running_app apps[MAX_APPS];
 static uint64_t ram_kb;
 static int pressure;
+static uint32_t kernel_reserve = SYS_RESERVE_US;
+static uint32_t kernel_target = SYS_RESERVE_US;
+
+uint32_t resource_kernel_reserve_us(void) { return kernel_reserve; }
 static char reason[REASON_LEN];
 
 static void radd(const char *s)
@@ -97,18 +101,6 @@ uint64_t resource_ram_kb(void)
     return ram_kb;
 }
 
-static int boot_is_webkit(void)
-{
-    const char *args = dtb_bootargs();
-    return args[0] == 'w' && strcmp(args, "webkit") == 0;
-}
-
-/* The kernel image stays in the 16 MB reserve on every boot. webkit mode
- * also keeps a 64 MB structure-heap window at the top of RAM, because
- * JavaScriptCore's StructureID encoding needs a power-of-two reservation
- * aligned to its own size. The smallest size that encoder still accepts
- * is a 32 MB heap, which the POSIX allocator maps as 64 MB so it can align
- * the result. Tier-1 declarations do not change. */
 uint32_t system_reserve_kb(void)
 {
     extern char __image_start[], __image_end[];
@@ -123,41 +115,50 @@ uint32_t system_reserve_kb(void)
     return kb;
 }
 
-uint64_t webkit_structure_bytes(void)
-{
-    return boot_is_webkit() ? (64ull << 20) : 0;
-}
-
-uint64_t webkit_structure_base(void)
-{
-    if (!webkit_structure_bytes())
-        return 0;
-    extern char __image_start[];
-    uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
-    return base + ram_kb * 1024 - webkit_structure_bytes();
-}
-
 uint64_t resource_app_mem_capacity_kb(void)
 {
     /* v012 起再扣掉缓存着色补齐（Tier 1 颜色里别人不能用的页） */
-    uint64_t fixed = (uint64_t)system_reserve_kb() + webkit_structure_bytes() / 1024
+    uint64_t fixed = (uint64_t)system_reserve_kb()
         + resource_t1_mem_kb() + color_padding_kb();
     return ram_kb > fixed ? ram_kb - fixed : 0;
 }
 
 uint32_t resource_app_cpu_capacity_us(void)
 {
-    uint32_t fixed = SYS_RESERVE_US + resource_t1_cpu_us() + resource_guard_us();
+    uint32_t fixed = kernel_reserve + resource_t1_cpu_us() + resource_guard_us();
     return PERIOD_US > fixed ? PERIOD_US - fixed : 0;
+}
+
+static uint32_t cpu_minima(int begin_period)
+{
+    uint32_t sum = 0;
+    for (int i = 0; i < MAX_APPS; i++) {
+        struct running_app *app = &apps[i];
+        if (!app->alive) continue;
+        sum += app->cpu_min_us;
+        if (begin_period && app->task && app->task->tier == TIER2 && app->task->kind == KIND_JOB)
+            app->task->refundable_t = us_to_ticks(app->cpu_min_us);
+    }
+    return sum;
 }
 
 uint32_t resource_cpu_min_sum_us(void)
 {
-    uint32_t s = 0;
-    for (int i = 0; i < MAX_APPS; i++)
-        if (apps[i].alive)
-            s += apps[i].cpu_min_us;
-    return s;
+    return cpu_minima(0);
+}
+
+/* Scheduler calls this with IRQs masked when it establishes the new pool. */
+uint32_t resource_period_reservations_us(uint32_t target)
+{
+    uint32_t reserved = cpu_minima(1);
+    kernel_target = target;
+    if (kernel_reserve < target) {
+        uint32_t capacity = resource_app_cpu_capacity_us();
+        uint32_t room = capacity > reserved ? capacity - reserved : 0;
+        uint32_t increase = target - kernel_reserve;
+        kernel_reserve += increase < room ? increase : room;
+    }
+    return reserved;
 }
 
 uint64_t resource_mem_min_sum_kb(void)
@@ -191,49 +192,7 @@ void resource_init(uint64_t ram_bytes)
     if (reserve_kb > KERNEL_RESERVE_KB)
         printf("[boot] system reserve grew from %u KB to %u KB to hold the image and framebuffer; tier-1 declarations unchanged\n",
                KERNEL_RESERVE_KB, reserve_kb);
-    if (webkit_structure_bytes())
-        printf("[boot] webkit admission: structure reservation %lu KB is inside the 128 MB budget; system reserve %u KB includes the framebuffer; tier-1 declarations unchanged (%u KB, %u us)\n",
-               webkit_structure_bytes() / 1024, reserve_kb, resource_t1_mem_kb(), resource_t1_cpu_us());
     printf("[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.\n");
-}
-
-static int ranges_overlap(uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1)
-{
-    return a1 > a0 && b1 > b0 && a0 < b1 && b0 < a1;
-}
-
-void boot_check_reservations(uint64_t structure, uint64_t window, uint64_t arena, uint64_t arena_end)
-{
-    extern char __image_start[], __image_end[];
-    uint64_t image0 = (uint64_t)__image_start;
-    uint64_t image1 = (uint64_t)__image_end;
-    uint64_t pool0 = 0, pool1 = 0, fb0 = 0, fb_n = 0;
-    color_pool_range(&pool0, &pool1);
-    int have_fb = fb_reserved_range(&fb0, &fb_n) == 0;
-    uint64_t fb1 = fb0 + fb_n;
-    uint64_t parent1 = structure + window;
-    uint64_t heap1 = structure + window / 2;
-    /* The 64 MB window is one parent reservation. The structure heap and the
-     * malloc arena are its two children. The parent contains the arena, so a
-     * check of those two printed ranges is not an overlap failure. */
-    int siblings = !ranges_overlap(structure, heap1, arena, arena_end)
-        && arena == heap1 && arena_end == parent1;
-    int bad = !siblings;
-    if (ranges_overlap(image0, image1, pool0, pool1))
-        bad = 1;
-    if (ranges_overlap(image0, image1, structure, parent1))
-        bad = 1;
-    if (ranges_overlap(pool0, pool1, structure, parent1))
-        bad = 1;
-    if (have_fb && (ranges_overlap(image0, image1, fb0, fb1) || ranges_overlap(fb0, fb1, pool0, pool1)
-            || ranges_overlap(fb0, fb1, structure, parent1) || fb0 < image1 || fb1 > pool0))
-        bad = 1;
-    printf("[boot] independent image 0x%lx-0x%lx fb 0x%lx-0x%lx pool 0x%lx-0x%lx parent 0x%lx-0x%lx\n",
-           image0, image1, have_fb ? fb0 : 0, have_fb ? fb1 : 0, pool0, pool1, structure, parent1);
-    printf("[boot] parent children structure-heap 0x%lx-0x%lx arena 0x%lx-0x%lx disjoint %d\n",
-           structure, heap1, arena, arena_end, siblings);
-    printf("[boot] reservation bad %d; framebuffer %lu KB stays inside the %u KB system reserve\n",
-           bad, have_fb ? fb_n / 1024 : 0, system_reserve_kb());
 }
 
 int resource_pressure(void)
@@ -288,6 +247,16 @@ struct running_app *resource_running(int index)
     return 0;
 }
 
+void resource_app_available(uint32_t *cpu_us, uint64_t *mem_kb)
+{
+    uint32_t cpu_cap = resource_app_cpu_capacity_us();
+    uint32_t cpu_used = resource_cpu_min_sum_us();
+    uint64_t mem_cap = resource_app_mem_capacity_kb();
+    uint64_t mem_used = resource_mem_min_sum_kb();
+    *cpu_us = kernel_target == kernel_reserve && cpu_cap > cpu_used ? cpu_cap - cpu_used : 0;
+    *mem_kb = mem_cap > mem_used ? mem_cap - mem_used : 0;
+}
+
 int resource_check(const struct app_manifest *m)
 {
     reason[0] = 0;
@@ -326,8 +295,9 @@ int resource_check(const struct app_manifest *m)
         return ADMIT_DEVICE;
     }
 
-    uint64_t mem_left = mem_cap - resource_mem_min_sum_kb();
-    uint32_t cpu_left = cpu_cap - resource_cpu_min_sum_us();
+    uint64_t mem_left;
+    uint32_t cpu_left;
+    resource_app_available(&cpu_left, &mem_left);
     if (m->mem_min_kb <= mem_left && m->cpu_min_us <= cpu_left)
         return ADMIT_OK;
 
@@ -395,7 +365,16 @@ struct running_app *resource_commit(const struct app_manifest *m)
     a->cpu_min_us = m->cpu_min_us;
     a->cpu_sugg_us = m->cpu_sugg_us;
     a->mem_granted_kb = m->mem_min_kb;
+    uint64_t flags = irq_save();
+    if (m->cpu_min_us && (kernel_target > kernel_reserve ||
+        (uint64_t)resource_cpu_min_sum_us() + m->cpu_min_us > resource_app_cpu_capacity_us())) {
+        irq_restore(flags);
+        reason[0] = 0;
+        radd("REFUSED: insufficient CPU after kernel reserve update");
+        return 0;
+    }
     a->alive = 1;
+    irq_restore(flags);
     uint64_t granted = sum_granted_kb();
     uint64_t room = cap > granted ? cap - granted : 0;
     uint32_t want = m->mem_sugg_kb > m->mem_min_kb ? m->mem_sugg_kb - m->mem_min_kb : 0;

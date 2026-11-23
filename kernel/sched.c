@@ -55,7 +55,10 @@ static void rebuild_lists(void)
 }
 
 static uint64_t P, G, Q3, SR_T, JUMP_T;
-static uint64_t t3_limit;
+static uint64_t t3_limit, pool_returned, last_returned;
+static uint64_t peak_busy_ticks, peak_start_late, kernel_warn_ticks, warning_periods;
+static int kernel_warned;
+static uint32_t kernel_target_us = SYS_RESERVE_US;
 static uint64_t tier_ticks[3], last_tier_ticks[3], last_kernel_ticks, last_t3_limit;
 static uint64_t tier2_short_count;
 static uint64_t sampled_period;
@@ -66,8 +69,12 @@ static int t3_blocked;
 
 static void t3_reset_period(void)
 {
+    uint32_t reserved = resource_period_reservations_us(kernel_target_us);
     uint32_t capacity = resource_app_cpu_capacity_us();
-    uint32_t reserved = resource_cpu_min_sum_us();
+    SR_T = us_to_ticks(resource_kernel_reserve_us());
+    kernel_warn_ticks = SR_T * 4 / 5;
+    pool_returned = 0;
+    kernel_warned = 0;
     t3_limit = us_to_ticks(capacity > reserved ? capacity - reserved : 0);
     for (int i = 0; i < 3; i++)
         tier_ticks[i] = 0;
@@ -474,10 +481,12 @@ void task_set_entry(struct task *t, void (*entry)(void))
     set_entry(t, entry);
 }
 
-void task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
+int task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
                   uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
                   uint64_t a4, uint64_t a5)
 {
+    if (!t || (t->tier != TIER2 && t->tier != TIER3))
+        return -1;
     struct irq_frame *f = (struct irq_frame *)t->sp;
     f->elr = elr;
     f->spsr = 0x340;
@@ -488,6 +497,7 @@ void task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
     f->r[3] = a3;
     f->r[4] = a4;
     f->r[5] = a5;
+    return 0;
 }
 
 static void kill_locked(struct task *t);
@@ -783,6 +793,9 @@ static void end_period(uint64_t now, int skipped)
         last_tier_ticks[i] = tier_ticks[i];
     last_kernel_ticks = k_this_period;
     last_t3_limit = t3_limit;
+    last_returned = pool_returned;
+    uint64_t busy = k_this_period + tier_ticks[0] + tier_ticks[1] + tier_ticks[2];
+    if (busy > peak_busy_ticks) peak_busy_ticks = busy;
     sampled_period = pk;
     for (int i = 0; i < MAX_TASKS; i++) {
         struct task *t = &tasks[i];
@@ -871,6 +884,10 @@ static void end_period(uint64_t now, int skipped)
             ks[i].k_max = k_this_period;
             ks[i].k_max_period = pk;
             if (i == 0) {
+                uint64_t freq = timer_freq();
+                uint64_t target = (k_this_period * 1200000ull + freq - 1) / freq;
+                if (target > kernel_target_us)
+                    kernel_target_us = target > UINT32_MAX ? UINT32_MAX : (uint32_t)target;
                 kworst.period = pk;
                 kworst.label = cur_label;
                 kworst.total = k_this_period;
@@ -1006,6 +1023,13 @@ static struct task *pick_t2(int sugg)
         if (prev_stint_sc == t)
             used += disp_now + EXIT_MARGIN_T - cur_entry;
         uint64_t room = bw_room(t);
+        /* A flexible reservation can finish its minimum in the surplus pass.
+         * Keep a full timer-exit interval inside each dispatch boundary. */
+        if (t->sugg_t && !resource_pressure()) {
+            if (used >= cap || cap - used <= 2 * MIN_REL_T)
+                continue;
+            room = room < cap - used - MIN_REL_T ? room : cap - used - MIN_REL_T;
+        }
         if (used < cap && room) {
             rr2 = i;
             t->run_cap = cap;
@@ -1022,6 +1046,13 @@ static struct task *pick_t2(int sugg)
 
 static struct task *pick_t3(void)
 {
+    /* At a scheduling boundary hold back new best-effort dispatches until
+     * replenishment. Keep grants and consumption counters intact. */
+    if (k_this_period >= kernel_warn_ticks) {
+        if (!kernel_warned) warning_periods++;
+        kernel_warned = 1;
+        return 0;
+    }
     /* Leave room for timer entry and an in-flight IPC kernel path. */
     uint64_t margin = us_to_ticks(IPC_HEADROOM_US);
     uint64_t room_pool = t3_used < t3_limit ? t3_limit - t3_used : 0;
@@ -1396,6 +1427,12 @@ static uint64_t schedule(uint64_t sp, int timer)
         }
     }
     if (!timer && !op && prev->kind == KIND_JOB && prev->state == TASK_READY) {
+        if (resource_kernel_reserve_us() == kernel_target_us && prev->job_open && prev->refundable_t > prev->used_t && entry < pstart + P) {
+            uint64_t unused = prev->refundable_t - prev->used_t;
+            t3_limit += unused;
+            pool_returned += unused;
+        }
+        prev->refundable_t = 0;
         job_done(prev, entry);
         prev->state = TASK_BLOCKED;
     }
@@ -1460,6 +1497,7 @@ void job_body(uint64_t start)
     if (t->job_open && t->start_ts == 0 && start >= t->release_ts) {
         t->start_ts = start;
         uint64_t off = start - t->release_ts;
+        if (t->tier == TIER1 && off > peak_start_late) peak_start_late = off;
         if (rec && t->tier == TIER1) {
             if (off < t->w.start_min)
                 t->w.start_min = off;
@@ -1718,6 +1756,7 @@ void sched_init(void)
     G = us_to_ticks(GUARD_US);
     Q3 = us_to_ticks(T3_QUANTUM_US);
     SR_T = us_to_ticks(SYS_RESERVE_US);
+    kernel_warn_ticks = SR_T * 4 / 5;
     JUMP_T = us_to_ticks(JUMP_US);
     kstat_reset(&ks[0]);
     kstat_reset(&ks[1]);
@@ -1805,6 +1844,14 @@ void sched_read_system_info(struct sched_system_info *info)
     for (int i = 0; i < 3; i++)
         info->cpu_us[i] = last_tier_ticks[i];
     info->kernel_us = last_kernel_ticks;
+    info->peak_busy_us = peak_busy_ticks;
+    info->peak_kernel_us = ks[0].k_max;
+    info->max_start_late_us = peak_start_late;
+    info->returned_us = last_returned;
+    info->reserve_us = resource_kernel_reserve_us();
+    info->reserve_target_us = kernel_target_us;
+    info->kernel_warnings = warning_periods;
+    info->kernel_overruns = ks[0].k_over;
     info->tier3_limit_us = last_t3_limit;
     info->tier1_misses = ks[0].miss_a + ks[0].miss_b;
     info->tier2_short = tier2_short_count;
@@ -1815,6 +1862,11 @@ void sched_read_system_info(struct sched_system_info *info)
     for (int i = 0; i < 3; i++)
         info->cpu_us[i] = ticks_to_us(info->cpu_us[i]);
     info->kernel_us = ticks_to_us(info->kernel_us);
+    info->peak_busy_us = ticks_to_us(info->peak_busy_us);
+    info->peak_kernel_us = ticks_to_us(info->peak_kernel_us);
+    /* Round worst-case lateness upward so sub-microsecond delays stay visible. */
+    info->max_start_late_us = (info->max_start_late_us * 1000000ull + timer_freq() - 1) / timer_freq();
+    info->returned_us = ticks_to_us(info->returned_us);
     info->tier3_limit_us = ticks_to_us(info->tier3_limit_us);
 }
 

@@ -1,0 +1,92 @@
+"""Exercise the five Test app scenarios via QEMU tablet input."""
+import argparse
+from pathlib import Path
+import re
+import runpy
+import struct
+import subprocess
+import tempfile
+import time
+
+QMP = runpy.run_path(str(Path(__file__).with_name("realtime-rounds.py")))["QMP"]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("kernel", type=Path)
+parser.add_argument("out", type=Path)
+args = parser.parse_args()
+args.out.mkdir(parents=True, exist_ok=True)
+def boot():
+    log = args.out / "ui.log"
+    with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+        sock = tmp + "/qmp"
+        cmd = ["qemu-system-aarch64", "-machine", "virt,gic-version=2", "-cpu", "cortex-a35",
+               "-m", "64M", "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
+               "-device", "ramfb", "-device", "virtio-tablet-device", "-device", "virtio-keyboard-device",
+               "-icount", "shift=4,sleep=off", "-kernel", str(args.kernel), "-append", "apps-video",
+               "-serial", "file:" + str(log), "-qmp", "unix:" + sock + ",server=on,wait=off"]
+        proc = subprocess.Popen(cmd)
+        try:
+            q = QMP(sock)
+            def wait(pattern, offset=0, timeout=25):
+                end = time.monotonic() + timeout
+                while time.monotonic() < end:
+                    match = re.search(pattern, log.read_text()[offset:])
+                    if match:
+                        return match
+                    time.sleep(.04)
+                raise AssertionError(pattern)
+            def click(x,y):
+                q.call("input-send-event", {"events":[{"type":"abs","data":{"axis":a,"value":v*32767//n}}
+                    for a,v,n in [("x",x,1279),("y",y,799)]]})
+                time.sleep(.15)
+                for down in (True,False):
+                    q.call("input-send-event", {"events":[{"type":"btn","data":{"button":"left","down":down}}]})
+                    time.sleep(.16)
+            wait(r"\[apps\] PASS")
+            def click_logged(name):
+                box = wait(r"\[lvgl\] "+name+r" box (\d+),(\d+) (\d+)x(\d+)")
+                x, y, w, h = map(int, box.groups())
+                click(x + w // 2, y + h // 2)
+            click(455,198)
+            wait(r"\[desktop\] system events opened")
+            click_logged("launcher")
+            wait(r"\[desktop\] Apps opened")
+            click_logged("tests")
+            wait(r"\[desktop\] Test opened")
+            for number in range(1,6):
+                offset = len(log.read_text())
+                click(195,269+(number-1)*54)
+                if number == 2:
+                    click(620,508)
+                    wait(r"\[quota-test\] 0 Cancelled", offset)
+                    assert "[quota-test] 2 Running" not in log.read_text()[offset:]
+                    click(195,323)
+                if number in (2,3):
+                    click(415,508)
+                if number == 5:
+                    wait(r"\[quota-test\] 5 Running", offset)
+                    q.call("screendump", {"filename": str((args.out / "countdown.ppm").resolve())})
+                pattern = rf"\[quota-test\] {number} (PASS|FAIL)"
+                if number > 1:
+                    pattern += r"  /  (\d+) periods"
+                result = wait(pattern, offset, timeout=120 if number == 5 else 25)
+                if result[1] != "PASS": raise AssertionError(f"scenario {number} failed")
+                if number == 1:
+                    cpu = wait(r"CPU per 10 ms \(us\)\nRequested (\d+) +Available (\d+) +Total (\d+)", offset)
+                    requested, available, total = map(int, cpu.groups())
+                    assert requested > total >= available, cpu.group()
+                if number > 1:
+                    assert int(result[2]) >= (1000 if number == 5 else 100), result.group()
+                    gaps = wait(r"Peak gap: Speed (\d+) us, Dashcam (\d+) us", offset)
+                    speed_us, camera_us = map(int, gaps.groups())
+                    assert 0 < speed_us < 11000 and 0 < camera_us < 41000, gaps.group()
+
+            q.call("screendump", {"filename":str((args.out/"test.ppm").resolve())})
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+boot()

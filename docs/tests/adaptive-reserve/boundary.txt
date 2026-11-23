@@ -1,0 +1,1 @@
+PASS 8000 us held; kernel 350 -> 420 of 600; Tier 3 pool 0; new 1 us denied; after release kernel 600, admission open

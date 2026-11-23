@@ -42,7 +42,10 @@
 extern char user_blob[];
 extern char user_blob_end[];
 
+static char console_text[129];
+static int console_updated;
 struct proc {
+    int console;
     int slot;
     int alive;
     int draining;
@@ -467,6 +470,8 @@ int disp_drain(int max)
         return 0;
     for (int i = 0; i < EL0_Q_GLOBAL && n < max; i++) {
         struct irq_span span;
+        /* Empty slots can wait until the next drain. Recheck under the lock. */
+        if (!__atomic_load_n(&qq[i].used, __ATOMIC_RELAXED)) continue;
         struct qent work;
         struct proc *p;
         irq_off_begin(&span);
@@ -775,7 +780,24 @@ void proc_el0_svc(struct irq_frame *f)
         f->r[0] = (uint64_t)submit_checked(p, f->r[0], f->r[1], f->r[2], f->r[3], f->r[4], f->r[5]);
         return;
     }
+    if (op == 3 && p->console && !console_updated) {
+        uint64_t off = f->r[0], len = f->r[1];
+        if (off < 4096 && len <= 128 && len <= 4096 - off) {
+            memcpy(console_text, (const void *)(uintptr_t)(p->pa[0] + off), len);
+            console_text[len] = 0;
+            console_updated = 1;
+            f->r[0] = len;
+            return;
+        }
+    }
     f->r[0] = ~0ull;
+}
+
+const char *proc_console_text(void)
+{
+    if (!console_updated) return 0;
+    console_updated = 0;
+    return console_text;
 }
 
 int proc_kill(int64_t handle)
@@ -854,7 +876,7 @@ static void clean_code(void *p, uint64_t n)
     asm volatile("dsb ish; ic iallu; dsb ish; isb" ::: "memory");
 }
 
-int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t foreign_pa,
+static int64_t spawn_image(const char *code, unsigned bytes, int console, const char *name, uint64_t role, uint64_t limit, uint64_t foreign_pa,
                    uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,
                    uint16_t vw, uint16_t vh)
 {
@@ -879,7 +901,7 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
         if (qq[i].used && qq[i].slot == p->slot)
             return -1;
     }
-    blen = (uint64_t)(user_blob_end - user_blob);
+    blen = bytes;
     if (blen == 0 || blen > 4096)
         return -1;
     for (int i = 0; i < 3; i++)
@@ -913,8 +935,13 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
             free_idx(p->pages[i]);
         return -1;
     }
+    pack = (uint64_t)vx | ((uint64_t)vy << 16) | ((uint64_t)vw << 32) | ((uint64_t)vh << 48);
     p->task = task_try_create(name, TIER3, KIND_SPIN);
-    if (!p->task) {
+    if (!p->task || task_arm_el0(p->task, 0, USER_SP, role, limit, foreign_pa, fb_pa, kern_va, pack)) {
+        if (p->task) {
+            task_kill(p->task);
+            p->task = 0;
+        }
         resource_release(p->app);
         p->app = 0;
         for (int i = 0; i < 3; i++) {
@@ -924,6 +951,7 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
         }
         return -1;
     }
+    p->console = console;
     p->asid = p->slot + 1;
     p->vx = vx;
     p->vy = vy;
@@ -935,11 +963,9 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
     p->sub_period = ~0ull;
     p->sub_n = 0;
     build_pt(p);
-    memcpy((void *)(uintptr_t)p->pa[0], user_blob, (size_t)blen);
+    memcpy((void *)(uintptr_t)p->pa[0], code, (size_t)blen);
     clean_code((void *)(uintptr_t)p->pa[0], blen);
     tlb_asid(p->asid);
-    pack = (uint64_t)vx | ((uint64_t)vy << 16) | ((uint64_t)vw << 32) | ((uint64_t)vh << 48);
-    task_arm_el0(p->task, 0, USER_SP, role, limit, foreign_pa, fb_pa, kern_va, pack);
     p->task->user_ttbr = p->ttbr;
     p->pid = p->task->id;
     if (spawn_logs < 2) {
@@ -972,6 +998,20 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
         irq_off_end(off0);
         return (int64_t)published;
     }
+}
+
+int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t foreign_pa,
+                   uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,
+                   uint16_t vw, uint16_t vh)
+{
+    return spawn_image(user_blob, user_blob_end - user_blob, 0, name, role, limit,
+                       foreign_pa, fb_pa, kern_va, vx, vy, vw, vh);
+}
+
+int64_t proc_spawn_console(const char *code, unsigned bytes)
+{
+    console_updated = 0;
+    return spawn_image(code, bytes, 1, "hello", 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 void proc_ledger(const char *tag)

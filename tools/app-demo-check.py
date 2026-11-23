@@ -23,7 +23,7 @@ for round_no in range(1, args.rounds + 1):
     for mode in modes:
         log = args.out / f"{round_no:02d}-{mode}.log"
         cmd = ["qemu-system-aarch64", "-accel", "tcg", "-machine", "virt,gic-version=2",
-               "-cpu", "cortex-a72", "-m", "128M", "-display", "none", "-nic", "none",
+               "-cpu", "cortex-a35", "-m", "64M", "-display", "none", "-nic", "none",
                "-device", "ramfb", "-icount", "shift=4,sleep=off",
                "-kernel", str(args.kernel), "-append", mode, "-serial", "stdio", "-monitor", "none"]
         with log.open("wb") as stream:

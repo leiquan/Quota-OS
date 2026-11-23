@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="An experimental ARM64 operating system built around CPU quotas.">
+<title>Quota OS — A resource-partitioned operating system</title>
+<link rel="stylesheet" href="site.css?v=compare">
+<script src="site.js?v=dev" defer></script>
+<link rel="icon" href="favicon.png" type="image/png">
+</head>
+<body>
+<header class="wrap bar"><a class="brand" href="./">Quota OS</a><nav aria-label="Main navigation"><a href="#model">Features</a><a href="#compare">Compare</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="zh.html" lang="zh-CN">中文</a></nav></header>
+<main>
+<section class="wrap hero" id="home">
+<p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
+<h1>Critical tasks get<br><span>their CPU time on schedule.</span></h1>
+<p class="intro">Quota OS is an experimental ARM64 operating system. It reserves CPU time for critical tasks, admits applications when capacity is available, and shares spare time among ordinary workloads.</p>
+<p class="actions"><a class="primary" href="#run">Run Quota OS</a><a href="https://github.com/leiquan/Quota-OS">Browse source ↗</a></p>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="Desktop screenshots"><figure><img src="screenshots/pages-apps.png?v=desktop" width="1280" height="800" alt="Apps"><figcaption>Apps</figcaption></figure><figure><img src="screenshots/pages-task.png?v=desktop" width="1280" height="800" alt="System Task"><figcaption>System Task</figcaption></figure><figure><img src="screenshots/pages-info.png?v=desktop" width="1280" height="800" alt="System Info"><figcaption>System Info</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
+<h3 class="platform-title">Demo configuration</h3><dl class="platform"><div><dt>Processor</dt><dd>ARM64 · Cortex-A35 (QEMU, 1 core)</dd></div><div><dt>Memory</dt><dd>64 MiB</dd></div><div><dt>Display</dt><dd>1280 × 800 · LVGL / ramfb</dd></div><div><dt>Timing</dt><dd>QEMU TCG · icount guest clock</dd></div></dl>
+</section>
+<section class="wrap section" id="model">
+<h2>Three tiers of CPU allocation</h2>
+<p>GPS Speed, Flight Camera and Music Player show their tier on the right of each card. Flight Camera animates simulated lane markings at a target of 25 FPS.</p>
+<div class="grid">
+<article><p class="eyebrow">TIER 1</p><h3>Vendor reserved</h3><p>The speedometer and timer service use fixed CPU slots.</p></article>
+<article><p class="eyebrow">TIER 2</p><h3>User selected</h3><p>The dashcam starts with user approval and sufficient capacity for its declared minimum.</p></article>
+<article><p class="eyebrow">TIER 3</p><h3>Shared resources</h3><p>Music and desktop interaction share remaining CPU time under a common cap.</p></article>
+</div>
+</section>
+<section class="wrap section" id="editions">
+<h2>Desktop editions</h2><p>The default LVGL build runs the lightweight desktop. Quota OS LVGL+WebKit adds an optional in-guest runtime with WebKit for the interface and Node.js for the backend. The runtime is under development.</p>
+<div class="compare-scroll" tabindex="0" aria-label="Desktop editions"><table class="compare-table"><thead><tr><th scope="col">Edition</th><th scope="col">Tier 1</th><th scope="col">Tier 2</th><th scope="col">Tier 3</th></tr></thead>
+<tbody><tr><th scope="row">Quota OS LVGL</th><td>LVGL</td><td>LVGL</td><td>LVGL</td></tr>
+<tr><th scope="row">Quota OS LVGL+WebKit</th><td>LVGL</td><td>LVGL</td><td>LVGL or WebKit + Node.js</td></tr></tbody></table></div>
+<p>The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. GPS Speed must submit a frame every 10 ms. Once admitted, the Flight Camera must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.</p>
+</section>
+<section class="wrap section" id="compare">
+<h2>Compare</h2><p>Quota OS explores resource isolation for automotive instruments and eVTOL displays. Critical display work has a fixed CPU slot, admitted applications receive a minimum, and ordinary workloads share a capped pool.</p>
+<div class="compare-scroll" tabindex="0" aria-label="CPU policy and admission">
+<table class="compare-table"><caption>CPU policy and admission</caption>
+<thead><tr><th scope="col">System</th><th scope="col">Resource mechanism</th><th scope="col">Quota OS comparison</th></tr></thead>
+<tbody><tr><th scope="row">QNX</th><td>Adaptive partitions allocate minimum CPU shares to groups of threads and share spare capacity.</td><td>Quota OS gives applications three explicit admission policies and caps the aggregate best-effort pool. <a href="https://www.qnx.com/developers/docs/7.1/">Official docs</a></td></tr>
+<tr><th scope="row">seL4 MCS</th><td>Scheduling contexts carry a budget and period and can transfer execution budget across IPC.</td><td>System integrators define policy with those primitives. Quota OS defines the tier and admission policy in the OS. <a href="https://docs.sel4.systems/Tutorials/mcs.html">Official docs</a></td></tr>
+<tr><th scope="row">Linux</th><td>SCHED_DEADLINE provides runtime, deadline and period parameters, admission control and optional bandwidth reclaiming.</td><td>An integrator can combine Linux controls to build similar isolation. Quota OS exposes the three-tier policy directly. <a href="https://docs.kernel.org/scheduler/sched-deadline.html">Official docs</a></td></tr>
+<tr><th scope="row">VxWorks 653</th><td>ARINC 653-style time and space partitioning separates workloads into configured partitions.</td><td>Fixed partition timing is closest to Tier 1. Quota OS also demonstrates user-approved reservations and an aggregate shared pool. <a href="https://www.windriver.com/products/vxworks">Official docs</a></td></tr></tbody>
+</table></div>
+<p>The published QEMU icount tests cover CPU scheduling and guest framebuffer commits. Comparative real-hardware latency, aircraft flight control, and safety certification remain outside the verified scope.</p>
+</section>
+<section class="wrap section" id="evidence">
+<h2>GPS Speed keeps updating under desktop load</h2>
+<p>Open Test from Apps. Tier 2 tests 1–3 request too much, start a job and check the CPU limit. Test 1 shows requested, available and total CPU and memory. Tier 3 tests 4–5 run a normal task and a 10-second busy loop. Results include actual Music Player commits. Compare peak gaps separately with the 10 ms GPS Speed and 40 ms Flight Camera targets.</p>
+<figure><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/system-test.png" alt="The standalone Test app running the Tier 3 busy-loop scenario in QEMU"></figure>
+<figure style="margin:1rem 0"><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/vehicle-instruments.png" alt="GPS Speed, Flight Camera and Music Player on the Quota OS desktop"><figcaption>GPS Speed shows cumulative deadline misses. Flight Camera targets 25 simulated frames per second. The purple bars show recent music frame delivery. <a href="screenshots/instruments-live.gif">Watch the QEMU capture</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">Run this LVGL build</a></figcaption></figure>
+<div class="stats"><div><strong>100 / 100</strong><span>GPS Speed frames submitted / periods sampled</span></div><div><strong>0</strong><span>Missed speedometer deadlines</span></div><div><strong>0</strong><span>Tier 3 pool overruns</span></div></div>
+<p>This QEMU TCG <code>icount</code> test measured guest framebuffer commits. GPU queue timing, host presentation, and physical display latency await verification.</p>
+<p><a href="https://github.com/leiquan/Quota-OS/blob/main/docs/tests/cortex-a35/03-apps-desktop-stall.log">Read the serial log ↗</a></p>
+
+</section>
+<section class="wrap section" id="run">
+<h2>Run in QEMU</h2>
+<p><a href="https://github.com/leiquan/Quota-OS/releases/latest">Download the ARM64 image and launch instructions ↗</a></p>
+<p>To run from a local checkout, install Git and QEMU with ARM64 system emulation, then run:</p>
+<pre><code>git clone https://github.com/leiquan/Quota-OS.git
+cd Quota-OS
+bash tools/run-files.sh</code></pre>
+<p><a href="https://github.com/leiquan/Quota-OS#readme">Read the README and test records ↗</a></p>
+</section>
+<section class="wrap section" id="dev">
+<h2>Development</h2>
+<h3>Build the desktop from source</h3>
+<p>On macOS with Homebrew LLVM and LLD installed, run these commands from the repository root. QEMU ARM64 runs the resulting kernel with one Cortex-A35 core and 64 MiB of RAM.</p>
+<pre><code>bash tools/build-lvgl-macos.sh
+QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh</code></pre>
+<h3>C development inside Quota OS</h3>
+<p>In an empty Notes document, choose <strong>C Example</strong> or type the code below. Choose <strong>Save As...</strong> and enter <code>demo.c</code>. Open Apps → Shell, type a command at the <code>quota&gt;</code> prompt, and press Enter. Type <code>cc</code> on its own to see an example using your saved filename.</p>
+<pre><code>int main(void) {
+    puts("Hello, Quota OS!");
+    return 0;
+}</code></pre>
+<pre><code>cc demo.c -o hello
+./hello</code></pre>
+<p>The initial C subset accepts a header-free int main(void), one puts string literal, and return 0. The executable runs in Tier 3. Tier 2 launch parameters are pending.</p>
+<div class="showcase"><div class="gallery" tabindex="0" aria-label="Save demo.c in Notes"><figure><img src="screenshots/dev-source.png?v=desktop" width="1280" height="800" loading="lazy" alt="Save demo.c in Notes"><figcaption>Save demo.c in Notes</figcaption></figure><figure><img src="screenshots/dev-compile.png?v=desktop" width="1280" height="800" loading="lazy" alt="Compile demo.c in Shell"><figcaption>Compile demo.c in Shell</figcaption></figure><figure><img src="screenshots/dev-run.png?v=desktop" width="1280" height="800" loading="lazy" alt="Run hello in EL0"><figcaption>Run hello in EL0</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="Next screenshot">→</button><button type="button" class="playback"></button></div></div>
+</section>
+</main>
+<footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/main/LICENSE">Apache 2.0</a></footer>
+</body>
+</html>

@@ -105,6 +105,7 @@ struct task {
     uint64_t sugg_t;            /* Tier 2：建议值里超出最低值的部分 */
     uint64_t work_t;            /* KIND_JOB：每个作业的工作量 */
     uint64_t deadline_t;        /* KIND_JOB：相对释放时刻的截止期 */
+    uint64_t refundable_t; /* Current-period job reservation included in the pool calculation. */
     uint64_t last_used_t;
     uint64_t period_grant_t, last_grant_t;
     uint64_t used_t;            /* 本周期已用 */
@@ -263,10 +264,13 @@ uint32_t resource_guard_us(void);
 uint32_t resource_app_cpu_capacity_us(void);
 uint64_t resource_app_mem_capacity_kb(void);
 uint32_t resource_cpu_min_sum_us(void);
+uint32_t resource_period_reservations_us(uint32_t target);
+uint32_t resource_kernel_reserve_us(void);
 uint64_t resource_mem_min_sum_kb(void);
 uint64_t resource_ram_kb(void);
 int resource_pressure(void);
 void resource_set_pressure(int on);
+void resource_app_available(uint32_t *cpu_us, uint64_t *mem_kb);
 int resource_check(const struct app_manifest *m);
 const char *resource_reason(void);
 struct running_app *resource_commit(const struct app_manifest *m);
@@ -279,21 +283,24 @@ const struct app_manifest *resource_catalog(int *count);
 #define APP_DESK_EDGE 840
 #define APP_DRAW_X 890
 #define APP_DASH_Y 205
-#define APP_DASH_W 60
+#define APP_DASH_W 128
 #define APP_DASH_H 28
 #define APP_VIDEO_Y 370
 #define APP_MUSIC_Y 535
 #define APP_METER_W 128
-#define APP_METER_H 8
+#define APP_METER_H 40
 #define APP_MUSIC_SIZE 32
 int app_desktop_mode(void);
+void app_demo_run(int with_video, int stall);
 void app_desktop_poll(void);
 int vehicle_app_running(int tier);
 int vehicle_app_set_running(int tier, int start);
 struct app_display_stats {
     uint32_t frames[3];
+    uint64_t sample_tick, commit_tick[2];
+    uint32_t video_epoch, video_max_gap_us;
     uint32_t speed_misses, max_gap_us;
-    int video_paused, music_held;
+    int video_paused;
 };
 void app_display_read(struct app_display_stats *stats);
 void app_display_core_frame(void);
@@ -301,6 +308,8 @@ void app_desktop_stall_probe(void);
 struct sched_system_info {
     uint64_t period;
     uint64_t cpu_us[3], kernel_us, tier3_limit_us;
+    uint64_t peak_busy_us, peak_kernel_us, max_start_late_us, returned_us;
+    uint64_t kernel_warnings, kernel_overruns, reserve_us, reserve_target_us;
     uint64_t tier1_misses, tier2_short, tier2_over;
     uint64_t tier3_throttled, tier3_over;
 };
@@ -348,7 +357,7 @@ uint64_t sched_foreign_window(void);
 uint64_t sched_next_guard(uint64_t now);
 void task_set_entry(struct task *t, void (*entry)(void));
 /* EL0 初始帧。user_sp 写入帧的 pad，出口时装进 SP_EL0。spsr 为 EL0t、IRQ 开。 */
-void task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
+int task_arm_el0(struct task *t, uint64_t elr, uint64_t user_sp,
                   uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
                   uint64_t a4, uint64_t a5);
 /* 把任务标成 DEAD 并刷新就绪表。不改 DAIF，调用者自己管中断屏蔽。 */
@@ -464,15 +473,7 @@ int mmu_protect(uint64_t addr, uint64_t len, int prot);
 uint64_t mmu_kernel_ttbr(void);
 uint64_t mmu_l2_ram_phys(void);
 uint32_t system_reserve_kb(void);
-/* webkit boot only. 0 on every other boot, including e4. */
-uint64_t webkit_structure_bytes(void);
-uint64_t webkit_structure_base(void);
-void boot_check_reservations(uint64_t structure, uint64_t window, uint64_t arena, uint64_t arena_end);
-/* End of the JSC arena. The weak default is the image end, so a kernel
- * without the engine keeps the old framebuffer floor. */
-uint64_t jsc_arena_end(void);
 void color_init(uint64_t ram_bytes);
-void color_pool_range(uint64_t *start, uint64_t *end);
 uint64_t color_padding_kb(void);
 uint32_t color_alloc_shared(uint32_t n);
 void color_free_shared(void);
@@ -497,15 +498,6 @@ void shell_main(void);
 void webkit_autostart(void);
 int fw_read_file(const char *name, void *dest, uint32_t capacity, uint32_t *length);
 int kernel_reserve_alloc(uint64_t bytes, uint64_t align, uint64_t *pa);
-int wk_reserve(uint64_t bytes, int executable, unsigned guard_pages, uint64_t *pa);
-void *wk_os_reserve(uint64_t bytes, uint64_t align, int executable, unsigned guard_pages);
-void wk_os_release(void *p, uint64_t bytes);
-int wk_os_commit(void *p, uint64_t bytes, int executable);
-void wk_os_decommit(void *p, uint64_t bytes);
-int wk_os_protect(void *p, uint64_t bytes, int readable, int writable);
-void wk_os_zero(void *p, uint64_t bytes);
-int cxx_runtime_test(void);
-int fb_device_self_test(uint32_t **pixels, uint32_t *w, uint32_t *h, uint32_t *stride);
 /* 0 when the surface was reserved. Bytes are inside the 16 MB system reserve. */
 int fb_reserve(void);
 int fb_reserved_range(uint64_t *start, uint64_t *bytes);
@@ -539,6 +531,9 @@ uint32_t input_drop_count(void);
 void note_disk_init(void);
 void note_disk_poll(void);
 int note_disk_save(const char *text);
+int note_disk_save_source(const char *text, const char *name);
+const char *note_disk_source_name(void);
+const char *note_disk_source(void);
 const char *note_disk_text(void);
 unsigned note_disk_bytes(void);
 int note_disk_verify(void);
@@ -610,6 +605,10 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
                    uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,
                    uint16_t vw, uint16_t vh);
 int proc_kill(int64_t handle);
+int c_demo_compile(const char *source);
+int64_t c_demo_run(void);
+int64_t proc_spawn_console(const char *code, unsigned bytes);
+const char *proc_console_text(void);
 void proc_ledger(const char *tag);
 int proc_pages_free(void);
 int proc_pages_used(void);
