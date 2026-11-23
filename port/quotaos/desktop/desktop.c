@@ -434,6 +434,11 @@ static void trial_result(int number, const char *result)
     printf("[quota-test] %d %s\n", number, result);
 }
 
+static unsigned trial_periods(int number)
+{
+    return number == 5 ? 1000 : 100;
+}
+
 static void begin_trial(int number, int approved)
 {
     if (trial.active) return;
@@ -489,14 +494,16 @@ static void begin_trial(int number, int approved)
     trial.period = sched_period_now();
     sched_read_system_info(&trial.before);
     app_display_read(&trial.display);
-    trial_result(number, "Running  /  sampling 100 periods");
+    char status[64];
+    lv_snprintf(status, sizeof status, "Running  /  sampling %u periods", trial_periods(number));
+    trial_result(number, status);
 }
 
 static void poll_trial(void)
 {
     int number = trial.active;
     uint64_t elapsed = sched_period_now() - trial.period;
-    if (!number || elapsed < 100) return;
+    if (!number || elapsed < trial_periods(number)) return;
     struct sched_system_info sys;
     struct app_display_stats display;
     sched_read_system_info(&sys);

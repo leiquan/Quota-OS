@@ -26,8 +26,8 @@ def boot():
         proc = subprocess.Popen(cmd)
         try:
             q = QMP(sock)
-            def wait(pattern, offset=0):
-                end = time.monotonic() + 25
+            def wait(pattern, offset=0, timeout=25):
+                end = time.monotonic() + timeout
                 while time.monotonic() < end:
                     match = re.search(pattern, log.read_text()[offset:])
                     if match:
@@ -62,9 +62,13 @@ def boot():
                     click(195,323)
                 if number in (2,3):
                     click(415,508)
-                result = wait(r"\[quota-test\] "+str(number)+r" (PASS|FAIL)", offset)
+                pattern = rf"\[quota-test\] {number} (PASS|FAIL)"
+                if number > 1:
+                    pattern += r"  /  (\d+) periods"
+                result = wait(pattern, offset, timeout=120 if number == 5 else 25)
                 if result[1] != "PASS": raise AssertionError(f"scenario {number} failed")
                 if number > 1:
+                    assert int(result[2]) >= (1000 if number == 5 else 100), result.group()
                     gaps = wait(r"Peak gap: Speed (\d+) us, Dashcam (\d+) us", offset)
                     speed_us, camera_us = map(int, gaps.groups())
                     assert 0 < speed_us < 11000 and 0 < camera_us < 41000, gaps.group()

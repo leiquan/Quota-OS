@@ -109,7 +109,7 @@ Open **Test** from **Apps** on the vehicle desktop. **System** shows tasks, syst
 | T3 Run yielding task | Launch an EL0 process that yields voluntarily. Verify it receives CPU time. |
 | T3 Contain busy loop | Launch an EL0 process that never yields. Observe speedometer commits, deadline misses and shared-pool crossings while it runs. |
 
-The four runnable workloads are sampled for at least 100 guest periods and then stopped. Each result includes actual Music Player commits. During contention, the player continues to submit as CPU time becomes available. The scenario PASS reports the checks listed above and the tier counters. Check the peak gaps separately against the 10 ms GPS Speed and 40 ms Flight Camera targets. The reported gaps are boot-to-date maxima, so they cannot attribute a long gap to the current scenario alone.
+The Tier 3 busy loop runs for at least 1,000 guest periods (10 seconds of guest time). Other runnable workloads run for at least 100 periods. Each result includes actual Music Player commits. During contention, the player continues to submit as CPU time becomes available. The scenario PASS reports the checks listed above and the tier counters. Check the peak gaps separately against the 10 ms GPS Speed and 40 ms Flight Camera targets. The reported gaps are boot-to-date maxima, so they cannot attribute a long gap to the current scenario alone.
 
 ![Five quota scenarios in the standalone Test app](docs/screenshots/system-test.png)
 
