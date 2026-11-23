@@ -50,7 +50,8 @@
 </section>
 <section class="wrap section" id="evidence">
 <h2>GPS Speed keeps updating under desktop load</h2>
-<p>Open the standalone Test app from Apps to run the quota scenarios.</p>
+<p>Open Test from Apps. Tier 2 checks reject an oversized request, admit a periodic job and cap a busy task. Tier 3 checks run a yielding task and contain a busy loop. Results include actual Music Player commits. Compare peak gaps separately with the 10 ms GPS Speed and 40 ms Flight Camera targets.</p>
+<figure><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/system-test.png" alt="The standalone Test app running the Tier 3 busy-loop scenario in QEMU"></figure>
 <figure style="margin:1rem 0"><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/vehicle-instruments.png" alt="GPS Speed, Flight Camera and Music Player on the Quota OS desktop"><figcaption>GPS Speed shows cumulative deadline misses. Flight Camera targets 25 simulated frames per second. The purple bars show recent music frame delivery. <a href="screenshots/instruments-live.gif">Watch the QEMU capture</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">Run this LVGL build</a></figcaption></figure>
 <div class="stats"><div><strong>100 / 100</strong><span>GPS Speed frames submitted / periods sampled</span></div><div><strong>0</strong><span>Missed speedometer deadlines</span></div><div><strong>0</strong><span>Tier 3 pool overruns</span></div></div>
 <p>This QEMU TCG <code>icount</code> test measured guest framebuffer commits. GPU queue timing, host presentation, and physical display latency await verification.</p>

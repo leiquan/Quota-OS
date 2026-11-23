@@ -1456,8 +1456,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *load9 = NULL, *watch = NULL;
     if (apps) {
         static const char *const scenarios[] = {
-            "T2  Oversized request", "T2  Approved launch", "T2  CPU saturation",
-            "T3  Normal task", "T3  Infinite loop"
+            "T2  Reject over-quota", "T2  Admit periodic job", "T2  Cap busy task",
+            "T3  Run yielding task", "T3  Contain busy loop"
         };
         for (int i = 0; i < 5; i++) add_row(menu_list, 12 + i * 54, 0xe0edff, 0xc5d9fa, scenarios[i], 220+i);
     } else {

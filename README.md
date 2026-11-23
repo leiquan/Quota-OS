@@ -103,15 +103,15 @@ Open **Test** from **Apps** on the vehicle desktop. **System** shows tasks, syst
 
 | Scenario | What the guest checks |
 | --- | --- |
-| T2 Oversized request | Request 10,000 µs of CPU per 10 ms period. Admission must refuse the launch. |
-| T2 Approved launch | Reserve 400 µs per period and 16 KiB. Verify the periodic job runs and meets its deadline. |
-| T2 CPU saturation | Run a CPU-bound task with a 400 µs minimum and an 800 µs ceiling per period. Check shortfalls, overruns and measured peak use. |
-| T3 Normal task | Launch an EL0 process that yields voluntarily. Verify it receives CPU time. |
-| T3 Infinite loop | Launch an EL0 process that never yields. Observe speedometer commits, deadline misses and shared-pool crossings while it runs. |
+| T2 Reject over-quota | Request 10,000 µs of CPU per 10 ms period. Admission must refuse the launch. |
+| T2 Admit periodic job | Reserve 400 µs per period and 16 KiB. Verify the periodic job runs and meets its deadline. |
+| T2 Cap busy task | Run a CPU-bound task with a 400 µs minimum and an 800 µs ceiling per period. Check shortfalls, overruns and measured peak use. |
+| T3 Run yielding task | Launch an EL0 process that yields voluntarily. Verify it receives CPU time. |
+| T3 Contain busy loop | Launch an EL0 process that never yields. Observe speedometer commits, deadline misses and shared-pool crossings while it runs. |
 
-The four runnable workloads are sampled for at least 100 guest periods and then stopped. In the captured infinite-loop run the guest reported 109 speedometer commits in 109 periods, zero deadline misses and zero pool crossings. The saturated Tier 2 task peaked at 799 µs over 108 periods with zero recorded shortfalls or overruns. These observations cover this QEMU configuration. Fixed budgets under saturation, resource pressure, physical display latency and hardware timing require separate testing. [Serial log](docs/tests/adaptive-reserve/ui.log)
+The four runnable workloads are sampled for at least 100 guest periods and then stopped. Each result includes actual Music Player commits. During contention, the player continues to submit as CPU time becomes available. The scenario PASS reports the checks listed above and the tier counters. Check the peak gaps separately against the 10 ms GPS Speed and 40 ms Flight Camera targets. The reported gaps are boot-to-date maxima, so they cannot attribute a long gap to the current scenario alone.
 
-![Available quota tests in the System app](docs/screenshots/system-test.png)
+![Five quota scenarios in the standalone Test app](docs/screenshots/system-test.png)
 
 ## Files
 
