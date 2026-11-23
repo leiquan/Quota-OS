@@ -1448,7 +1448,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_width(info_crossings, 122);
     lv_obj_set_style_text_align(info_crossings, LV_TEXT_ALIGN_RIGHT, 0);
 
-    page_input = desktop_window(screen, app_desktop_mode() ? 260 : 650, 238, 540, 358, "Notes");
+    page_input = desktop_window(screen, app_desktop_mode() ? 260 : 650, 238, 540, 358, "Notes · Tier 3");
     note_status = desk_label(page_input, 28, 70, "", 0x64748b);
     note_disk_init();
     field = lv_textarea_create(page_input);
@@ -1700,13 +1700,14 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         if (disk_status != previous_disk_status) {
             previous_disk_status = disk_status;
             lv_label_set_text(note_status, disk_status);
-            if (note_disk_text())
+            bool has_note = note_disk_text() != NULL;
+            if (has_note)
                 lv_label_set_text_fmt(file_metadata, "Plain text  /  %u bytes", note_disk_bytes());
-            monitor_visible(file_entry, note_disk_text() != NULL);
-            monitor_visible(note_icon, note_disk_text() != NULL);
+            monitor_visible(file_entry, has_note);
+            monitor_visible(note_icon, has_note);
             const char *name = note_disk_source_name();
             if (name) {
-                lv_obj_set_y(source_entry, note_disk_text() ? 168 : 96);
+                lv_obj_set_y(source_entry, has_note ? 168 : 96);
                 lv_label_set_text(source_title, name);
                 lv_label_set_text_fmt(source_metadata, "C source  /  %u bytes",
                                       (unsigned)lv_strlen(note_disk_source()));
@@ -1714,7 +1715,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             }
             monitor_visible(source_entry, name != NULL);
             monitor_visible(source_icon, note_disk_source() != NULL);
-            monitor_visible(file_empty, note_disk_text() == NULL && note_disk_source() == NULL);
+            monitor_visible(file_empty, !has_note && !name);
             lv_label_set_text(file_empty, !strcmp(disk_status, "Ready") ? "No saved files" : disk_status);
             if (save_since && strcmp(disk_status, "Saving...")) {
                 struct app_display_stats after;
