@@ -22,7 +22,7 @@
 </section>
 <section class="wrap section" id="model">
 <h2>Three tiers of CPU allocation</h2>
-<p>Speed, Dashcam and Music Player show their tier on the right of each card. Dashcam animates simulated lane markings at a target of 25 FPS.</p>
+<p>GPS Speed, Flight Camera and Music Player show their tier on the right of each card. Flight Camera animates simulated lane markings at a target of 25 FPS.</p>
 <div class="grid">
 <article><p class="eyebrow">TIER 1</p><h3>Vendor reserved</h3><p>The speedometer and timer service use fixed CPU slots.</p></article>
 <article><p class="eyebrow">TIER 2</p><h3>User selected</h3><p>The dashcam starts with user approval and sufficient capacity for its declared minimum.</p></article>
@@ -34,7 +34,7 @@
 <div class="compare-scroll" tabindex="0" aria-label="Desktop editions"><table class="compare-table"><thead><tr><th scope="col">Edition</th><th scope="col">Tier 1</th><th scope="col">Tier 2</th><th scope="col">Tier 3</th></tr></thead>
 <tbody><tr><th scope="row">Quota OS LVGL</th><td>LVGL</td><td>LVGL</td><td>LVGL</td></tr>
 <tr><th scope="row">Quota OS LVGL+WebKit</th><td>LVGL</td><td>LVGL</td><td>LVGL or WebKit + Node.js</td></tr></tbody></table></div>
-<p>The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. Speed must submit a frame every 10 ms. Once admitted, Dashcam must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.</p>
+<p>The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. GPS Speed must submit a frame every 10 ms. Once admitted, the Flight Camera must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.</p>
 </section>
 <section class="wrap section" id="compare">
 <h2>Compare</h2><p>Quota OS explores resource isolation for automotive instruments and eVTOL displays. Critical display work has a fixed CPU slot, admitted applications receive a minimum, and ordinary workloads share a capped pool.</p>
@@ -49,9 +49,9 @@
 <p>The published QEMU icount tests cover CPU scheduling and guest framebuffer commits. Comparative real-hardware latency, aircraft flight control, and safety certification remain outside the verified scope.</p>
 </section>
 <section class="wrap section" id="evidence">
-<h2>Speed keeps updating under desktop load</h2>
-<figure style="margin:1rem 0"><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/vehicle-instruments.png" alt="Speed, Dashcam and Music Player on the Quota OS desktop"><figcaption>Speed shows cumulative deadline misses. Dashcam targets 25 simulated frames per second. The purple bars show recent music frame delivery. <a href="screenshots/instruments-live.gif">Watch the QEMU capture</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">Run this LVGL build</a></figcaption></figure>
-<div class="stats"><div><strong>100 / 100</strong><span>Speed frames submitted / periods sampled</span></div><div><strong>0</strong><span>Missed speedometer deadlines</span></div><div><strong>0</strong><span>Tier 3 pool overruns</span></div></div>
+<h2>GPS Speed keeps updating under desktop load</h2>
+<figure style="margin:1rem 0"><img loading="lazy" width="1280" height="800" style="width:100%;height:auto" src="screenshots/vehicle-instruments.png" alt="GPS Speed, Flight Camera and Music Player on the Quota OS desktop"><figcaption>GPS Speed shows cumulative deadline misses. Flight Camera targets 25 simulated frames per second. The purple bars show recent music frame delivery. <a href="screenshots/instruments-live.gif">Watch the QEMU capture</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">Run this LVGL build</a></figcaption></figure>
+<div class="stats"><div><strong>100 / 100</strong><span>GPS Speed frames submitted / periods sampled</span></div><div><strong>0</strong><span>Missed speedometer deadlines</span></div><div><strong>0</strong><span>Tier 3 pool overruns</span></div></div>
 <p>This QEMU TCG <code>icount</code> test measured guest framebuffer commits. GPU queue timing, host presentation, and physical display latency await verification.</p>
 <p><a href="https://github.com/leiquan/Quota-OS/blob/main/docs/tests/cortex-a35/03-apps-desktop-stall.log">Read the serial log ↗</a></p>
 

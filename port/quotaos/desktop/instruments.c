@@ -1,8 +1,8 @@
 #include "quotaos.h"
 #include "desktop.h"
 
-const char app_speed[] = "Speed";
-const char app_video[] = "Dashcam";
+const char app_speed[] = "GPS Speed";
+const char app_video[] = "Flight Camera";
 const char app_music[] = "Music Player";
 
 static lv_obj_t *app_cards[3];

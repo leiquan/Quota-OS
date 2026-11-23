@@ -1570,7 +1570,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         lv_obj_set_style_pad_row(list, 5, 0);
         if (apps && i) {
             lv_obj_t *row = desk_label(list, 0, 0,
-                i == 1 ? "Dashcam  /  Stopped" : "Music Player  /  Stopped", 0x475a7a);
+                i == 1 ? "Flight Camera  /  Stopped" : "Music Player  /  Stopped", 0x475a7a);
             lv_obj_set_width(row, lv_pct(100));
             lv_obj_set_style_pad_all(row, 8, 0);
             lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);

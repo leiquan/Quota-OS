@@ -17,7 +17,7 @@ The default LVGL build runs the lightweight desktop. Quota OS LVGL+WebKit adds a
 | Quota OS LVGL | LVGL | LVGL | LVGL |
 | Quota OS LVGL+WebKit | LVGL | LVGL | LVGL or WebKit + Node.js |
 
-The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. Speed must submit a frame every 10 ms. Once admitted, Dashcam must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.
+The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. GPS Speed must submit a frame every 10 ms. Once admitted, the Flight Camera must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.
 
 Quota OS LVGL+WebKit 的验收场景是在同一桌面上运行三个应用：一级速度表每 10 ms 提交一帧；二级行车记录仪获准后拿足预留 CPU 时间，每 40 ms 提交一帧；三级网页同时触发 JavaScript 垃圾回收。三者在同一镜像中运行时的配额和帧间隔仍待验证。
 
@@ -37,9 +37,9 @@ The launcher boots the included ARM64 image and creates a persistent Notes disk 
 
 ## Vehicle instruments
 
-Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Dashcam animates simulated lane markings at a target of 25 frames per second in Tier 2, updating only changing pixels after initialization. The Speed, Dashcam and Music Player cards display their tier at the right. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. Speed and Dashcam FPS use timestamps from completed framebuffer commits. System → Test also reports their longest observed gaps; the intentional camera pause starts a new interval on resume. The labels and history are sampled by the desktop; Speed continues to commit while that desktop is stalled.
+GPS Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Flight Camera animates simulated lane markings at a target of 25 frames per second in Tier 2, updating only changing pixels after initialization. The GPS Speed, Flight Camera and Music Player cards display their tier at the right. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. GPS Speed and Flight Camera FPS use timestamps from completed framebuffer commits. System → Test also reports their longest observed gaps; the intentional camera pause starts a new interval on resume. The labels and history are sampled by the desktop; GPS Speed continues to commit while that desktop is stalled.
 
-![Quota OS desktop showing the Speed gauge, simulated dashcam lanes and music frame history](docs/screenshots/vehicle-instruments.png)
+![Quota OS desktop showing the GPS Speed gauge, simulated dashcam lanes and music frame history](docs/screenshots/vehicle-instruments.png)
 
 [Watch the QEMU capture](docs/screenshots/instruments-live.gif) · [Run the measured LVGL build](https://github.com/leiquan/Quota-OS/tree/7e594c7)
 
