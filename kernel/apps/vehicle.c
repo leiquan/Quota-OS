@@ -169,6 +169,7 @@ static void app_demo_video_frame(void)
         uint64_t period = sched_period_now();
         if (!video_stalled && period % 4 == 0) {
             uint32_t frame = video_frames + 1;
+            int first = !video_tick;
             unsigned phase = frame & 63;
             int bend = (int)(phase < 32 ? phase : 63 - phase) - 16;
             unsigned last = (frame - 1) & 63;
@@ -183,10 +184,15 @@ static void app_demo_video_frame(void)
                     row[old+edge] = row[old+edge+1] = 0x101820;
                     row[old] = row[old+1] = row[old+2] = 0x101820;
                 }
-                row[center-edge] = row[center-edge+1] = 0x88d8e7;
-                row[center+edge] = row[center+edge+1] = 0x88d8e7;
-                uint32_t stripe = (((unsigned)y - frame * 2) & 8) ? 0xffdf8d : 0x101820;
-                row[center] = row[center+1] = row[center+2] = stripe;
+                if (first || center != old) {
+                    row[center-edge] = row[center-edge+1] = 0x88d8e7;
+                    row[center+edge] = row[center+edge+1] = 0x88d8e7;
+                }
+                unsigned stripe_phase = (unsigned)y + frame;
+                if (first || center != old || (stripe_phase & 7) == 0) {
+                    uint32_t stripe = (stripe_phase & 8) ? 0xffdf8d : 0x101820;
+                    row[center] = row[center+1] = row[center+2] = stripe;
+                }
             }
             asm volatile("dsb st" ::: "memory");
             uint64_t flags = irq_save();

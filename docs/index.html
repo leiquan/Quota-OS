@@ -22,6 +22,7 @@
 </section>
 <section class="wrap section" id="model">
 <h2>Three tiers of CPU allocation</h2>
+<p>Speed, Dashcam and Music Player show their tier on the right of each card. Dashcam animates simulated lane markings at a target of 25 FPS.</p>
 <div class="grid">
 <article><p class="eyebrow">TIER 1</p><h3>Vendor reserved</h3><p>The speedometer and timer service use fixed CPU slots.</p></article>
 <article><p class="eyebrow">TIER 2</p><h3>User selected</h3><p>The dashcam starts with user approval and sufficient capacity for its declared minimum.</p></article>
@@ -29,11 +30,10 @@
 </div>
 </section>
 <section class="wrap section" id="editions">
-<h2>Desktop editions</h2><p>The default build on main runs the LVGL desktop. Both WebKit editions are under development. In those editions, WebKit must lay out and draw pages inside the guest.</p>
+<h2>Desktop editions</h2><p>The default LVGL build runs the lightweight desktop. Quota OS LVGL+WebKit adds an optional in-guest runtime with WebKit for the interface and Node.js for the backend. The runtime is under development.</p>
 <div class="compare-scroll" tabindex="0" aria-label="Desktop editions"><table class="compare-table"><thead><tr><th scope="col">Edition</th><th scope="col">Tier 1</th><th scope="col">Tier 2</th><th scope="col">Tier 3</th></tr></thead>
 <tbody><tr><th scope="row">Quota OS LVGL</th><td>LVGL</td><td>LVGL</td><td>LVGL</td></tr>
-<tr><th scope="row">Quota OS WebKit</th><td>WebKit</td><td>WebKit</td><td>WebKit</td></tr>
-<tr><th scope="row">Quota OS LVGL+WebKit</th><td>LVGL</td><td>LVGL</td><td>WebKit</td></tr></tbody></table></div>
+<tr><th scope="row">Quota OS LVGL+WebKit</th><td>LVGL</td><td>LVGL</td><td>LVGL or WebKit + Node.js</td></tr></tbody></table></div>
 <p>The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. Speed must submit a frame every 10 ms. Once admitted, Dashcam must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.</p>
 </section>
 <section class="wrap section" id="compare">

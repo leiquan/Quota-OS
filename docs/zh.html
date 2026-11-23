@@ -22,6 +22,7 @@
 </section>
 <section class="wrap section" id="model">
 <h2>三种资源承诺</h2>
+<p>Speed、Dashcam 和 Music Player 的卡片右侧标出各自的级别。Dashcam 以 25 FPS 为目标模拟车道动画。</p>
 <div class="grid">
 <article><p class="eyebrow">TIER 1</p><h3>厂商预留</h3><p>速度表和系统定时服务使用固定 CPU 时间槽。即使桌面任务忙等，关键任务仍按槽表获得执行机会。</p></article>
 <article><p class="eyebrow">TIER 2</p><h3>用户指定</h3><p>行车记录仪声明最低需求。用户同意且容量足够才启动，内核按周期兑现已准入的最低配额。</p></article>
@@ -29,11 +30,10 @@
 </div>
 </section>
 <section class="wrap section" id="editions">
-<h2>桌面发行版</h2><p>main 当前默认运行 LVGL 桌面。两个使用 WebKit 的发行版均在开发中，目标是在来宾系统内完成网页排版和绘制。</p>
+<h2>桌面发行版</h2><p>默认构建为轻量 LVGL 桌面。Quota OS LVGL+WebKit 在此基础上增加可选的来宾运行时，由 WebKit 提供界面、Node.js 提供后台。该运行时仍在开发中。</p>
 <div class="compare-scroll" tabindex="0" aria-label="桌面发行版"><table class="compare-table"><thead><tr><th scope="col">发行版</th><th scope="col">一级</th><th scope="col">二级</th><th scope="col">三级</th></tr></thead>
 <tbody><tr><th scope="row">Quota OS LVGL</th><td>LVGL</td><td>LVGL</td><td>LVGL</td></tr>
-<tr><th scope="row">Quota OS WebKit</th><td>WebKit</td><td>WebKit</td><td>WebKit</td></tr>
-<tr><th scope="row">Quota OS LVGL+WebKit</th><td>LVGL</td><td>LVGL</td><td>WebKit</td></tr></tbody></table></div>
+<tr><th scope="row">Quota OS LVGL+WebKit</th><td>LVGL</td><td>LVGL</td><td>LVGL 或 WebKit + Node.js</td></tr></tbody></table></div>
 <p>Quota OS LVGL+WebKit 的验收场景是在同一桌面上运行三个应用：一级速度表每 10 ms 提交一帧；二级行车记录仪获准后拿足预留 CPU 时间，每 40 ms 提交一帧；三级网页同时触发 JavaScript 垃圾回收。三者在同一镜像中运行时的配额和帧间隔仍待验证。</p>
 </section>
 <section class="wrap section" id="compare">

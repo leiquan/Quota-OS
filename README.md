@@ -8,15 +8,14 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 
 ## Desktop editions / 桌面发行版
 
-The default build on main runs the LVGL desktop. Both WebKit editions are under development. In those editions, WebKit must lay out and draw pages inside the guest.
+The default LVGL build runs the lightweight desktop. Quota OS LVGL+WebKit adds an optional in-guest runtime with WebKit for the interface and Node.js for the backend. The runtime is under development.
 
-main 当前默认运行 LVGL 桌面。两个使用 WebKit 的发行版均在开发中，目标是在来宾系统内完成网页排版和绘制。
+默认构建为轻量 LVGL 桌面。Quota OS LVGL+WebKit 在此基础上增加可选的来宾运行时，由 WebKit 提供界面、Node.js 提供后台。该运行时仍在开发中。
 
 | Edition / 发行版 | Tier 1 / 一级 | Tier 2 / 二级 | Tier 3 / 三级 |
 |---|---|---|---|
 | Quota OS LVGL | LVGL | LVGL | LVGL |
-| Quota OS WebKit | WebKit | WebKit | WebKit |
-| Quota OS LVGL+WebKit | LVGL | LVGL | WebKit |
+| Quota OS LVGL+WebKit | LVGL | LVGL | LVGL or WebKit + Node.js |
 
 The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. Speed must submit a frame every 10 ms. Once admitted, Dashcam must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.
 
@@ -38,7 +37,7 @@ The launcher boots the included ARM64 image and creates a persistent Notes disk 
 
 ## Vehicle instruments
 
-Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Dashcam draws simulated lane markings at a target of 25 frames per second in Tier 2. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. Speed and Dashcam FPS use timestamps from completed framebuffer commits. System → Test also reports their longest observed gaps; the intentional camera pause starts a new interval on resume. The labels and history are sampled by the desktop; Speed continues to commit while that desktop is stalled.
+Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Dashcam animates simulated lane markings at a target of 25 frames per second in Tier 2, updating only changing pixels after initialization. The Speed, Dashcam and Music Player cards display their tier at the right. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. Speed and Dashcam FPS use timestamps from completed framebuffer commits. System → Test also reports their longest observed gaps; the intentional camera pause starts a new interval on resume. The labels and history are sampled by the desktop; Speed continues to commit while that desktop is stalled.
 
 ![Quota OS desktop showing the Speed gauge, simulated dashcam lanes and music frame history](docs/screenshots/vehicle-instruments.png)
 

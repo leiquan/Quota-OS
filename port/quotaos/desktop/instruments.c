@@ -9,7 +9,7 @@ static lv_obj_t *app_cards[3];
 static lv_obj_t *music_history[8];
 static lv_obj_t *app_rate[3], *app_status[3];
 
-static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail, const char *symbol, uint32_t accent)
+static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail, const char *tier, const char *symbol, uint32_t accent)
 {
     lv_obj_t *card = lv_obj_create(screen);
     lv_obj_set_pos(card, 860, y);
@@ -25,18 +25,20 @@ static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char
     lv_obj_t *heading = desk_label(card, 30, 16, title, 0xf5f8fd);
     lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
     desk_label(card, 30, 49, detail, 0xb8cadd);
-    lv_obj_t *icon = desk_label(card, 332, 20, symbol, accent);
+    lv_obj_t *icon = desk_label(card, 332, 18, symbol, accent);
     lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
+    lv_obj_t *tier_label = desk_label(card, 0, 0, tier, accent);
+    lv_obj_align(tier_label, LV_ALIGN_TOP_RIGHT, -22, 49);
     lv_obj_set_style_outline_color(card, lv_color_hex(0x8bf2cb), 0);
     return card;
 }
 
 void instruments_create(lv_obj_t *screen, int apps)
 {
-    app_cards[0] = app_card(screen, 116, app_speed, "Tier 1  /  Simulated km/h", LV_SYMBOL_CHARGE, 0x69dfbd);
+    app_cards[0] = app_card(screen, 116, app_speed, "Simulated speed (km/h)", "Tier 1", LV_SYMBOL_CHARGE, 0x69dfbd);
     app_cards[1] = app_card(screen, 281, app_video, apps == 2 ?
-             "Tier 2  /  Simulated road  /  25 fps" : "Optional  /  Not running", LV_SYMBOL_VIDEO, 0x8fcdf5);
-    app_cards[2] = app_card(screen, 446, app_music, "Tier 3  /  Simulated playback", LV_SYMBOL_AUDIO, 0xd8afff);
+             "Simulated road  /  25 fps" : "Optional  /  Not running", "Tier 2", LV_SYMBOL_VIDEO, 0x8fcdf5);
+    app_cards[2] = app_card(screen, 446, app_music, "Entertainment  /  Simulated playback", "Tier 3", LV_SYMBOL_AUDIO, 0xd8afff);
     lv_obj_t *scale = lv_scale_create(app_cards[0]);
     lv_scale_set_mode(scale, LV_SCALE_MODE_HORIZONTAL_TOP);
     lv_scale_set_label_show(scale, false);
