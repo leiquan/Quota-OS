@@ -1,8 +1,9 @@
 # 一条命令：make
-# 产物：build/quotaos.elf / build/quotaos.bin，并复制到 prebuilt/
+# 产物：build/quotaos.elf / build/quotaos.bin（串口镜像）
 # 构建可逐字节复现：逐个文件编译到 build/，不留临时文件名、构建路径和 build-id。
 CROSS ?= aarch64-linux-gnu-
 CC := $(CROSS)gcc
+RUNTIME_LIB ?= -lgcc
 
 CFLAGS := -std=gnu11 -Wall -Wextra -Werror -O2 \
 	-ffreestanding -fno-stack-protector -fno-builtin -fno-pic -fno-pie \
@@ -53,7 +54,7 @@ build/%.o: %.S Makefile
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 build/quotaos.elf: $(OBJS) boot/linker.ld
-	$(CC) $(CFLAGS) $(LDFLAGS) -T boot/linker.ld -o $@ $(OBJS) -lgcc
+	$(CC) $(CFLAGS) $(LDFLAGS) -T boot/linker.ld -o $@ $(OBJS) $(RUNTIME_LIB)
 
 build/quotaos.bin: build/quotaos.elf
 	$(CROSS)objcopy -O binary $< $@
