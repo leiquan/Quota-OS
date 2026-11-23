@@ -62,6 +62,9 @@ def boot():
                     click(195,323)
                 if number in (2,3):
                     click(415,508)
+                if number == 5:
+                    wait(r"\[quota-test\] 5 Running", offset)
+                    q.call("screendump", {"filename": str((args.out / "countdown.ppm").resolve())})
                 pattern = rf"\[quota-test\] {number} (PASS|FAIL)"
                 if number > 1:
                     pattern += r"  /  (\d+) periods"

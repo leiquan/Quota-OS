@@ -426,7 +426,19 @@ static struct {
     struct task *task;
     int64_t process;
 } trial;
-static lv_obj_t *approve, *cancel_trial;
+static lv_obj_t *approve, *cancel_trial, *busy_loop_label;
+static const char busy_loop_title[] = "T3  Contain busy loop";
+static unsigned busy_loop_seconds;
+
+static void update_busy_loop_countdown(unsigned seconds)
+{
+    if (seconds == busy_loop_seconds) return;
+    busy_loop_seconds = seconds;
+    if (seconds)
+        lv_label_set_text_fmt(busy_loop_label, "T3  Busy loop  %u s", seconds);
+    else
+        lv_label_set_text(busy_loop_label, busy_loop_title);
+}
 
 static void trial_result(int number, const char *result)
 {
@@ -492,6 +504,7 @@ static void begin_trial(int number, int approved)
     }
     trial.active = number;
     trial.period = sched_period_now();
+    if (number == 5) update_busy_loop_countdown(trial_periods(number) * PERIOD_US / 1000000);
     sched_read_system_info(&trial.before);
     app_display_read(&trial.display);
     char status[64];
@@ -503,7 +516,14 @@ static void poll_trial(void)
 {
     int number = trial.active;
     uint64_t elapsed = sched_period_now() - trial.period;
-    if (!number || elapsed < trial_periods(number)) return;
+    if (!number) return;
+    unsigned duration = trial_periods(number);
+    if (elapsed < duration) {
+        if (number == 5)
+            update_busy_loop_countdown(((duration - (unsigned)elapsed) * PERIOD_US + 999999) / 1000000);
+        return;
+    }
+    if (number == 5) update_busy_loop_countdown(0);
     struct sched_system_info sys;
     struct app_display_stats display;
     sched_read_system_info(&sys);
@@ -1464,9 +1484,12 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     if (apps) {
         static const char *const scenarios[] = {
             "T2  Reject over-quota", "T2  Admit periodic job", "T2  Cap busy task",
-            "T3  Run yielding task", "T3  Contain busy loop"
+            "T3  Run yielding task"
         };
-        for (int i = 0; i < 5; i++) add_row(menu_list, 12 + i * 54, 0xe0edff, 0xc5d9fa, scenarios[i], 220+i);
+        for (unsigned i = 0; i < sizeof scenarios / sizeof scenarios[0]; i++)
+            add_row(menu_list, 12 + (int)i * 54, 0xe0edff, 0xc5d9fa, scenarios[i], 220 + (int)i);
+        lv_obj_t *busy_loop = add_row(menu_list, 228, 0xe0edff, 0xc5d9fa, busy_loop_title, 224);
+        busy_loop_label = lv_obj_get_child(busy_loop, 0);
     } else {
     load9 = add_row(menu_list, 20, 0xe0edff, 0xc5d9fa, "Scheduler stress", 9);
     add_row(menu_list, 74, 0xffffff, 0xdbe3f0, "Stop stress", 103);
