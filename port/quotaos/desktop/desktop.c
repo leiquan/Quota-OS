@@ -1867,13 +1867,13 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         if (panel_at && panel_now - panel_at < 100000)
             continue;
         panel_at = panel_now;
+        if (clock_label)
+            refresh_clock();
         static uint64_t tasks_at;
         if (panel_now - tasks_at >= 500000) {
             refresh_tasks();
             refresh_system_info();
             refresh_system_events();
-            if (clock_label)
-                refresh_clock();
             if (apps)
                 instruments_refresh();
             tasks_at = panel_now;
