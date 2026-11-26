@@ -163,6 +163,7 @@ header.bar { min-height:72px; }
 .section h2 { margin-bottom:18px; }
 .section > p { max-width:82ch; }
 .edition-pair,.evidence-grid,.dev-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:clamp(18px,3vw,36px); align-items:start; margin:20px 0; }
+.evidence-grid { align-items:stretch; }
 .edition-pair > div,.evidence-grid figure { background:white; border:1px solid var(--line); border-radius:14px; padding:clamp(10px,1.4vw,20px); }
 .edition-pair p { margin:12px 0 0; }
 .evidence-grid figure:last-child:nth-child(odd) { grid-column:1/-1; display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); align-items:center; gap:24px; }

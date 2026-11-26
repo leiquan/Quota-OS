@@ -1,4 +1,5 @@
 #include "wap_app.h"
+#define WAP_DEMO_NAME "Web Node Demo"
 #include "shell.h"
 #include "guest_page_services.h"
 /*
@@ -1111,7 +1112,7 @@ static const struct app_entry {
     uint32_t color;
     int action;
 } app_entries[] = {
-    [APP_DEMO] = {"Demo", LV_SYMBOL_FILE, 0x326e91, 241},
+    [APP_DEMO] = {WAP_DEMO_NAME, LV_SYMBOL_FILE, 0x326e91, 241},
     [APP_ZIP] = {"ZIP", LV_SYMBOL_SAVE, 0x45698b, 238},
     [APP_TEST] = {"Test", LV_SYMBOL_OK, 0x426b8f, 204},
     [APP_SYSTEM] = {app_monitor, LV_SYMBOL_SETTINGS, 0x5368af, 202},
@@ -1813,7 +1814,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     select_monitor_tab(SYSTEM_TASK);
 
     demo_window = desktop_window(screen, 150, 130, GUEST_PREVIEW_WIDTH + 24,
-                                 GUEST_PREVIEW_HEIGHT + 96, "Demo");
+                                 GUEST_PREVIEW_HEIGHT + 96, WAP_DEMO_NAME);
     demo_output = desk_label(demo_window, 12, GUEST_PREVIEW_HEIGHT + 52, "", 0x243650);
     demo_status = desk_label(demo_window, 12, 48, "", 0x536782);
     demo_image = lv_image_create(demo_window);
@@ -1831,7 +1832,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     demo_frame.data_size = GUEST_PREVIEW_HEIGHT * GUEST_PREVIEW_WIDTH * 4;
     monitor_visible(demo_window, 0);
     page_zip = desktop_window(screen, 216, 170, 560, 220, "ZIP");
-    desk_label(page_zip, 24, 68, "Export the Demo application package", 0x536782);
+    desk_label(page_zip, 24, 68, "Export the " WAP_DEMO_NAME " application package", 0x536782);
     zip_status = desk_label(page_zip, 24, 160, "", 0x64748b);
     lv_obj_t *zip_title, *zip_meta;
     lv_obj_t *export_row = files_row(page_zip, "Export demo.wap", 239, &zip_title, &zip_meta);
