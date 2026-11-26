@@ -2,6 +2,12 @@
 set -eu
 cd "$(dirname "$0")/.."
 args=()
+if [[ $# == 1 && $1 == --quiet ]]; then
+    args+=(-device "loader,addr=$(cat build/cli/quiet.addr),data=1,data-len=1")
+elif [[ $# != 0 ]]; then
+    echo "Usage: bash tools/run-cli.sh [--quiet]" >&2
+    exit 2
+fi
 if [[ ${CLI_TEST:-1} == 1 ]]; then
     image=build/cli/test.bin
     size=$(wc -c < "$image")

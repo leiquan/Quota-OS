@@ -23,7 +23,7 @@ At the prompt, use `help`, `mem`, `tasks`, `quota` or `events`. Use `write TEXT`
 
 `run Test` starts the external EL0 sample in Tier 3. `run Test t2` requests a 400 µs minimum per 10 ms period and prints observed grants and usage in counter ticks. Edit `cli/test.c` and run `make`. The cross compiler builds ARM64 machine code for QEMU, with no application packaging step. Test executes only when requested.
 
-For detailed serial boot diagnostics, build with `CLI_VERBOSE_BOOT=1 make`. Use `make` for the standard welcome screen.
+Kernel boot diagnostics are enabled by default. Run `bash tools/run-cli.sh --quiet` for the concise welcome screen on the same image. Boot errors remain visible.
 
 ## Tested memory configurations
 
