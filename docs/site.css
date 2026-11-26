@@ -72,7 +72,7 @@ figcaption,.edition-pair p { font-size: .94rem; line-height: 1.6; padding: 3px 4
 .controls output,.platform dt { color: var(--muted); font-size: .82rem; }
 .platform-title,.platform { grid-column: 1/-1; }
 .platform-title { margin: 36px 0 12px; font-size: 1rem; }
-.platform { grid-template-columns: 1fr 1.5fr .75fr 2fr; border-top: 1px solid var(--line); padding: 16px clamp(12px, 2vw, 24px); background: var(--wash); }
+.platform { grid-template-columns: .8fr 1.5fr .65fr 2fr .85fr; border-top: 1px solid var(--line); padding: 16px clamp(12px, 2vw, 24px); background: var(--wash); }
 .platform dd { margin: 4px 0 0; font-size: .93rem; }
 .platform div:first-child dd { font-weight: 660; }
 .compare-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
@@ -88,7 +88,8 @@ pre { padding: 18px; overflow-x: auto; border-radius: 8px; background: #243e59; 
 footer.bar { border-bottom: 0; border-top: 1px solid var(--line); }
 .hero > .showcase { min-width: 0; box-shadow: 0 14px 40px rgb(36 62 89 / 8%); }
 .platform + .platform { background: #f4f8f6; }
-.platform:last-child { border-radius: 0 0 12px 12px; }
+.platform:has(+ .platform-note) { border-radius: 0 0 12px 12px; }
+.platform-note { grid-column: 1/-1; margin: 10px 0 0; font-size: .85rem; }
 .platform dd, .compare-table td { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .section > .compare-scroll + h3, .editions-grid + h3 { margin-top: 32px; }
 .editions-grid { margin-bottom: 28px; }
@@ -105,6 +106,7 @@ a, button, .indicator::before { transition: background-color 160ms ease, color 1
 @media (max-width: 800px) {
   .wrap { width: calc(100% - 32px); }
   .bar { flex-wrap: wrap; }
+  .platform { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .hero,.evidence-grid,.edition-pair,.dev-grid { grid-template-columns: minmax(0,1fr); }
   .hero .showcase { margin-top: 28px; }
   .evidence-grid figure:last-child:nth-child(odd) { display: block; }
