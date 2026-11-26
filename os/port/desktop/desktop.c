@@ -234,6 +234,7 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
     }
     take_dt(&click_stamp, click_dt, &n_click, "click");
     take_dt(&key_stamp, key_dt, &n_key, "key");
+    if (mode && lv_display_flush_is_last(disp)) instruments_status_flushed();
     lv_display_flush_ready(disp);
 }
 
@@ -2176,6 +2177,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         panel_at = panel_now;
         if (clock_label)
             refresh_clock();
+        if (apps) instruments_status_refresh();
         static uint64_t tasks_at;
         if (panel_now - tasks_at >= 500000) {
             refresh_tasks();

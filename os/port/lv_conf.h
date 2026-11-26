@@ -616,7 +616,7 @@ void lvgl_port_assert(void);
 
 /** Pixel perfect monospaced fonts */
 #define LV_FONT_UNSCII_8  0
-#define LV_FONT_UNSCII_16 0
+#define LV_FONT_UNSCII_16 1
 
 /** Optionally declare custom fonts here.
  *
