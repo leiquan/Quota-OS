@@ -24,9 +24,26 @@ static unsigned submitted_once, inflight;
 static uint16_t completed;
 static int slots[DOCUMENT_COUNT];
 #define slot (slots[document])
-enum phase { OFFLINE, IDENTIFY, READ_A, READ_B, READY, WRITE, FLUSH, VERIFY, FAILED };
+enum phase { OFFLINE, IDENTIFY, READ_A, READ_B, READY, WRITE, FLUSH, VERIFY, SCRUB, FAILED };
 static enum phase phase;
 static int verify_result;
+static unsigned scrub_enabled, scrub_sector, scrub_submitted, scrub_completed;
+
+int note_disk_scrub_start(void)
+{
+    if (phase != READY || inflight || scrub_enabled || sched_current()->tier != TIER3)
+        return -1;
+    scrub_enabled = 1;
+    scrub_sector = scrub_submitted = scrub_completed = 0;
+    return 0;
+}
+
+unsigned note_disk_scrub_stop(unsigned *completed_requests)
+{
+    scrub_enabled = 0;
+    *completed_requests = scrub_completed;
+    return scrub_submitted;
+}
 static void address(uint32_t offset, uintptr_t addr)
 {
     mmio_wr(base + offset, (uint32_t)addr);
@@ -105,6 +122,7 @@ static void submit(void)
     else if (document == HELLO_SLOT) header.sector += 16;
     else header.sector += document * 2;
     if (phase == IDENTIFY || flush) header.sector = 0;
+    if (phase == SCRUB) header.sector = scrub_sector;
     status = 255;
     desc[0] = (struct descriptor){(uintptr_t)&header, sizeof header, 1, flush ? 2 : 1};
     desc[1] = (struct descriptor){phase == IDENTIFY ? (uintptr_t)serial : (uintptr_t)&transfer,
@@ -121,7 +139,9 @@ static void submit(void)
 
 void note_disk_poll(void)
 {
-    if (phase == OFFLINE || phase == READY || phase == FAILED) return;
+    if (sched_current()->tier != TIER3 || phase == OFFLINE || phase == FAILED ||
+        (phase == READY && !scrub_enabled))
+        return;
     if (inflight) {
         if (used.idx == completed) {
             if (now_us()-submitted > 30000000) phase = FAILED;
@@ -155,6 +175,10 @@ void note_disk_poll(void)
                 document = 0;
                 printf("[files] mounted bytes=%u checksum=%u\n", saved.length, saved.checksum);
             }
+        } else if (phase == SCRUB) {
+            scrub_completed++;
+            scrub_sector = (scrub_sector + 1) % 4;
+            phase = READY;
         } else if (phase == VERIFY) {
             verify_result = transfer.magic == MAGIC && transfer.generation == saved.generation &&
                 transfer.length == saved.length && transfer.checksum == saved.checksum &&
@@ -173,6 +197,11 @@ void note_disk_poll(void)
     if (submitted_once && period == last_period) return;
     last_period = period;
     submitted_once = 1;
+    if (phase == READY) {
+        /* The Notes sectors are read-only here. Each request scans one sector. */
+        phase = SCRUB;
+        scrub_submitted++;
+    }
     submit();
 }
 
@@ -275,7 +304,7 @@ int note_disk_verify_result(void) { return phase == FAILED ? -1 : verify_result;
 const char *note_disk_text(void) { return documents[0].magic ? documents[0].text : 0; }
 const char *note_disk_status(void)
 {
-    if (phase == READY) return documents[0].magic || documents[1].magic || documents[2].magic || documents[PACKAGE_EXT].magic ? "Saved" : "Ready";
+    if (phase == READY || phase == SCRUB) return documents[0].magic || documents[1].magic || documents[2].magic || documents[PACKAGE_EXT].magic ? "Saved" : "Ready";
     if (phase == WRITE || phase == FLUSH) return "Saving...";
     if (phase == FAILED) return "Disk error";
     if (phase == VERIFY) return "Verifying...";
@@ -286,7 +315,7 @@ const char *note_disk_status(void)
 int note_disk_power_ready(void)
 {
     if (phase == FAILED) return -1;
-    return phase == READY || phase == OFFLINE;
+    return (phase == READY && !scrub_enabled) || phase == OFFLINE;
 }
 
 const char *note_disk_hello(void) { return documents[HELLO_SLOT].magic ? documents[HELLO_SLOT].text : NULL; }

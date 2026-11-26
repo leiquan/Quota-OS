@@ -458,8 +458,9 @@ static struct {
     uint64_t period;
     struct sched_system_info before;
     struct app_display_stats display;
-    struct running_app *reservation;
+    struct running_app *reservation, *pressure_memory;
     struct task *task;
+    unsigned pressure_kib;
     int64_t process;
 } trial;
 static lv_obj_t *approve, *cancel_trial, *busy_loop_label;
@@ -547,18 +548,47 @@ static void begin_trial(int number, int approved)
         trial.reservation->task = trial.task;
         task_start(trial.task);
     } else {
-        trial.process = proc_spawn("quota-test", number == 5 ? 15 : 16, 0,0,0,0,0,0,1,1);
+        trial.process = proc_spawn("quota-test", number == 5 ? 17 : 16, 0,0,0,0,0,0,1,1);
         if (trial.process < 0) { trial_result(number, "Unable to launch EL0 process."); return; }
         trial.task = sched_find("quota-test");
+        if (number == 5 && note_disk_scrub_start() == 0) {
+            uint32_t cpu_available;
+            uint64_t memory_available;
+            resource_app_available(&cpu_available, &memory_available);
+            if (memory_available && memory_available <= UINT32_MAX) {
+                unsigned kib = (unsigned)memory_available;
+                const struct app_manifest pressure = {"quota-memory", "Capacity pressure", kib, kib, 0, 0};
+                trial.pressure_memory = resource_commit(&pressure);
+                if (trial.pressure_memory) trial.pressure_kib = kib;
+            }
+            if (!trial.pressure_memory) {
+                unsigned completed_requests;
+                note_disk_scrub_stop(&completed_requests);
+                proc_kill(trial.process);
+                trial_result(number, "FAIL  Unable to reserve remaining application memory.");
+                return;
+            }
+        }
     }
     trial.active = number;
     trial.period = sched_period_now();
     if (number == 5) update_busy_loop_countdown(trial_periods(number) * PERIOD_US / 1000000);
     sched_read_system_info(&trial.before);
     app_display_read(&trial.display);
+    if (trial.pressure_memory) app_frame_trace_start();
     char status[64];
     lv_snprintf(status, sizeof status, "Running  /  sampling %u periods", trial_periods(number));
     trial_result(number, status);
+}
+
+enum { PRESSURE_WORKING_SET_BYTES = 64 * 1024 };
+static volatile uint64_t pressure_words[PRESSURE_WORKING_SET_BYTES / sizeof(uint64_t)];
+
+static void touch_pressure_memory(void)
+{
+    if (!trial.pressure_memory) return;
+    for (unsigned i = 0; i < sizeof pressure_words / sizeof pressure_words[0]; i++)
+        pressure_words[i]++;
 }
 
 static void poll_trial(void)
@@ -584,6 +614,21 @@ static void poll_trial(void)
     unsigned long shortfalls = sys.tier2_short - trial.before.tier2_short;
     uint64_t peak = trial.task ? trial.task->used_max_all : 0;
     int ok = peak && frames + 1 >= elapsed && !misses && !crossings && !shortfalls && !over;
+    int combined = trial.pressure_memory != NULL;
+    if (combined) {
+        unsigned completed_requests;
+        unsigned submitted_requests = note_disk_scrub_stop(&completed_requests);
+        uint32_t cpu_available;
+        uint64_t memory_available;
+        resource_app_available(&cpu_available, &memory_available);
+        printf("[combined-pressure] periods=%lu cpu_peak_us=%lu memory_reserved_kib=%u memory_available_kib=%lu working_set_kib=72 disk_submitted=%u disk_completed=%u\n",
+               (unsigned long)elapsed, (unsigned long)ticks_to_us(peak), trial.pressure_kib,
+               (unsigned long)memory_available, submitted_requests, completed_requests);
+        ok = ok && completed_requests && submitted_requests <= elapsed + 1 &&
+             submitted_requests - completed_requests <= 1;
+        resource_release(trial.pressure_memory);
+        trial.pressure_memory = NULL;
+    }
     if (number < 4) {
         if (number == 2) ok = ok && trial.task->jobs && !trial.task->misses;
         ok = ok && peak <= us_to_ticks(number == 3 ? 800 : 400);
@@ -593,13 +638,31 @@ static void poll_trial(void)
         ok = ok && proc_alive(trial.process);
         if (proc_kill(trial.process)) ok = 0;
     }
-    char result[300];
+    char camera[64];
+    int camera_measured = display.video_running && trial.display.video_running &&
+                          display.video_epoch == trial.display.video_epoch;
+    unsigned speed_late = display.speed_late_gaps - trial.display.speed_late_gaps;
+    unsigned camera_late = display.video_late_gaps - trial.display.video_late_gaps;
+    if (camera_measured) {
+        unsigned camera_frames = display.frames[1] - trial.display.frames[1];
+        unsigned camera_missed = display.video_missed - trial.display.video_missed;
+        ok = ok && camera_frames && !camera_missed;
+        lv_snprintf(camera, sizeof camera, "Flight Camera %u commits, %u missed",
+                    camera_frames, camera_missed);
+    } else {
+        lv_snprintf(camera, sizeof camera, "Flight Camera not measured");
+    }
+    const char *timing = speed_late || misses || (camera_measured && camera_late) ||
+                         (camera_measured && display.video_missed != trial.display.video_missed)
+        ? "FAIL" : camera_measured ? "PASS" : "Camera not measured";
+    char result[436];
     lv_snprintf(result, sizeof result,
-        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu\nMusic Player %u commits",
+        "%s  /  %lu periods\nPeak CPU %lu us per period\nSpeed %u commits, %u misses\n%s\nPeak gap: Speed %u us, Dashcam %u us\nTier 2 shortfalls %lu, overruns %lu\nTier 3 pool crossings %lu\nMusic Player %u commits\nStrict frame timing: %s\nLong gaps: GPS Speed %u, Flight Camera %u",
         ok ? "PASS" : "FAIL", (unsigned long)elapsed, (unsigned long)ticks_to_us(peak),
-        frames, misses, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings,
-        display.frames[2] - trial.display.frames[2]);
+        frames, misses, camera, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings,
+        display.frames[2] - trial.display.frames[2], timing, speed_late, camera_late);
     trial.active = 0;
+    if (combined) app_frame_trace_dump();
     trial_result(number, result);
 }
 
@@ -687,6 +750,48 @@ static void select_package_view(lv_obj_t *view)
     selected_package_view = view;
     if (view)
         lv_obj_add_state(view, LV_STATE_CHECKED);
+}
+
+static void power_dismiss(lv_event_t *e)
+{
+    (void)e;
+    monitor_visible(power_menu, 0);
+    monitor_visible(power_backdrop, 0);
+}
+
+static void power_click(lv_event_t *e)
+{
+    if (requested_power != POWER_NONE) return;
+    enum power_action action = (uintptr_t)lv_event_get_user_data(e);
+    if (action != POWER_NONE) {
+        requested_power = action;
+        lv_obj_set_height(power_menu, 124);
+        lv_label_set_text(power_status, "Waiting for disk...");
+        return;
+    }
+    lv_obj_set_height(power_menu, 86);
+    lv_label_set_text(power_status, "");
+    monitor_visible(power_backdrop, 1);
+    monitor_visible(power_menu, 1);
+    lv_obj_move_foreground(power_backdrop);
+    lv_obj_move_foreground(power_menu);
+}
+
+static void power_poll(void)
+{
+    if (requested_power == POWER_NONE) return;
+    int ready = note_disk_power_ready();
+    if (!ready) return;
+    enum power_action action = requested_power;
+    requested_power = POWER_NONE;
+    if (ready < 0) {
+        lv_label_set_text(power_status, "Disk error. Power action canceled.");
+        return;
+    }
+    printf("[power] %s after disk ready\n", action == POWER_RESET ? "reset" : "off");
+    register uint64_t function asm("x0") = action == POWER_RESET ? 0x84000009u : 0x84000008u;
+    asm volatile("dsb sy; hvc #0" : "+r"(function) :: "memory");
+    lv_label_set_text(power_status, "Power action unavailable.");
 }
 
 static void on_group(lv_event_t *e)
@@ -1235,7 +1340,8 @@ static void refresh_system_events(void)
 {
     static const char *const names[] = {
         "Tier 1 deadline misses", "Tier 2 quota shortfalls", "Tier 2 quota overruns",
-        "Tier 3 pool overruns", "Kernel budget overruns"
+        "Tier 3 pool overruns", "Kernel budget overruns", "GPS Speed frame gap > 10 ms",
+        "Flight Camera missed frames", "Flight Camera frame gap > 40 ms"
     };
     enum { EVENT_ROWS = 8 };
     static struct {
@@ -1247,8 +1353,11 @@ static void refresh_system_events(void)
     static int dirty;
     struct sched_system_info info;
     sched_read_system_info(&info);
+    struct app_display_stats display;
+    app_display_read(&display);
     const uint64_t totals[] = {info.tier1_misses, info.tier2_short, info.tier2_over,
-                               info.tier3_over, info.kernel_overruns};
+                               info.tier3_over, info.kernel_overruns, display.speed_late_gaps,
+                               display.video_missed, display.video_late_gaps};
     for (unsigned i = 0; i < sizeof totals / sizeof totals[0]; i++) {
         if (totals[i] > previous[i]) {
             rows[next].kind = i;
@@ -1533,31 +1642,19 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_indev_set_read_cb(keypad, keypad_read);
 
     lv_obj_t *screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x142a49), 0);
-    lv_obj_set_style_bg_grad_color(screen, lv_color_hex(0x7893a4), 0);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x182b57), 0);
+    lv_obj_set_style_bg_grad_color(screen, lv_color_hex(0x6c4d92), 0);
     lv_obj_set_style_bg_grad_dir(screen, LV_GRAD_DIR_VER, 0);
     lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* Static horizon and cockpit sill keep wallpaper work off the frame timers. */
-    lv_obj_t *terrain = lv_obj_create(screen);
-    lv_obj_set_pos(terrain, 0, h * 51 / 100);
-    lv_obj_set_size(terrain, w, h / 2);
-    lv_obj_set_style_radius(terrain, 0, 0);
-    lv_obj_set_style_border_width(terrain, 0, 0);
-    lv_obj_set_style_bg_color(terrain, lv_color_hex(0x607c82), 0);
-    lv_obj_set_style_bg_grad_color(terrain, lv_color_hex(0x233b48), 0);
-    lv_obj_set_style_bg_grad_dir(terrain, LV_GRAD_DIR_VER, 0);
-    lv_obj_remove_flag(terrain, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *sill = lv_obj_create(screen);
-    lv_obj_set_pos(sill, -(int)w / 5, h * 81 / 100);
-    lv_obj_set_size(sill, w * 7 / 5, h / 2);
-    lv_obj_set_style_radius(sill, h / 5, 0);
-    lv_obj_set_style_border_width(sill, 2, 0);
-    lv_obj_set_style_border_color(sill, lv_color_hex(0x526779), 0);
-    lv_obj_set_style_bg_color(sill, lv_color_hex(0x121e30), 0);
-    lv_obj_remove_flag(sill, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *hill = lv_obj_create(screen);
+        lv_obj_set_size(hill, 1480, 640);
+        lv_obj_set_pos(hill, -300 + i * 330, 300 + i * 108);
+        lv_obj_set_style_radius(hill, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(hill, 0, 0);
+        lv_obj_set_style_bg_color(hill, lv_color_hex(i == 0 ? 0x345388 : i == 1 ? 0x555eaa : 0x9b76b0), 0);
+        lv_obj_remove_flag(hill, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    }
     lv_obj_t *top = lv_obj_create(screen);
     lv_obj_set_pos(top, 0, 0);
     lv_obj_set_size(top, (int)w, 40);
@@ -1763,7 +1860,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_border_width(task_body, 0, 0);
     lv_obj_set_style_pad_all(task_body, 0, 0);
     lv_obj_remove_flag(task_body, LV_OBJ_FLAG_SCROLLABLE);
-    static const char *const tiers[] = {"Tier 1 / Protected", "Tier 2", "Tier 3"};
+    static const char *const tiers[] = {"Tier 1", "Tier 2", "Tier 3"};
     static const char *const captions[] = {"Vendor reserved", "User selected", "Shared resources"};
     static const uint32_t accent[] = {0x23785c, 0x395cc0, 0x7851a8};
     for (int i = 0; i < 3; i++) {
@@ -2010,6 +2107,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
      * and the scheduler still charges all rendering/input to Tier 3. */
     for (;;) {
         note_disk_poll();
+        touch_pressure_memory();
         power_poll();
         const char *console = proc_console_text();
         if (console) {
@@ -2077,13 +2175,13 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         if (panel_at && panel_now - panel_at < 100000)
             continue;
         panel_at = panel_now;
+        if (clock_label)
+            refresh_clock();
         static uint64_t tasks_at;
         if (panel_now - tasks_at >= 500000) {
             refresh_tasks();
             refresh_system_info();
             refresh_system_events();
-            if (clock_label)
-                refresh_clock();
             if (apps)
                 instruments_refresh();
             tasks_at = panel_now;

@@ -25,6 +25,8 @@ _start:
     b.eq    cpu_loop
     cmp     x19, #16
     b.eq    cooperative
+    cmp     x19, #17
+    b.eq    memory_loop
     cmp     x19, #9
     b.eq    do_exec
     cmp     x19, #14
@@ -35,6 +37,17 @@ _start:
 
 cpu_loop:
     b       cpu_loop
+// Touch both writable pages. This loop does not use the user stack.
+memory_loop:
+    mov     x10, #0x1000
+    mov     x9, #1024
+1:
+    ldr     x11, [x10]
+    add     x11, x11, #1
+    str     x11, [x10], #8
+    subs    x9, x9, #1
+    b.ne    1b
+    b       memory_loop
 cooperative:
     mov     x8, #0
     svc     #0

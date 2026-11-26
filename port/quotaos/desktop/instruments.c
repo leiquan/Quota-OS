@@ -98,7 +98,7 @@ void instruments_refresh(void)
             const char *status = frames ? "Updating" : "No new frames";
             char deadlines[48];
             if (i == 0) {
-                lv_snprintf(deadlines, sizeof deadlines, "%u deadline misses", (unsigned)current.speed_misses);
+                lv_snprintf(deadlines, sizeof deadlines, "Missed %u  /  Long gaps %u", current.speed_misses, current.speed_late_gaps);
                 status = deadlines;
             }
             else if (i && !vehicle_app_running(i + 1))
@@ -107,6 +107,10 @@ void instruments_refresh(void)
                 status = "Not running";
             else if (i == 1 && current.video_paused)
                 status = "Test pause";
+            else if (i == 1) {
+                lv_snprintf(deadlines, sizeof deadlines, "Missed %u  /  Long gaps %u", current.video_missed, current.video_late_gaps);
+                status = deadlines;
+            }
             if (strcmp(status, lv_label_get_text(app_status[i])))
                 lv_label_set_text(app_status[i], status);
         }

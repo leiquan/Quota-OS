@@ -1535,7 +1535,7 @@ void job_body(uint64_t start)
         }
     }
     if (t == dashboard_app)
-        app_display_core_frame();
+        app_display_core_frame(t->release_ts);
     uint64_t end = start + t->work_t;
     while (ticks_now() < end)
         asm volatile("" ::: "memory");
@@ -1927,6 +1927,11 @@ void sched_total_misses(uint64_t *a, uint64_t *b)
 uint64_t sched_period_now(void)
 {
     return pk;
+}
+
+uint64_t sched_period_release(uint64_t period)
+{
+    return epoch + period * P;
 }
 
 /* now 在某个 Tier 1 保护区或槽内。 */
