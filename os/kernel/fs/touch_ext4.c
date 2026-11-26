@@ -96,6 +96,7 @@ int touch_ext4_shell_command(const char *command, char *reply, size_t capacity)
     else return 0;
 
     while (*arg == ' ') ++arg;
+    if (op != ROOT_LIST && *arg == '/') ++arg;
     char file[81];
     size_t length = 0;
     while (arg[length] && arg[length] != ' ' && length < sizeof file - 1)
@@ -108,9 +109,9 @@ int touch_ext4_shell_command(const char *command, char *reply, size_t capacity)
     while (value[bytes]) ++bytes;
 
     const char *result;
-    if ((op == ROOT_LIST && *arg) ||
+    if ((op == ROOT_LIST && *arg && strcmp(arg, "/")) ||
         (op != ROOT_LIST && (!length || (op == ROOT_SAVE ? !bytes : bytes != 0))))
-        result = op == ROOT_LIST ? "Usage: ls" : op == ROOT_READ ? "Usage: cat FILE" :
+        result = op == ROOT_LIST ? "Usage: ls [/]" : op == ROOT_READ ? "Usage: cat FILE" :
                  op == ROOT_SAVE ? "Usage: write FILE TEXT" : "Usage: rm FILE";
     else if (touch_ext4_busy())
         result = "ext4 disk busy. Try again after the current operation.";

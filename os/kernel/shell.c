@@ -1,6 +1,7 @@
 #include "auth.h"
 #include "quotaos.h"
 #include "shell.h"
+#include "wap_app.h"
 
 struct text { char *next; unsigned left; };
 static void append(struct text *t, const char *s)
@@ -31,17 +32,21 @@ enum shell_action shell_execute(const char *cmd, char *out, unsigned cap)
     if (!strcmp(cmd,"help")) {
         append(&t,"help pwd ls cat write version ps quota clear reboot poweroff\n");
         append(&t,"cc "); append(&t,name ? name : "hello.c"); append(&t," -o hello.cap\nrun hello.cap");
-    } else if (!strcmp(cmd,"pwd")) append(&t,"/Desktop");
+    } else if (!strcmp(cmd,"pwd")) append(&t,"/");
     else if (!strcmp(cmd,"version")) append(&t,QUOTAOS_VERSION);
-    else if (!strcmp(cmd,"ls")) {
+    else if (!strcmp(cmd,"ls") || !strcmp(cmd,"ls /")) {
         if (note_disk_text()) append(&t,"Note.txt  ");
         if (name) { append(&t,name); append(&t,"  "); }
         if (note_disk_hello()) append(&t,"hello.txt  ");
         unsigned bytes;
-        if (note_disk_package(&bytes)) append(&t,"demo.wap");
-        if (cap && !out[0]) append(&t,"Desktop is empty");
+        if (note_disk_package(&bytes)) append(&t,WAP_TODO_FILENAME);
+        if (cap && !out[0]) append(&t,"No files.");
     } else if ((arg=after(cmd,"cat "))) {
-        const char *s = !strcmp(arg,"hello.txt") ? note_disk_hello() :
+        if (*arg == '/') ++arg;
+        unsigned bytes;
+        const char *s = !strcmp(arg,WAP_TODO_FILENAME) && note_disk_package(&bytes)
+            ? "todo.wap is a binary WAP package." : NULL;
+        if (!s) s = !strcmp(arg,"hello.txt") ? note_disk_hello() :
             !strcmp(arg,"Note.txt") ? note_disk_text() : name && !strcmp(arg,name) ? note_disk_source() : NULL;
         append(&t,s ? s : "File not found");
     } else if ((arg=after(cmd,"write hello.txt "))) {

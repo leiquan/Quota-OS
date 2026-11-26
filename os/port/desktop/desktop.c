@@ -2,7 +2,6 @@
 #include "auth.h"
 #include "wap_app.h"
 #define WAP_TODO_NAME "Todo"
-#define WAP_TODO_FILENAME "todo.wap"
 #include "shell.h"
 #include "guest_page_services.h"
 /*
@@ -1023,7 +1022,7 @@ static void on_group(lv_event_t *e)
         if (!shell_transcript[0]) {
             char help[200];
             shell_execute("help", help, sizeof help);
-            shell_append("Quota OS Shell  |  /Desktop");
+            shell_append("Quota OS Shell  |  /");
             shell_append(help);
         }
         lv_group_focus_obj(shell_input);
