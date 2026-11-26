@@ -11,18 +11,22 @@ EXTRA_CFLAGS="-DQUOTA_SYSTEM_STATUS ${EXTRA_CFLAGS:-}"
 image_name=quotaos-lvgl
 source_lists=(os/kernel/sources.list os/kernel/fs/sources.list)
 EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_GUI_EXT4"
-if [[ ${QUOTA_DESKTOP_SMP:-0} == 1 ]]; then
-    EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_TOUCH_SMP"
-    source_lists+=(os/kernel/smp-sources.list)
-fi
 embed_payload=
 source_lists+=(os/port/wap/sources.list)
 volume_default=1
 if [[ -n "${QUOTA_NODE_WEB_OUT:-}${QUOTA_WAP_PAGE_ELF:-}${QUOTA_WAP_INTERPRETER:-}" ]]; then volume_default=0; fi
-if [[ "${QUOTA_RUNTIME_VOLUME_BOOT:-$volume_default}" == 1 ]]; then
+volume_boot=${QUOTA_RUNTIME_VOLUME_BOOT:-$volume_default}
+linux_abi=${QUOTA_RUNTIME_VOLUME_LINUX_ABI:-1}
+worker_default=0
+if [[ $volume_boot == 1 && $linux_abi == 1 ]]; then worker_default=1; fi
+if [[ ${QUOTA_DESKTOP_SMP:-$worker_default} == 1 ]]; then
+    EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_TOUCH_SMP"
+    source_lists+=(os/kernel/smp-sources.list)
+fi
+if [[ $volume_boot == 1 ]]; then
     image_name=quotaos-node-web-volume
     EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_RUNTIME_VOLUME_BOOT"
-    if [[ "${QUOTA_RUNTIME_VOLUME_LINUX_ABI:-1}" == 1 ]]; then
+    if [[ $linux_abi == 1 ]]; then
         # Compile process support without emitting embedded ELF or DSO blobs.
         EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_NODE_WEB -DQUOTA_WAP_FULL_RUNTIME -DQUOTA_CALLER_ACCOUNTED_SVC"
     fi

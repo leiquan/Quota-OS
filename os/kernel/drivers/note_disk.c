@@ -39,6 +39,7 @@ int auth_disk_store(const uint8_t data[512])
 }
 static int verify_result;
 static unsigned scrub_enabled, scrub_sector, scrub_submitted, scrub_completed;
+static int scrub_save_queued;
 
 int note_disk_scrub_start(void)
 {
@@ -146,8 +147,19 @@ static void submit(void)
     if (credential && !flush) header.sector = 63;
     status = 255;
     desc[0] = (struct descriptor){(uintptr_t)&header, sizeof header, 1, flush ? 2 : 1};
-    desc[1] = (struct descriptor){phase == IDENTIFY ? (uintptr_t)serial : credential ? (uintptr_t)credential_sector : phase == READBACK ? (uintptr_t)&readback : (uintptr_t)&transfer,
-        phase == IDENTIFY ? 20 : credential ? BLOCK : document == PACKAGE_EXT ? PACKAGE_BANK_BYTES : BLOCK, writing ? 1 : 3, 2};
+    uintptr_t payload = (uintptr_t)&transfer;
+    unsigned bytes = document == PACKAGE_EXT ? PACKAGE_BANK_BYTES : BLOCK;
+    if (phase == IDENTIFY) {
+        payload = (uintptr_t)serial;
+        bytes = 20;
+    } else if (credential) {
+        payload = (uintptr_t)credential_sector;
+        bytes = BLOCK;
+    } else if (phase == SCRUB || phase == READBACK) {
+        payload = (uintptr_t)&readback;
+        if (phase == SCRUB) bytes = BLOCK;
+    }
+    desc[1] = (struct descriptor){payload, bytes, writing ? 1 : 3, 2};
     desc[2] = (struct descriptor){(uintptr_t)&status, 1, 2, 0};
     avail.ring[avail.idx % 8] = 0;
     asm volatile("dmb oshst" ::: "memory");
@@ -207,7 +219,8 @@ void note_disk_poll(void)
         } else if (phase == SCRUB) {
             scrub_completed++;
             scrub_sector = (scrub_sector + 1) % 4;
-            phase = READY;
+            phase = scrub_save_queued ? WRITE : READY;
+            scrub_save_queued = 0;
         } else if (phase == VERIFY) {
             verify_result = transfer.magic == MAGIC && transfer.generation == saved.generation &&
                 transfer.length == saved.length && transfer.checksum == saved.checksum &&
@@ -254,37 +267,50 @@ void note_disk_poll(void)
     submit();
 }
 
+/* A scrub uses readback, leaving transfer available for one save. Claim
+ * the write before copying so a preempting client cannot replace it. */
+static int claim_save(unsigned index)
+{
+    if (sched_current()->tier != TIER3) return -1;
+    uint64_t irq = irq_save();
+    if (phase == READY) phase = WRITE;
+    else if (phase == SCRUB && !scrub_save_queued) scrub_save_queued = 1;
+    else {
+        irq_restore(irq);
+        return -1;
+    }
+    document = index;
+    irq_restore(irq);
+    return 0;
+}
+
 static int save_document(const char *text, unsigned index, const char *name)
 {
-    if (phase != READY || sched_current()->tier != TIER3) return -1;
     if (name && !valid_source_name(name)) return -3;
     unsigned limit = LEGACY_BYTES - (name ? SOURCE_NAME : 0);
     unsigned n = 0;
     while (n < limit && text[n]) n++;
     if (n == limit) return -2;
-    document = index;
+    if (claim_save(index)) return -1;
     memset(&transfer, 0, sizeof transfer);
     transfer.magic = name ? SOURCE_MAGIC : MAGIC;
     transfer.generation = saved.generation+1;
     transfer.length = n;
     memcpy(transfer.text, text, n);
     if (name) str_copy(transfer.text + limit, name, SOURCE_NAME);
-    phase = WRITE;
     return 0;
 }
 
 static int save_binary(unsigned index, uint32_t magic, const unsigned char *bytes, unsigned length)
 {
-    if (phase != READY || sched_current()->tier != TIER3 || !bytes ||
-        length > (index == PACKAGE_EXT ? sizeof transfer.text : LEGACY_BYTES))
+    if (!bytes || length > (index == PACKAGE_EXT ? sizeof transfer.text : LEGACY_BYTES) ||
+        claim_save(index))
         return -1;
-    document = index;
     memset(&transfer, 0, sizeof transfer);
     transfer.magic = magic;
     transfer.generation = saved.generation + 1;
     transfer.length = length;
     memcpy(transfer.text, bytes, length);
-    phase = WRITE;
     return 0;
 }
 
@@ -307,7 +333,8 @@ int note_disk_wap_note_committed(uint32_t generation)
     const struct record *record = &documents[NOTE_DATA_SLOT];
     if (record->magic == NOTE_DATA_MAGIC && record->generation == generation)
         return 1;
-    if (document == NOTE_DATA_SLOT && (phase == WRITE || phase == FLUSH || phase == READBACK) &&
+    if (document == NOTE_DATA_SLOT && (phase == WRITE || phase == FLUSH || phase == READBACK ||
+        (phase == SCRUB && scrub_save_queued)) &&
         transfer.generation == generation)
         return 0;
     return -1;
@@ -351,6 +378,7 @@ int note_disk_verify_result(void) { return phase == FAILED ? -1 : verify_result;
 const char *note_disk_text(void) { return documents[0].magic ? documents[0].text : 0; }
 const char *note_disk_status(void)
 {
+    if (phase == SCRUB && scrub_save_queued) return "Saving...";
     if (phase == READY || phase == SCRUB) return documents[0].magic || documents[1].magic || documents[2].magic || documents[PACKAGE_EXT].magic ? "Saved" : "Ready";
     if (phase == WRITE || phase == FLUSH || phase == READBACK) return "Saving...";
     if (phase == FAILED) return "Disk error";
