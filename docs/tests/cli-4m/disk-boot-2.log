@@ -1,0 +1,87 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 2 pool 16 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x400aa000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (af1801b)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x40200000 physical RAM span 4 MB (probed)
+[boot] DTB at 0x40200000
+[boot] DTB snapshot 7820 bytes (header said 1048576)
+[boot] DTB memory 4194304 bytes
+[boot] system reserve 350 us/period, 2048 KB;
+       tier-1 300 us/period, 0 KB; guard 20 us/period
+[boot] system reserve grew from 0 KB to 2048 KB to cover the system footprint; tier-1 declarations unchanged
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 0 own colors, padding 0 KB
+[boot] kernel image+bss 804 KB of the 2048 KB system reserve
+[boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
+[boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
+[boot] clock: icount (counter driven by instruction count)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 396/400 us, stop 7/20 us (measured/declared)
+[dev] sim-blk: job 1991/2000 us, stop 1770/2000 us (measured/declared)
+[dev] sim-cam: job 291/300 us, stop 8/30 us (measured/declared)
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 services bound to their slots
+[boot] slot table from tick 3750000, period 625000 ticks, guard 1250 ticks
+quota> [files] mounted bytes=20 checksum=1976133317
+mem
+RAM 4096 KiB system 2048 KiB tier1 0 KiB app_available 2048 KiB
+quota> run Test
+[map] pid=3 handle=0x10001 gen=1 asid=1 ttbr=0x100004013f000 draw_pa=0x40131000
+[map] pte code=0x4012ffc3 stack=0x60000040130f43 draw=0x60000040131f43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x4012ffc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4012ffc3 ap_el0=1
+Test: EL0 completed
+quota> run Test t2
+[map] pid=3 handle=0x20001 gen=2 asid=1 ttbr=0x100004013f000 draw_pa=0x40131000
+[map] pte code=0x4012ffc3 stack=0x60000040130f43 draw=0x60000040131f43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x4012ffc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4012ffc3 ap_el0=1
+[quota] period=11 grant=0 used=0 minimum=25000
+[quota] period=12 grant=50000 used=49998 minimum=25000
+[quota] period=13 grant=50000 used=49998 minimum=25000
+[quota] period=14 grant=50000 used=49998 minimum=25000
+[quota] period=15 grant=50000 used=49998 minimum=25000
+[quota] period=16 grant=50000 used=49998 minimum=25000
+[quota] period=17 grant=50000 used=49998 minimum=25000
+[quota] period=18 grant=50000 used=49998 minimum=25000
+[quota] period=19 grant=50000 used=49998 minimum=25000
+[quota] period=20 grant=50000 used=49998 minimum=25000
+[quota] period=21 grant=50000 used=49998 minimum=25000
+[quota] period=22 grant=50000 used=49998 minimum=25000
+[quota] period=23 grant=50000 used=49998 minimum=25000
+[quota] period=24 grant=50000 used=49998 minimum=25000
+[quota] period=25 grant=50000 used=49998 minimum=25000
+[quota] period=26 grant=50000 used=49998 minimum=25000
+[quota] period=27 grant=50000 used=49998 minimum=25000
+[quota] period=28 grant=50000 used=49998 minimum=25000
+[quota] period=29 grant=50000 used=49998 minimum=25000
+[quota] period=30 grant=50000 used=49998 minimum=25000
+[quota] period=31 grant=50000 used=49998 minimum=25000
+[quota] period=32 grant=50000 used=49998 minimum=25000
+[quota] period=33 grant=50000 used=49998 minimum=25000
+[quota] period=34 grant=50000 used=49998 minimum=25000
+[quota] period=35 grant=50000 used=49998 minimum=25000
+[quota] period=36 grant=50000 used=49998 minimum=25000
+[quota] period=37 grant=50000 used=49998 minimum=25000
+[quota] period=38 grant=50000 used=49998 minimum=25000
+[quota] period=39 grant=50000 used=49998 minimum=25000
+[quota] period=40 grant=50000 used=49998 minimum=25000
+[quota] period=41 grant=50000 used=49998 minimum=25000
+Test: EL0 completed
+quota> events
+period=41 tier1_misses=0 tier2_short=0 tier3_over=0
+quota> cat Note.txt
+CLI-94689ed5db1afcfa
+quota> 

@@ -16,7 +16,7 @@ CLI, C UI and Web UI share the ARM64 quota kernel. CLI provides the serial conso
 
 | Edition · 发行版 | QEMU RAM · 内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
-| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 3 MiB short validation / 短程通过 · 16 MiB default / 默认 | 72.3 KiB |
+| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 3 MiB short validation / 短程通过 · 4 MiB default / 默认 | 72.3 KiB |
 | [C UI](https://github.com/leiquan/Quota-OS/tree/C-UI) | 64 MiB | 685.4 KiB |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 1 GiB | 357.5 MiB |
 
