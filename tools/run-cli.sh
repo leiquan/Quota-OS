@@ -13,4 +13,4 @@ fi
 if [[ -n ${CLI_DISK:-} ]]; then
     args+=(-global virtio-mmio.force-legacy=false -drive "if=none,id=notes,format=raw,file=$CLI_DISK" -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES)
 fi
-exec qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m "${CLI_RAM:-16M}" -nic none -display none -monitor none -serial stdio -icount shift=4,sleep=off -kernel build/quotaos-cli.bin -append cli ${args[@]+"${args[@]}"}
+exec qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m "${CLI_RAM:-4M}" -nic none -display none -monitor none -serial stdio -icount shift=4,sleep=off -kernel build/quotaos-cli.bin -append cli ${args[@]+"${args[@]}"}

@@ -25,7 +25,7 @@ At the prompt, use `help`, `mem`, `tasks`, `quota` or `events`. Use `write TEXT`
 
 ## Tested memory configurations
 
-The default is 16 MiB. The kernel reserves 2 MiB and reports 14 MiB available for application admission. The EL0 loader currently supports two process slots and one code page per program. The admission capacity alone does not determine how many programs can run concurrently.
+The default is 4 MiB. The kernel reserves 2 MiB and reports 2 MiB available for application admission. The EL0 loader currently supports two process slots and one code page per program. The admission capacity alone does not determine how many programs can run concurrently.
 
 Both modes of Test completed on single-core Cortex-A35 QEMU with 3, 4, 8, 16, 17, 18, 20, 24 and 32 MiB. At 2 MiB QEMU could not place the device tree.
 
