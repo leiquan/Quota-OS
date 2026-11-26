@@ -59,7 +59,9 @@ void color_init(uint64_t ram_bytes)
     pad_kb = 0;
     for (int i = 0; i < n && i < MAX_T1; i++) {
         uint64_t need = (uint64_t)d[i].mem_kb * 1024 / PAGE;
-        uint64_t nc = per_color ? (need + per_color - 1) / per_color : 0;
+        if (!per_color)
+            break;
+        uint64_t nc = (need + per_color - 1) / per_color;
         if (next + nc > NCOLORS)
             break;
         for (uint64_t k = 0; k < nc; k++)

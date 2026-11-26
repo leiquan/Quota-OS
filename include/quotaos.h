@@ -35,7 +35,11 @@ static inline void irq_restore(uint64_t flags)
 #define T3_QUANTUM_US       1000u
 #define GUARD_US            20u      /* 槽前多少微秒停下窗口任务，内核原地等到槽起点；v010 起 20：IPC 的 svc 可能恰好在保护区前进内核 */
 #define SYS_RESERVE_US      350u     /* 系统预留 CPU：实测每周期最坏 15290 tick（245 us）+ 余量，见 README */
+#ifdef QUOTA_CLI
+#define KERNEL_RESERVE_KB 0u /* reserve the linked footprint, rounded to a color block */
+#else
 #define KERNEL_RESERVE_KB   (16u * 1024u)
+#endif
 #define JUMP_US             20u      /* 定时器或槽起点迟到超过这么多，记一次时钟跳动 */
 
 #define MAX_TASKS           48

@@ -123,6 +123,7 @@ static void irq_off_end(struct irq_span span)
     irq_restore(span.flags);
 }
 
+#ifndef QUOTA_CLI
 asm(
     ".section .rodata\n"
     ".global user_blob\n"
@@ -132,6 +133,8 @@ asm(
     "user_blob_end:\n"
     ".section .text\n"
 );
+
+#endif
 
 static int pages_free_n(void)
 {
@@ -776,10 +779,12 @@ void proc_el0_svc(struct irq_frame *f)
         reap_timed(p, "exit", ticks_now(), sched_period_now());
         return;
     }
+#ifndef QUOTA_CLI
     if (op == 2) {
         f->r[0] = (uint64_t)submit_checked(p, f->r[0], f->r[1], f->r[2], f->r[3], f->r[4], f->r[5]);
         return;
     }
+#endif
     if (op == 3 && p->console && !console_updated) {
         uint64_t off = f->r[0], len = f->r[1];
         if (off < 4096 && len <= 128 && len <= 4096 - off) {
@@ -876,7 +881,7 @@ static void clean_code(void *p, uint64_t n)
     asm volatile("dsb ish; ic iallu; dsb ish; isb" ::: "memory");
 }
 
-static int64_t spawn_image(const char *code, unsigned bytes, int console, const char *name, uint64_t role, uint64_t limit, uint64_t foreign_pa,
+static int64_t spawn_image(const char *code, unsigned bytes, int console, int tier, const char *name, uint64_t role, uint64_t limit, uint64_t foreign_pa,
                    uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,
                    uint16_t vw, uint16_t vh)
 {
@@ -922,7 +927,10 @@ static int64_t spawn_image(const char *code, unsigned bytes, int console, const 
     man.mem_min_kb = 16;
     man.mem_sugg_kb = 16;
     man.cpu_min_us = 0;
-    man.cpu_sugg_us = 0;
+#ifdef QUOTA_CLI
+    if (tier == TIER2) man.cpu_min_us = 400;
+#endif
+    man.cpu_sugg_us = man.cpu_min_us;
     if (resource_check(&man) != ADMIT_OK) {
         for (int i = 0; i < 3; i++)
             free_idx(p->pages[i]);
@@ -936,7 +944,7 @@ static int64_t spawn_image(const char *code, unsigned bytes, int console, const 
         return -1;
     }
     pack = (uint64_t)vx | ((uint64_t)vy << 16) | ((uint64_t)vw << 32) | ((uint64_t)vh << 48);
-    p->task = task_try_create(name, TIER3, KIND_SPIN);
+    p->task = task_try_create(name, tier, KIND_SPIN);
     if (!p->task || task_arm_el0(p->task, 0, USER_SP, role, limit, foreign_pa, fb_pa, kern_va, pack)) {
         if (p->task) {
             task_kill(p->task);
@@ -950,6 +958,10 @@ static int64_t spawn_image(const char *code, unsigned bytes, int console, const 
             p->pa[i] = 0;
         }
         return -1;
+    }
+    if (man.cpu_min_us) {
+        p->task->min_t = p->task->sugg_t = us_to_ticks(man.cpu_min_us);
+        p->app->task = p->task;
     }
     p->console = console;
     p->asid = p->slot + 1;
@@ -993,7 +1005,10 @@ static int64_t spawn_image(const char *code, unsigned bytes, int console, const 
         uint64_t published;
         irq_off_begin(&off0);
         p->alive = 1;
-        task_ready(p->task);
+        if (tier == TIER2)
+            task_start(p->task);
+        else
+            task_ready(p->task);
         published = make_handle(p);
         irq_off_end(off0);
         return (int64_t)published;
@@ -1004,15 +1019,24 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
                    uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,
                    uint16_t vw, uint16_t vh)
 {
-    return spawn_image(user_blob, user_blob_end - user_blob, 0, name, role, limit,
+    return spawn_image(user_blob, user_blob_end - user_blob, 0, TIER3, name, role, limit,
                        foreign_pa, fb_pa, kern_va, vx, vy, vw, vh);
 }
 
+#ifdef QUOTA_CLI
+int64_t proc_spawn_module(const char *code, unsigned bytes, int tier)
+{
+    if (tier != TIER2 && tier != TIER3) return -1;
+    console_updated = 0;
+    return spawn_image(code, bytes, 1, tier, "Test", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+}
+#else
 int64_t proc_spawn_console(const char *code, unsigned bytes)
 {
     console_updated = 0;
-    return spawn_image(code, bytes, 1, "hello", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    return spawn_image(code, bytes, 1, TIER3, "hello", 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
+#endif
 
 void proc_ledger(const char *tag)
 {

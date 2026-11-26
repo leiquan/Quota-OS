@@ -106,7 +106,10 @@ uint32_t system_reserve_kb(void)
     extern char __image_start[], __image_end[];
     uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
     /* Image plus the configured display surface. Stay at 16 MB when that already fits. */
-    uint64_t need = ((uint64_t)__image_end - base) + (uint64_t)LVGL_FB_BYTES;
+    uint64_t need = ((uint64_t)__image_end - base);
+#ifndef QUOTA_CLI
+    need += LVGL_FB_BYTES;
+#endif
     uint32_t kb = (uint32_t)((need + 1023ull) / 1024ull);
     if (kb < KERNEL_RESERVE_KB)
         kb = KERNEL_RESERVE_KB;
@@ -190,7 +193,7 @@ void resource_init(uint64_t ram_bytes)
            SYS_RESERVE_US, reserve_kb, resource_t1_cpu_us(), resource_t1_mem_kb(),
            resource_guard_us());
     if (reserve_kb > KERNEL_RESERVE_KB)
-        printf("[boot] system reserve grew from %u KB to %u KB to hold the image and framebuffer; tier-1 declarations unchanged\n",
+        printf("[boot] system reserve grew from %u KB to %u KB to cover the system footprint; tier-1 declarations unchanged\n",
                KERNEL_RESERVE_KB, reserve_kb);
     printf("[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.\n");
 }

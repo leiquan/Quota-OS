@@ -44,6 +44,9 @@ static char uart_getc(void)
 {
     int c;
     for (;;) {
+#ifdef QUOTA_CLI
+        note_disk_poll();
+#endif
         c = uart_getc_nonblock();
         if (c >= 0)
             return (char)c;

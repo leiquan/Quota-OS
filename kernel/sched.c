@@ -1534,8 +1534,10 @@ void job_body(uint64_t start)
                 t->w.start_max = off;
         }
     }
+#ifndef QUOTA_CLI
     if (t == dashboard_app)
         app_display_core_frame(t->release_ts);
+#endif
     uint64_t end = start + t->work_t;
     while (ticks_now() < end)
         asm volatile("" ::: "memory");
@@ -1865,7 +1867,17 @@ void sched_start(void (*shell_entry)(void))
     printf("[boot] slot table from tick %lu, period %lu ticks, guard %lu ticks\n", epoch, P, G);
     prev_entry = ticks_now();
     k_eret_ts = prev_entry;
+#ifdef QUOTA_CLI
+    /* Before the first release there is no application period to spend.
+     * Wait in idle; dispatch the ready console through normal budgeting. */
+    shell_task->state = TASK_READY;
+    idle_task->state = TASK_RUNNING;
+    cur = idle_task;
+    rebuild_lists();
+    start_first_task(idle_task->sp);
+#else
     start_first_task(shell_task->sp);
+#endif
 }
 
 /* now 之后最近一个 Tier 1 保护区的起点；now 已经在保护区或槽内就返回 now。

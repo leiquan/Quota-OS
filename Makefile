@@ -1,3 +1,10 @@
+.DEFAULT_GOAL := cli
+.PHONY: cli run-cli
+cli:
+	bash tools/build-cli.sh
+run-cli: cli
+	bash tools/run-cli.sh
+
 # 一条命令：make
 # 产物：build/quotaos.elf / build/quotaos.bin（串口镜像）
 # 构建可逐字节复现：逐个文件编译到 build/，不留临时文件名、构建路径和 build-id。

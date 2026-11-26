@@ -38,7 +38,7 @@ static uint64_t detect_ram_span(void)
 {
     uint64_t base = 0x40000000ull;
     uint64_t size = 0;
-    for (uint64_t mb = 16; mb <= 2048; mb += 16) {
+    for (uint64_t mb = 1; mb <= 2048; mb += mb < 16 ? 1 : 16) {
         uint32_t dummy;
         uint64_t addr = base + mb * 1024ull * 1024ull - 4ull;
         if (probe32(addr, &dummy) != 0)
