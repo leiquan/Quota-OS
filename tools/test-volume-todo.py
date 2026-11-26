@@ -24,6 +24,8 @@ parser.add_argument("--pressure-rounds", type=int, default=0,
                     help="run 1 to 100 pressure trials after cold readback (QA runtime required)")
 parser.add_argument("--system-launch", action="store_true",
                     help="exercise the normal authenticated Web UI launcher at its default RAM")
+parser.add_argument("--ram-mib", type=int, choices=(256,512), default=256,
+                    help="expected guest RAM, verified using QMP")
 args = parser.parse_args()
 if not 0 <= args.pressure_rounds <= 100:
     parser.error("--pressure-rounds must be 0 to 100")
@@ -164,7 +166,7 @@ def boot(number):
                     report = verify(tail())
                 finally:
                     (folder / "serial.log").write_text(tail())
-            report.update(round=index, sha256=hashes, ram_mib=256, icount_shift=args.shift)
+            report.update(round=index, sha256=hashes, ram_mib=args.ram_mib, icount_shift=args.shift)
             (folder / "result.json").write_text(json.dumps(report, indent=2))
             print(f"round={index} passed={report['passed']}", flush=True)
             if not report['passed']:
@@ -173,8 +175,8 @@ def boot(number):
         json.loads(vm.stdout.readline())
         qmp("qmp_capabilities")
         ram = qmp("query-memory-size-summary")["base-memory"]
-        if ram != 256 << 20:
-            raise AssertionError(f"Expected 256 MiB, got {ram} bytes")
+        if ram != args.ram_mib << 20:
+            raise AssertionError(f"Expected {args.ram_mib} MiB, got {ram} bytes")
         if args.system_launch:
             def state(value):
                 until(lambda: serial.exists() and f"[session] state={value} " in serial.read_text(), 120, "session " + str(value))
