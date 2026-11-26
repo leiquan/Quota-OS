@@ -107,6 +107,7 @@ struct task {
     uint64_t deadline_t;        /* KIND_JOB：相对释放时刻的截止期 */
     uint64_t refundable_t; /* Current-period job reservation included in the pool calculation. */
     int start_next_period;
+    uint64_t runnable_period;  /* A Tier 3 task can yield until replenishment. */
     uint64_t last_used_t;
     uint64_t period_grant_t, last_grant_t;
     uint64_t used_t;            /* 本周期已用 */
@@ -509,6 +510,7 @@ void dev_slot(int in_slot);
 int dev_busy(void);
 void dev_period(void);
 uint64_t sched_period_now(void);
+void sched_t3_wait_period(uint64_t period);
 uint64_t sched_period_release(uint64_t period);
 int sched_in_t1_window(uint64_t now);
 void gic_ppi_enable(uint32_t id, int on);

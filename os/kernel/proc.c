@@ -17,6 +17,9 @@
  */
 #include "quotaos.h"
 #include "guest_page_services.h"
+#ifdef QUOTA_GUI_EXT4
+#include "touch_ext4.h"
+#endif
 
 #if defined(QUOTA_STANDALONE_NODE) || defined(QUOTA_ELECTRON_RUNTIME) || defined(QUOTA_NODE_WEB)
 #define QUOTA_LINUX_APP_RUNTIME 1

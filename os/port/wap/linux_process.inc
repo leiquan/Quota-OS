@@ -1382,14 +1382,23 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
             if (copy_process_bytes(p, f->r[1], &window_input[input_head], sizeof window_input[0], 1)) return -14;
             input_head = (input_head + 1) % 64;
             --input_count;
+#ifdef QUOTA_GUI_EXT4
+            touch_ext4_record_page_stage(TOUCH_PAGE_INPUT, electron_generation);
+#endif
             return sizeof window_input[0];
         }
         unsigned row = p->files[index].position->offset;
         if (row >= GUEST_PREVIEW_HEIGHT || f->r[2] != sizeof page_pixels[0]) return -22;
         unsigned generation = electron_generation;
         if (copy_process_bytes(p, f->r[1], electron_frames[generation & 1][row], sizeof page_pixels[0], 0)) return -14;
+#ifdef QUOTA_GUI_EXT4
+        if (!row) touch_ext4_record_page_stage(TOUCH_PAGE_FIRST_ROW, generation + 1);
+#endif
         if (++row == GUEST_PREVIEW_HEIGHT) {
             __atomic_store_n(&electron_generation, generation+1, __ATOMIC_RELEASE);
+#ifdef QUOTA_GUI_EXT4
+            touch_ext4_record_page_stage(TOUCH_PAGE_LAST_ROW, generation + 1);
+#endif
             row = 0;
         }
         p->files[index].position->offset = row;

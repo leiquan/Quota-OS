@@ -32,7 +32,9 @@ static void address(unsigned offset, uintptr_t pointer)
 static int transfer(unsigned operation, uint64_t sector, unsigned bytes)
 {
     if (failed) return -1;
-    while (submitted && last_period == sched_period_now()) asm volatile("wfi");
+    /* A throttled transfer must leave the Tier 3 pool available to other work. */
+    while (submitted && last_period == sched_period_now())
+        sched_t3_wait_period(last_period);
     last_period = sched_period_now();
     submitted = 1;
     request.type = operation;
@@ -52,9 +54,11 @@ static int transfer(unsigned operation, uint64_t sector, unsigned bytes)
 #endif
     mmio_wr(base + 0x50, 0);
     uint64_t deadline = ticks_now() + us_to_ticks(1000000);
-    while (used.index == index) {
+    for (;;) {
+        uint64_t period = sched_period_now();
+        if (used.index != index) break;
         if (ticks_now() >= deadline) { failed = 1; return -1; }
-        asm volatile("wfi");
+        sched_t3_wait_period(period);
     }
     asm volatile("dsb sy" ::: "memory");
     if (used.index != (uint16_t)(index + 1) || used.entries[index % QUEUE].id ||

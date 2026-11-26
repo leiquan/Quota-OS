@@ -1368,27 +1368,26 @@ static struct task *chain_end(struct task *t)
     return t->state == TASK_READY ? t : 0;
 }
 
-#ifdef QUOTA_TOUCH_SMP
-/* The single serial shell polls child completion and quota counters once per
- * period. Keep it off the run queue while it waits for the next sample. */
-static struct task *sleeping_shell;
-static uint64_t shell_sleep_period;
-
-void sched_cli_wait_period(void)
+void sched_t3_wait_period(uint64_t period)
 {
     uint64_t flags = irq_save();
-    sleeping_shell = cur;
-    shell_sleep_period = pk;
+    if (cur->tier == TIER3 && pk == period) {
+        cur->runnable_period = period + 1;
+        asm volatile("svc #0" ::: "memory");
+    }
     irq_restore(flags);
-    asm volatile("svc #0" ::: "memory");
+}
+
+#ifdef QUOTA_TOUCH_SMP
+void sched_cli_wait_period(void)
+{
+    sched_t3_wait_period(sched_period_now());
 }
 #endif
 
 static int runnable(struct task *t)
 {
-#ifdef QUOTA_TOUCH_SMP
-    if (t == sleeping_shell && pk == shell_sleep_period) return 0;
-#endif
+    if (t->runnable_period > pk) return 0;
     return chain_end(t) != 0;
 }
 

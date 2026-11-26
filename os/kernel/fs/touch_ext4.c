@@ -67,6 +67,8 @@ static uint64_t scroll_ticks[1024];
 static unsigned bus_count, bus_dropped, page_count, page_dropped;
 static struct { uint64_t begin, end; unsigned operation, bytes; } bus_trace[4096];
 static struct { uint64_t tick; unsigned generation; } page_trace[128];
+static unsigned stage_count, stage_dropped;
+static struct { uint64_t tick; unsigned stage, generation; } stages[2048];
 
 void touch_ext4_record_io(unsigned op, unsigned bytes, unsigned long begin_tick, unsigned long end_tick)
 {
@@ -82,6 +84,14 @@ void touch_ext4_record_frame(unsigned generation)
     if (page_count < sizeof page_trace / sizeof page_trace[0])
         page_trace[page_count++] = (typeof(*page_trace)){ticks_now(), generation};
     else ++page_dropped;
+}
+
+void touch_ext4_record_page_stage(enum touch_page_stage stage, unsigned generation)
+{
+    if (!running) return;
+    if (stage_count < sizeof stages / sizeof stages[0])
+        stages[stage_count++] = (typeof(*stages)){ticks_now(), stage, generation};
+    else ++stage_dropped;
 }
 
 static int starts_with_word(const char *text, const char *word)
@@ -238,6 +248,10 @@ static void finish(int pass, int cold)
     for (unsigned i = 0; i < page_count; ++i)
         printf("[touch-ext4] page-frame generation=%u ticks=%lu\n",
                page_trace[i].generation, (unsigned long)page_trace[i].tick);
+    printf("[touch-ext4] page-stage-trace count=%u dropped=%u\n", stage_count, stage_dropped);
+    for (unsigned i = 0; i < stage_count; ++i)
+        printf("[touch-ext4] page-stage=%u generation=%u ticks=%lu\n",
+               stages[i].stage, stages[i].generation, (unsigned long)stages[i].tick);
     printf("[touch-ext4] scroll-trace count=%u dropped=%u\n", recorded, dropped);
     for (unsigned i = 0; i < recorded; ++i)
         printf("[touch-ext4] scroll-step ticks=%lu\n", (unsigned long)scroll_ticks[i]);
@@ -260,7 +274,8 @@ void touch_ext4_scroll_step(void)
                                                touch_smp_pressure_end - touch_smp_pressure_start);
         printf("[touch-ext4] pressure_worker=%ld workers=%d\n", (long)pressure_worker, smp_online());
 #endif
-    } else if (running) {
+    }
+    if (running) {
         if (recorded < sizeof scroll_ticks / sizeof scroll_ticks[0])
             scroll_ticks[recorded++] = ticks_now();
         else ++dropped;

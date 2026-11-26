@@ -32,6 +32,7 @@ static lv_obj_t *page_home, *page_test;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover, *page_apps, *page_files, *page_shell;
 static unsigned displayed_frame;
+static unsigned pending_frame_flush;
 static lv_obj_t *demo_window, *demo_image, *demo_status, *demo_output;
 static int64_t demo_handle;
 static lv_image_dsc_t demo_frame;
@@ -217,12 +218,25 @@ static void take_dt(uint64_t *stamp, uint64_t *arr, int *n, const char *kind)
 
 static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
 {
+    static bool viewport_flushed;
     int32_t w = lv_area_get_width(area);
     uint32_t stride_px = fb_stride / 4u;
     for (int32_t y = area->y1; y <= area->y2; y++) {
         uint32_t *dst = fb_px + (uint32_t)y * stride_px + area->x1;
         memcpy(dst, px, (size_t)w * 4u);
         px += w * 4;
+    }
+    if (pending_frame_flush && lv_obj_is_visible(demo_image)) {
+        lv_area_t viewport;
+        lv_obj_get_coords(demo_image, &viewport);
+        if (area->x1 <= viewport.x2 && viewport.x1 <= area->x2 &&
+            area->y1 <= viewport.y2 && viewport.y1 <= area->y2)
+            viewport_flushed = true;
+        if (viewport_flushed && lv_display_flush_is_last(disp)) {
+            touch_ext4_record_frame(pending_frame_flush);
+            pending_frame_flush = 0;
+            viewport_flushed = false;
+        }
     }
     take_dt(&click_stamp, click_dt, &n_click, "click");
     take_dt(&key_stamp, key_dt, &n_key, "key");
@@ -2369,7 +2383,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             const uint32_t *surface = proc_page_surface(demo_handle, &frame_number);
             if (surface && displayed_frame != frame_number) {
                 displayed_frame = frame_number;
-                touch_ext4_record_frame(frame_number);
+                pending_frame_flush = frame_number;
                 demo_frame.data = (const uint8_t *)surface;
                 lv_image_set_src(demo_image, &demo_frame);
                 monitor_visible(demo_status, 0);

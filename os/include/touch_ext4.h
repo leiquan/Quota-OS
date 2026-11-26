@@ -16,3 +16,5 @@ const char *touch_ext4_files_poll(enum root_operation *op, int *result);
 
 void touch_ext4_record_io(unsigned operation, unsigned bytes, unsigned long begin, unsigned long end);
 void touch_ext4_record_frame(unsigned generation);
+enum touch_page_stage { TOUCH_PAGE_INPUT, TOUCH_PAGE_FIRST_ROW, TOUCH_PAGE_LAST_ROW };
+void touch_ext4_record_page_stage(enum touch_page_stage stage, unsigned generation);
