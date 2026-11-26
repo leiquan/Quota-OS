@@ -1,6 +1,6 @@
 # Quota OS · Web Node 版
 
-C LVGL 版（`C-LVGL`）提供 C 应用和 LVGL 桌面。Web Node 版（`Web-Node`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
+C LVGL 版（`LVGL`）提供 C 应用和 LVGL 桌面。Web Node 版（`Web-Node`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
 
 从 Files 双击 `demo.wap`，Blink 在普通桌面窗口中渲染 HTML/CSS 并执行页面 JS，Node 后台通过本地消息处理保存请求。两个来宾进程加载同一份系统 V8。示例只包含 [app.json](examples/demo/app.json)、[app.html](examples/demo/app.html) 和 [app.js](examples/demo/app.js)。
 
@@ -15,7 +15,7 @@ ARM64 运行时的联合构建入口是 [build-node-web-runtime.py](tools/build-
 
 ## 两个发行版怎么选
 
-| | [C LVGL 版](https://github.com/leiquan/Quota-OS/tree/C-LVGL) | [Web Node 版](https://github.com/leiquan/Quota-OS/tree/Web-Node) |
+| | [C LVGL 版](https://github.com/leiquan/Quota-OS/tree/LVGL) | [Web Node 版](https://github.com/leiquan/Quota-OS/tree/Web-Node) |
 |---|---|---|
 | 镜像大小 | 701,852 B · 685.4 KiB | 374,867,224 B · 357.5 MiB |
 | QEMU 验证内存 | 64 MiB | 1 GiB |
@@ -217,7 +217,7 @@ Run `bash tools/run-webkit.sh` with QEMU ARM64 installed. This branch brings up 
 
 运行 `bash tools/run-webkit.sh` 可验证 JavaScriptCore 和 WebCore 的颜色解析。当前显示的是 640 × 480 的红色测试画面，HTML 排版和可交互的浏览器窗口尚待移植。
 
-[Serial log](docs/tests/webkit-stack/guest.log) · [Actual QEMU output](docs/tests/webkit-stack/frame.png) · [LVGL desktop branch](https://github.com/leiquan/Quota-OS/tree/C-LVGL)
+[Serial log](docs/tests/webkit-stack/guest.log) · [Actual QEMU output](docs/tests/webkit-stack/frame.png) · [LVGL desktop branch](https://github.com/leiquan/Quota-OS/tree/LVGL)
 
 ### Preview a local HTML page
 
@@ -235,4 +235,4 @@ Change the heading in the file and launch again to see the new text. This is a s
 
 For the cross-platform transport check use `--page-bytes FILE`; the serial console reports the file length and checksum. Run `python3 tools/webkit-document-check.py` for all five boundary cases. With no argument the launcher boots the separate in-guest JSC and WebCore CSS color test.
 
-公共内核和 LVGL 桌面的改动先提交到 `C-LVGL`。在 `Web-Node` 合并基础版后，分别验证 64 MiB 桌面配额场景和 1 GiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-Node` 维护。
+公共内核和 LVGL 桌面的改动先提交到 `LVGL`。在 `Web-Node` 合并基础版后，分别验证 64 MiB 桌面配额场景和 1 GiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-Node` 维护。
