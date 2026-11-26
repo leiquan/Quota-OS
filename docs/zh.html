@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Quota OS 是一款以资源配额为核心的 ARM64 操作系统。">
 <title>Quota OS — 以资源配额为核心的操作系统</title>
-<link rel="stylesheet" href="site.css?v=quota-brand">
+<link rel="stylesheet" href="site.css?v=quota-task-list">
 <script src="site.js?v=quota-brand" defer></script>
 <link rel="icon" href="favicon.png?v=quota-brand" type="image/png" sizes="32x32">
 <link rel="icon" href="quota-mark.svg" type="image/svg+xml" sizes="any">
@@ -109,6 +109,7 @@ bash tools/run-files.sh</code></pre>
 <p>核对 WAP 包时，确认 <code>app.json</code> 和 <code>app.html</code> 位于 ZIP 根目录，按需加入 <code>app.js</code>。ZIP 使用存储模式，扩展名为 <code>.wap</code>。如果冷启动后读不到原文，确认首次保存显示了 <code>Saved</code>，且第二次使用同一数据盘。</p>
 <p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">构建与启动</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo">示例源码</a> · <a href="screenshots/web-ui-wap-rotate.png">示例截图</a> · <a href="tests/frame-intervals/web.json">帧间隔结果</a></p>
 <div class="showcase"><figure><a class="capture" href="screenshots/web-ui-wap-rotate.png"><img src="screenshots/web-ui-wap-rotate.png" width="1280" height="800" loading="lazy" alt="Web UI · WAP 控件与已保存的笔记"></a><figcaption>Web UI · WAP 控件与已保存的笔记</figcaption></figure></div></article></div>
+<div class="dev-grid"><article class="sample-note"><h3>任务清单示例</h3><p>用 Add 添加任务，勾选完成，或用 Open only 筛选。每次修改由 Node.js 后台写盘。使用构建脚本生成的专用数据盘启动，重启时复用同一块盘即可恢复列表。当前 Files 中的入口仍显示为 <code>demo.wap</code>。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/tasks">源码与启动步骤</a></p></article><figure class="showcase"><a class="capture" href="screenshots/web-ui-task-list.png"><img src="screenshots/web-ui-task-list.png" width="665" height="310" loading="lazy" alt="任务清单示例"></a></figure></div>
 <h3>从源码构建桌面</h3>
 <p>在装好 Homebrew LLVM 和 LLD 的 macOS 上，从仓库根目录执行以下命令。QEMU 使用单核 Cortex-A35 和 64 MiB 内存运行构建出的内核。</p>
 <pre><code>bash tools/build-lvgl-macos.sh
