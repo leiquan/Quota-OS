@@ -1,3 +1,4 @@
+#include "root_shell.h"
 #include "auth.h"
 #include "wap_app.h"
 #define WAP_TODO_NAME "Todo"
@@ -874,6 +875,7 @@ static void end_session(void)
     lv_textarea_set_text(shell_input, "");
     lv_textarea_set_text(source_name, "");
     monitor_visible(source_dialog, 0);
+    root_shell_logout();
     shell_transcript[0] = 0;
     lv_label_set_text(shell_output, "");
     for (unsigned i = 0; i < APP_COUNT; ++i)
@@ -960,7 +962,7 @@ static void on_group(lv_event_t *e)
         if (!shell_transcript[0]) {
             char help[200];
             shell_execute("help", help, sizeof help);
-            shell_append("Quota OS Shell  |  /Desktop");
+            shell_append("Quota OS Shell  |  /");
             shell_append(help);
         }
         lv_group_focus_obj(shell_input);
@@ -2272,6 +2274,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
 #endif
         touch_pressure_memory();
         power_poll();
+        const char *reply = root_shell_poll();
+        if (reply) { shell_append(reply); printf("[shell] root: %s\n", reply); }
         const char *console = proc_console_text();
         if (console) {
             shell_append(console);

@@ -1,0 +1,6 @@
+kernel/drivers/root_disk.c
+kernel/fs/ext4_ro.c
+kernel/fs/ext4_jbd2.c
+kernel/fs/ext4_mutate.c
+kernel/fs/root_service.c
+kernel/fs/root_shell.c

@@ -1,4 +1,5 @@
 #include "auth.h"
+#include "root_shell.h"
 #include "quotaos.h"
 #include "shell.h"
 
@@ -25,34 +26,16 @@ enum shell_action shell_execute(const char *cmd, char *out, unsigned cap)
     struct text t = {out,cap};
     append(&t,"");
     const char *name = note_disk_source_name(), *arg;
+    const char *reply = root_shell_command(cmd);
+    if (reply) { append(&t,reply); return SHELL_PRINT; }
     if (!strcmp(cmd,"clear")) return SHELL_CLEAR;
     if (!strcmp(cmd,"reboot")) return SHELL_REBOOT;
     if (!strcmp(cmd,"poweroff")) return SHELL_OFF;
     if (!strcmp(cmd,"help")) {
-        append(&t,"help pwd ls cat write version ps quota clear reboot poweroff\n");
+        append(&t,"help pwd ls cat write rm version ps quota clear reboot poweroff\n");
         append(&t,"cc "); append(&t,name ? name : "hello.c"); append(&t," -o hello.cap\nrun hello.cap");
-    } else if (!strcmp(cmd,"pwd")) append(&t,"/Desktop");
-    else if (!strcmp(cmd,"version")) append(&t,QUOTAOS_VERSION);
-    else if (!strcmp(cmd,"ls")) {
-        if (note_disk_text()) append(&t,"Note.txt  ");
-        if (name) { append(&t,name); append(&t,"  "); }
-        if (note_disk_hello()) append(&t,"hello.txt  ");
-        unsigned bytes;
-        if (note_disk_package(&bytes)) append(&t,"demo.wap");
-        if (cap && !out[0]) append(&t,"Desktop is empty");
-    } else if ((arg=after(cmd,"cat "))) {
-        const char *s = !strcmp(arg,"hello.txt") ? note_disk_hello() :
-            !strcmp(arg,"Note.txt") ? note_disk_text() : name && !strcmp(arg,name) ? note_disk_source() : NULL;
-        append(&t,s ? s : "File not found");
-    } else if ((arg=after(cmd,"write hello.txt "))) {
-        char data[496]; unsigned n=0;
-        int quoted = *arg == '"';
-        if (quoted) ++arg;
-        while (*arg && !(quoted && *arg=='"' && !arg[1]) && n+1<sizeof data) data[n++]=*arg++;
-        data[n]=0;
-        if ((quoted && (*arg!='"' || arg[1])) || (!quoted && *arg)) append(&t,"Invalid or oversized text");
-        else append(&t,note_disk_save_hello(data) ? "Write failed" : "Write queued");
-    } else if (!strcmp(cmd,"ps") || (arg=after(cmd,"quota "))) {
+    } else if (!strcmp(cmd,"version")) append(&t,QUOTAOS_VERSION);
+    else if (!strcmp(cmd,"ps") || (arg=after(cmd,"quota "))) {
         int list=!strcmp(cmd,"ps"), found=0;
         for (int i=0;i<MAX_TASKS;i++) {
             struct task *task=sched_task_at(i);
@@ -110,6 +93,10 @@ void shell_serial(void)
         else if (action==SHELL_REBOOT || action==SHELL_OFF) {
             shell_power(action==SHELL_REBOOT);
             printf("Power action unavailable\n");
+        } else if (!strcmp(out, "Root request queued.")) {
+            const char *reply;
+            while (!(reply = root_shell_poll())) asm volatile("wfi");
+            printf("%s\n",reply);
         } else printf("%s\n",out);
     }
 }

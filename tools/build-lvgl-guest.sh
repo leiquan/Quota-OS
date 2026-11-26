@@ -9,7 +9,8 @@ cd "$ROOT"
 source tools/guest-toolchain.sh
 EXTRA_CFLAGS="-DQUOTA_SYSTEM_STATUS ${EXTRA_CFLAGS:-}"
 image_name=quotaos-lvgl
-source_lists=(os/kernel/sources.list)
+source_lists=(os/kernel/sources.list os/kernel/fs/sources.list)
+EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_GUI_EXT4"
 embed_payload=
 source_lists+=(os/port/wap/sources.list)
 volume_default=1
