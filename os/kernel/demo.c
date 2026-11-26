@@ -1,3 +1,5 @@
+#include "touch_ext4.h"
+#include "auth.h"
 /*
  * 串口菜单。十个演示，每个对应资源模型里的一条承诺，输出直接给结论。
  *
@@ -1145,13 +1147,49 @@ void demo_menu_status(char *buf, int cap)
         menu_copy(buf, cap, "idle");
 }
 
+#ifdef SYSTEM_STATUS_ENABLED
+static void system_status_probe(void)
+{
+    struct sched_status_snapshot s;
+    uint64_t generation = 0, prior_release = 0;
+    struct running_app *tier2 = demo_app("status-probe-t2", 400, 0, KIND_SPIN, 0, 0);
+    if (!tier2) {
+        printf("[system-status] Tier 2 admission failed\n");
+        return;
+    }
+    hogs(3);
+    printf("[system-status] cpu_us=%u mem_kb=%u guard_us=%u admitted_tier2_us=%u\n",
+           resource_t1_cpu_us(), resource_t1_mem_kb(), resource_guard_us(), tier2->cpu_min_us);
+    for (int i = 0; i < 4; ++i) {
+        do { asm volatile("wfi"); }
+        while (!sched_system_status_read(&s) || s.generation == generation);
+        generation = s.generation;
+        uint64_t gap = prior_release ? s.release_ticks - prior_release : 0;
+        prior_release = s.release_ticks;
+        printf("[system-status] generation=%lu release=%lu sample=%lu gap=%lu busy=%lu window=%lu reserved_kb=%lu total_kb=%lu tasks=%u task_peak=%lu misses=%u tier1_misses=%lu tier2_short=%lu\n",
+               s.generation, s.release_ticks, s.sample_ticks, gap, s.busy_ticks,
+               s.window_ticks, s.reserved_kb, s.total_kb, s.tasks, s.task_peak_ticks,
+               s.sample_misses, s.tier1_misses, s.tier2_short);
+    }
+    struct sched_system_info info;
+    sched_read_system_info(&info);
+    printf("[system-status] tier3_over=%lu\nQA DONE\n", info.tier3_over);
+}
+#endif
+
 void shell_main(void)
 {
     printf("[boot] shell task running\n");
     klog_flush(); /* Boot records are printed without blocking realtime IRQs. */
     const char *args = dtb_bootargs();
+#ifdef SYSTEM_STATUS_ENABLED
+    if (!strcmp(args, "system-status-test")) {
+        system_status_probe();
+        for (;;) asm volatile("wfi");
+    }
+#endif
     int stall = !strcmp(args, "apps-desktop-stall");
-    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || stall || !strcmp(args, "apps-lifecycle")) {
+    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || (!strcmp(args, TOUCH_EXT4_BOOTARGS) || !strcmp(args, TOUCH_EXT4_PRODUCT_BOOTARGS)) || stall || !strcmp(args, "apps-lifecycle")) {
         app_demo_run(strcmp(args, "apps") != 0, stall);
         for (;;) asm volatile("wfi");
     }
@@ -1223,6 +1261,8 @@ void shell_main(void)
         for (;;)
             asm volatile("wfi");
     }
+    note_disk_init();
+    auth_serial_login();
     printf("[boot] serial menu\n");
     cmd_help();
     for (;;) {

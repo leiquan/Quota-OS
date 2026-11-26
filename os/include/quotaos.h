@@ -306,6 +306,24 @@ void app_display_core_frame(uint64_t release);
 void app_frame_trace_start(void);
 void app_frame_trace_dump(void);
 void app_desktop_stall_probe(void);
+#if defined(QUOTA_SYSTEM_STATUS) && !defined(QUOTA_CLI)
+#define SYSTEM_STATUS_ENABLED 1
+#define SYSTEM_STATUS_TASK "system-status"
+#endif
+
+struct sched_status_snapshot {
+    uint64_t generation, release_ticks, sample_ticks;
+    uint64_t busy_ticks, window_ticks, reserved_kb, total_kb;
+    uint64_t tier1_misses, tier2_short, task_peak_ticks;
+    unsigned tasks, sample_misses;
+};
+
+/* Returns zero until the optional Tier 1 sampler has published a snapshot. */
+int sched_system_status_read(struct sched_status_snapshot *snapshot);
+#ifdef SYSTEM_STATUS_ENABLED
+void *color_tier1_first_page(const char *name);
+#endif
+
 struct sched_system_info {
     uint64_t period;
     uint64_t cpu_us[3], kernel_us, tier3_limit_us;
@@ -540,6 +558,8 @@ int note_disk_wap_note_committed(uint32_t generation);
 const unsigned char *note_disk_wap_note(unsigned *length);
 enum { NOTE_DISK_PACKAGE_CAPACITY = 2032 };
 int note_disk_save_package(const unsigned char *bytes, unsigned length);
+int note_disk_package_initialized(void);
+int note_disk_remove_package(void);
 const unsigned char *note_disk_package(unsigned *length);
 int note_disk_scrub_start(void);
 unsigned note_disk_scrub_stop(unsigned *completed_requests);
@@ -628,7 +648,7 @@ int c_demo_compile(const char *source);
 int64_t c_demo_run(void);
 int c_demo_compiled(void);
 int64_t proc_spawn_console(const char *code, unsigned bytes);
-void proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y);
+int proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y);
 int proc_backend_output(int64_t handle, char *out, unsigned size);
 const uint32_t *proc_page_surface(int64_t handle, unsigned *frame_number);
 int64_t proc_spawn_wap_elf(const unsigned char *elf, unsigned bytes,

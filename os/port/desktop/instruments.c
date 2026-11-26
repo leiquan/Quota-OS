@@ -10,11 +10,28 @@ static lv_image_dsc_t app_images[3];
 static lv_obj_t *music_history[8];
 static lv_obj_t *app_rate[3], *app_status[3];
 
+enum { INSTRUMENT_CARD_WIDTH = 480, INSTRUMENT_TEXT_X = 184,
+       BADGE_WIDTH = 72, BADGE_INSET = 22, STATUS_CARD_WIDTH = DISPLAY_WIDTH - 48 };
+
+
+static void instrument_badge(lv_obj_t *card, const char *symbol, const char *tier, uint32_t accent)
+{
+    lv_obj_t *icon = desk_label(card, 0, 0, symbol, accent);
+    lv_obj_t *label = desk_label(card, 0, 0, tier, accent);
+    lv_obj_set_width(icon, BADGE_WIDTH);
+    lv_obj_set_width(label, BADGE_WIDTH);
+    lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
+    lv_obj_align(icon, LV_ALIGN_TOP_RIGHT, -BADGE_INSET, 16);
+    lv_obj_align(label, LV_ALIGN_TOP_RIGHT, -BADGE_INSET, 49);
+}
+
 static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail, const char *tier, const char *symbol, uint32_t accent)
 {
     lv_obj_t *card = lv_obj_create(screen);
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y);
-    lv_obj_set_size(card, 380, 140);
+    lv_obj_set_size(card, INSTRUMENT_CARD_WIDTH, 140);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_set_style_radius(card, 16, 0);
     lv_obj_set_style_border_width(card, 1, 0);
@@ -25,11 +42,10 @@ static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *heading = desk_label(card, 30, 16, title, 0xf5f8fd);
     lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
-    desk_label(card, 30, 49, detail, 0xb8cadd);
-    lv_obj_t *icon = desk_label(card, 332, 18, symbol, accent);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
-    lv_obj_t *tier_label = desk_label(card, 0, 0, tier, accent);
-    lv_obj_align(tier_label, LV_ALIGN_TOP_RIGHT, -22, 49);
+    lv_obj_t *description = desk_label(card, 30, 49, detail, 0xb8cadd);
+    lv_obj_set_width(description, INSTRUMENT_CARD_WIDTH - 30 - BADGE_WIDTH - 2 * BADGE_INSET);
+    lv_label_set_long_mode(description, LV_LABEL_LONG_DOT);
+    instrument_badge(card, symbol, tier, accent);
     return card;
 }
 
@@ -102,8 +118,12 @@ void instruments_create(lv_obj_t *screen, int apps, int bottom_inset)
         music_history[i] = bar;
     }
     for (int i = 0; i < 3; i++) {
-        app_rate[i] = desk_label(cards[i], 184, 84, "Measuring FPS", 0xf1f6ff);
-        app_status[i] = desk_label(cards[i], 184, 109, "", 0xc7d7e6);
+        app_rate[i] = desk_label(cards[i], INSTRUMENT_TEXT_X, 84, "Measuring FPS", 0xf1f6ff);
+        app_status[i] = desk_label(cards[i], INSTRUMENT_TEXT_X, 109, "", 0xc7d7e6);
+        lv_obj_set_width(app_rate[i], INSTRUMENT_CARD_WIDTH - INSTRUMENT_TEXT_X - 28);
+        lv_obj_set_width(app_status[i], INSTRUMENT_CARD_WIDTH - INSTRUMENT_TEXT_X - 28);
+        lv_label_set_long_mode(app_rate[i], LV_LABEL_LONG_DOT);
+        lv_label_set_long_mode(app_status[i], LV_LABEL_LONG_DOT);
     }
 }
 
@@ -167,3 +187,69 @@ void instruments_refresh(void)
     }
     previous = current;
 }
+
+#if defined(SYSTEM_STATUS_ENABLED)
+enum status_field { STATUS_CPU, STATUS_RAM, STATUS_TASKS, STATUS_TIER1, STATUS_TIER2, STATUS_FIELDS };
+static lv_obj_t *status_values[STATUS_FIELDS];
+static lv_font_t status_font;
+
+static bool status_glyph(const lv_font_t *font, lv_font_glyph_dsc_t *glyph,
+                         uint32_t letter, uint32_t next)
+{
+    bool digit = letter >= '0' && letter <= '9';
+    if (!lv_font_montserrat_14.get_glyph_dsc(font, glyph, letter, digit ? 0 : next))
+        return false;
+    if (digit) glyph->adv_w = 10;
+    return true;
+}
+
+void system_status_create(lv_obj_t *screen)
+{
+    lv_obj_t *panel = lv_obj_create(screen);
+    lv_obj_set_size(panel, STATUS_CARD_WIDTH, 270);
+    lv_obj_align(panel, LV_ALIGN_TOP_MID, 0, STATUS_BAR_HEIGHT + 26);
+    lv_obj_set_style_radius(panel, 20, 0);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(0x162640), 0);
+    lv_obj_set_style_border_width(panel, 1, 0);
+    lv_obj_set_style_border_color(panel, lv_color_hex(0x596c91), 0);
+    lv_obj_set_style_pad_all(panel, 0, 0);
+    lv_obj_remove_flag(panel, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *title = desk_label(panel, 28, 20, "System Status", 0xf4f7fe);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    instrument_badge(panel, LV_SYMBOL_SETTINGS, "Tier 1", 0x69dfbd);
+
+    status_font = lv_font_montserrat_14;
+    status_font.get_glyph_dsc = status_glyph;
+    static const char *const labels[STATUS_FIELDS] = {
+        "CPU busy", "Reserved / total (MiB)", "Tasks",
+        "Tier 1 deadline misses", "Tier 2 quota shortfalls",
+    };
+    for (unsigned i = 0; i < STATUS_FIELDS; i++) {
+        int y = 86 + (int)i * 34;
+        desk_label(panel, 28, y, labels[i], 0xc3d0e4);
+        status_values[i] = desk_label(panel, 365, y, "--", 0xf4f7fe);
+        lv_obj_set_width(status_values[i], STATUS_CARD_WIDTH - 365 - 28);
+        lv_obj_set_style_text_align(status_values[i], LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_set_style_text_font(status_values[i], &status_font, 0);
+    }
+}
+
+void system_status_refresh(void)
+{
+    static uint64_t previous;
+    struct sched_status_snapshot sample;
+    if (!sched_system_status_read(&sample) || sample.generation == previous)
+        return;
+    previous = sample.generation;
+    uint64_t busy = sample.window_ticks ? sample.busy_ticks * 1000u / sample.window_ticks : 0;
+    lv_label_set_text_fmt(status_values[STATUS_CPU], "%3lu.%lu%%",
+                          (unsigned long)(busy / 10), (unsigned long)(busy % 10));
+    uint64_t reserved_tenths = (sample.reserved_kb * 10u + 512u) / 1024u;
+    lv_label_set_text_fmt(status_values[STATUS_RAM], "%lu.%lu / %lu",
+                          (unsigned long)(reserved_tenths / 10), (unsigned long)(reserved_tenths % 10),
+                          (unsigned long)(sample.total_kb / 1024u));
+    lv_label_set_text_fmt(status_values[STATUS_TASKS], "%u", sample.tasks);
+    lv_label_set_text_fmt(status_values[STATUS_TIER1], "%lu", (unsigned long)sample.tier1_misses);
+    lv_label_set_text_fmt(status_values[STATUS_TIER2], "%lu", (unsigned long)sample.tier2_short);
+}
+#endif

@@ -7,7 +7,10 @@ set -euo pipefail
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 source tools/guest-toolchain.sh
-EXTRA_CFLAGS=${EXTRA_CFLAGS:-}
+EXTRA_CFLAGS="${EXTRA_CFLAGS:-} -DQUOTA_SYSTEM_STATUS"
+if [[ ${QUOTA_GUI_EXT4:-0} == 1 ]]; then
+    EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_GUI_EXT4"
+fi
 image_name=quotaos-lvgl
 source_lists=(os/kernel/sources.list)
 embed_payload=

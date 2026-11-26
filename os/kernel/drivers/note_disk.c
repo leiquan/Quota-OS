@@ -1,3 +1,5 @@
+#include "root_disk.h"
+#include "auth.h"
 /* Dedicated virtio-blk note volume on QEMU virt, modern MMIO transport.
  * Accessed only by the Tier-3 desktop. One request per period, one in flight.
  * Alternate two records so a torn update leaves the prior version readable. */
@@ -24,8 +26,16 @@ static unsigned submitted_once, inflight;
 static uint16_t completed;
 static int slots[DOCUMENT_COUNT];
 #define slot (slots[document])
-enum phase { OFFLINE, IDENTIFY, READ_A, READ_B, READY, WRITE, FLUSH, VERIFY, SCRUB, FAILED };
+enum phase { OFFLINE, IDENTIFY, AUTH_READ, AUTH_WRITE, AUTH_FLUSH, AUTH_CHECK, READ_A, READ_B, READY, WRITE, FLUSH, VERIFY, SCRUB, FAILED };
 static enum phase phase;
+static uint8_t credential_sector[512];
+int auth_disk_store(const uint8_t data[512])
+{
+    if (phase != READY || inflight) return -1;
+    memcpy(credential_sector, data, BLOCK);
+    phase = AUTH_WRITE;
+    return 0;
+}
 static int verify_result;
 static unsigned scrub_enabled, scrub_sector, scrub_submitted, scrub_completed;
 
@@ -55,6 +65,7 @@ void note_disk_init(void)
     uint64_t nodes[32];
     int n = dtb_find_bases("virtio,mmio", nodes, 32);
     for (int i = 0; i < n; ++i) {
+        if (nodes[i] == ROOT_RW_MMIO && root_disk_write_enabled()) continue;
         if (mmio_rd(nodes[i]+8) == 2 && mmio_rd(nodes[i]+4) == 2) {
             base = nodes[i];
             break;
@@ -114,8 +125,10 @@ static int valid_source_name(const char *name)
 
 static void submit(void)
 {
-    int flush = phase == FLUSH;
-    header.type = phase == IDENTIFY ? 8 : phase == WRITE ? 1 : flush ? 4 : 0;
+    int flush = phase == FLUSH || phase == AUTH_FLUSH;
+    int writing = phase == WRITE || phase == AUTH_WRITE;
+    int credential = phase >= AUTH_READ && phase <= AUTH_CHECK;
+    header.type = phase == IDENTIFY ? 8 : writing ? 1 : flush ? 4 : 0;
     header.sector = phase == READ_B || (phase == WRITE && !slot);
     if (phase == VERIFY) header.sector = slot;
     if (document == PACKAGE_EXT) header.sector = 8 + 4 * header.sector;
@@ -123,10 +136,11 @@ static void submit(void)
     else header.sector += document * 2;
     if (phase == IDENTIFY || flush) header.sector = 0;
     if (phase == SCRUB) header.sector = scrub_sector;
+    if (credential && !flush) header.sector = 63;
     status = 255;
     desc[0] = (struct descriptor){(uintptr_t)&header, sizeof header, 1, flush ? 2 : 1};
-    desc[1] = (struct descriptor){phase == IDENTIFY ? (uintptr_t)serial : (uintptr_t)&transfer,
-        phase == IDENTIFY ? 20 : document == PACKAGE_EXT ? PACKAGE_BANK_BYTES : BLOCK, phase == WRITE ? 1 : 3, 2};
+    desc[1] = (struct descriptor){phase == IDENTIFY ? (uintptr_t)serial : credential ? (uintptr_t)credential_sector : (uintptr_t)&transfer,
+        phase == IDENTIFY ? 20 : credential ? BLOCK : document == PACKAGE_EXT ? PACKAGE_BANK_BYTES : BLOCK, writing ? 1 : 3, 2};
     desc[2] = (struct descriptor){(uintptr_t)&status, 1, 2, 0};
     avail.ring[avail.idx % 8] = 0;
     asm volatile("dmb oshst" ::: "memory");
@@ -152,12 +166,21 @@ void note_disk_poll(void)
         inflight = 0;
         if (status) { phase = FAILED; return; }
         if (phase == IDENTIFY) {
-            phase = !strcmp(serial, "QUOTA-NOTES") ? READ_A : OFFLINE;
+            phase = !strcmp(serial, "QUOTA-NOTES") ? AUTH_READ : OFFLINE;
+        } else if (phase == AUTH_READ) {
+            phase = READ_A;
+        } else if (phase == AUTH_WRITE) phase = AUTH_FLUSH;
+        else if (phase == AUTH_FLUSH) phase = AUTH_CHECK;
+        else if (phase == AUTH_CHECK) {
+            auth_disk_verified(credential_sector);
+            phase = READY;
         } else if (phase == READ_A || phase == READ_B) {
             int valid = document == NOTE_DATA_SLOT
                 ? transfer.magic == NOTE_DATA_MAGIC && transfer.length <= LEGACY_BYTES
                 : (document == 2 || document == PACKAGE_EXT)
-                ? transfer.magic == PACKAGE_MAGIC && transfer.length && transfer.length <= (document == PACKAGE_EXT ? sizeof transfer.text : LEGACY_BYTES)
+                ? transfer.magic == PACKAGE_MAGIC && (document == PACKAGE_EXT
+                    ? transfer.length <= sizeof transfer.text
+                    : transfer.length && transfer.length <= LEGACY_BYTES)
                 : (transfer.magic == MAGIC || (document == 1 && transfer.magic == SOURCE_MAGIC &&
                     transfer.length < LEGACY_BYTES - SOURCE_NAME &&
                     valid_source_name(transfer.text + LEGACY_BYTES - SOURCE_NAME))) &&
@@ -173,6 +196,7 @@ void note_disk_poll(void)
                 phase = READ_A;
             } else if (phase == READY) {
                 document = 0;
+                auth_disk_loaded(credential_sector);
                 printf("[files] mounted bytes=%u checksum=%u\n", saved.length, saved.checksum);
             }
         } else if (phase == SCRUB) {
@@ -246,6 +270,19 @@ int note_disk_save_package(const unsigned char *bytes, unsigned length)
     return length ? save_binary(document_count > PACKAGE_EXT ? PACKAGE_EXT : 2, PACKAGE_MAGIC, bytes, length) : -1;
 }
 
+int note_disk_package_initialized(void)
+{
+    return documents[PACKAGE_EXT].magic || documents[2].magic;
+}
+
+int note_disk_remove_package(void)
+{
+    unsigned length;
+    /* An empty record in the extended bank masks both previous banks and the legacy slot. */
+    return document_count > PACKAGE_EXT && note_disk_package(&length)
+        ? save_binary(PACKAGE_EXT, PACKAGE_MAGIC, (const unsigned char *)"", 0) : -1;
+}
+
 int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_t *generation)
 {
     if (!generation || save_binary(NOTE_DATA_SLOT, NOTE_DATA_MAGIC, bytes, length))
@@ -276,7 +313,7 @@ const unsigned char *note_disk_package(unsigned *length)
 {
     const struct record *r = documents[PACKAGE_EXT].magic ? &documents[PACKAGE_EXT] : &documents[2];
     *length = r->length;
-    return r->magic ? (const unsigned char *)r->text : NULL;
+    return r->magic && r->length ? (const unsigned char *)r->text : NULL;
 }
 
 int note_disk_save(const char *text) { return save_document(text, 0, NULL); }

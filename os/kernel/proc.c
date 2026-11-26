@@ -1,3 +1,4 @@
+#include "auth.h"
 /*
  * EL0 processes. Each live app has its own TTBR0. EL0 can touch only its
  * code, stack, and draw page. Kernel RAM, devices, the global framebuffer,
@@ -109,17 +110,20 @@ static unsigned input_head, input_count;
 static int64_t page_owner;
 static unsigned page_rows;
 
-void proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y)
+int proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y)
 {
 #ifdef QUOTA_LINUX_APP_RUNTIME
     uint64_t flags = irq_save();
-    if (handle > 0 && handle == page_owner && input_count < 64) {
+    int queued = handle > 0 && handle == page_owner && input_count < 64;
+    if (queued) {
         window_input[(input_head + input_count) % 64] = (typeof(window_input[0])){kind, x, y};
         ++input_count;
     }
     irq_restore(flags);
+    return queued;
 #else
     (void)handle; (void)kind; (void)x; (void)y;
+    return 0;
 #endif
 }
 
@@ -287,6 +291,7 @@ static int can_queue_socket(struct packet_socket *socket, struct packet_socket *
 #endif
 
 struct proc {
+    unsigned session_owned;
 #ifdef QUOTA_WAP_FULL_RUNTIME
     struct wap_thread threads[WAP_THREADS];
     unsigned active_thread, next_tid, live_threads;
@@ -833,7 +838,7 @@ int disp_drain(int max)
         if (music) {
             if (work.w == APP_MUSIC_SIZE && work.h == APP_MUSIC_SIZE)
                 vehicle_music_blit((const uint32_t *)(uintptr_t)work.pa);
-        } else {
+        } else if (auth_state() == AUTH_OPEN) {
             blit(work.pa, work.x, work.y, work.w, work.h);
         }
         irq_off_begin(&span);
@@ -1935,6 +1940,7 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
         electron_generation = input_count = input_head = 0;
 #endif
         }
+        p->session_owned = auth_state() == AUTH_OPEN;
         p->alive = 1;
         if (!image || image->role == WAP_SINGLE || image->role == WAP_PAGE_ONLY ||
             image->role == WAP_NODE_ONLY) task_ready(p->task);
@@ -2294,4 +2300,10 @@ void proc_init(void)
 uint64_t proc_irq_off_max_us(void)
 {
     return ticks_to_us(irq_off_max);
+}
+
+void proc_stop_session(void)
+{
+    for (unsigned i = 0; i < EL0_SLOTS; ++i)
+        if (procs[i].alive && procs[i].session_owned) proc_kill(make_handle(&procs[i]));
 }
