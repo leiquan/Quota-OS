@@ -281,18 +281,15 @@ int resource_running_count(void);
 struct running_app *resource_running(int index);
 const struct app_manifest *resource_catalog(int *count);
 
-/* App-demo framebuffer rectangles. LVGL must preserve their pixel writes. */
-#define APP_DESK_EDGE 840
-#define APP_DRAW_X 890
-#define APP_DASH_Y 205
+/* App-demo surfaces published by the instrument producers. */
 #define APP_DASH_W 128
 #define APP_DASH_H 28
-#define APP_VIDEO_Y 370
-#define APP_MUSIC_Y 535
 #define APP_METER_W 128
 #define APP_METER_H 40
 #define APP_MUSIC_SIZE 32
 int app_desktop_mode(void);
+const uint32_t *vehicle_app_pixels(int tier);
+void vehicle_music_blit(const uint32_t *pixels);
 void app_demo_run(int with_video, int stall);
 void app_desktop_poll(void);
 int vehicle_app_running(int tier);
@@ -512,8 +509,8 @@ void fb_geometry(uint32_t *w, uint32_t *h);
 
 /* Fixed budgets for the LVGL demo. The heap is LVGL's pool (no expand).
  * The draw buffer and framebuffer are separate and do not grow. */
-#define DISPLAY_WIDTH 1280u
-#define DISPLAY_HEIGHT 800u
+#define DISPLAY_WIDTH 900u
+#define DISPLAY_HEIGHT 1600u
 #define LVGL_HEAP_BYTES (256u * 1024u)
 #define LVGL_DRAW_BYTES (DISPLAY_WIDTH * 48u * 4u)
 #define LVGL_FB_BYTES (DISPLAY_WIDTH * DISPLAY_HEIGHT * 4u)

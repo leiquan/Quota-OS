@@ -828,8 +828,14 @@ int disp_drain(int max)
         /* Transfer the existing queue hold to a draw pin before unmasking.
          * Kill may cancel queued work, but cannot free a pinned draw page. */
         p->active_draws++;
+        int music = p->unpaced_draw;
         irq_off_end(span);
-        blit(work.pa, work.x, work.y, work.w, work.h);
+        if (music) {
+            if (work.w == APP_MUSIC_SIZE && work.h == APP_MUSIC_SIZE)
+                vehicle_music_blit((const uint32_t *)(uintptr_t)work.pa);
+        } else {
+            blit(work.pa, work.x, work.y, work.w, work.h);
+        }
         irq_off_begin(&span);
         p->active_draws--;
         p->hold--;
@@ -1046,7 +1052,7 @@ static void finish_one(struct proc *p)
         last_reap.us = ticks_to_us(last_reap.ticks);
         last_reap.cntpct = pct1 >= p->reap_pct0 ? pct1 - p->reap_pct0 : 0;
     }
-    if (!refused)
+    if (!refused && !p->unpaced_draw)
         mark_dead(p->vx, p->vy, p->vw, p->vh);
 }
 

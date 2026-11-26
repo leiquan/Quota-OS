@@ -1,8 +1,7 @@
 #include "quotaos.h"
 
-/* Dedicated framebuffer demo mode. The desktop never draws on these regions. */
-static uint32_t *volatile app_surface;
-static uint32_t app_stride;
+/* Instrument producers publish to private surfaces for desktop composition. */
+static int app_display_enabled;
 static volatile uint32_t dashboard_frames, video_frames;
 static volatile int video_stalled;
 static uint64_t video_tick, video_max_gap, video_period;
@@ -79,7 +78,7 @@ void app_display_read(struct app_display_stats *stats)
 
 int app_desktop_mode(void)
 {
-    return app_surface ? (video_configured ? 2 : 1) : 0;
+    return app_display_enabled ? (video_configured ? 2 : 1) : 0;
 }
 
 /* The 10 s test produces about 1,250 records. Never log from the drawing path. */
@@ -131,8 +130,24 @@ void app_frame_trace_dump(void)
 static uint32_t speed_pixels[APP_DASH_H][APP_DASH_W] __attribute__((aligned(8)));
 static uint32_t camera_pixels[APP_METER_H][APP_METER_W] __attribute__((aligned(8)));
 
+static uint32_t speed_surface[APP_DASH_H][APP_DASH_W] __attribute__((aligned(8)));
+static uint32_t camera_surface[APP_METER_H][APP_METER_W] __attribute__((aligned(8)));
+static uint32_t music_surface[APP_MUSIC_SIZE][APP_MUSIC_SIZE];
+
+const uint32_t *vehicle_app_pixels(int tier)
+{
+    if (tier == TIER1) return &speed_surface[0][0];
+    if (tier == TIER2) return &camera_surface[0][0];
+    return &music_surface[0][0];
+}
+
+void vehicle_music_blit(const uint32_t *pixels)
+{
+    memcpy(music_surface, pixels, sizeof music_surface);
+}
+
 static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
-                                   unsigned height, unsigned y, uint64_t target,
+                                   unsigned height, uint32_t *surface, uint64_t target,
                                    uint64_t *copy_start)
 {
     if (clock_is_icount()) {
@@ -161,15 +176,9 @@ static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
     *copy_start = ticks_now();
     typedef uint64_t pixel_pair __attribute__((may_alias));
     for (unsigned row = 0; row < height; row++) {
-        uint32_t *line = app_surface + (y + row) * app_stride + APP_DRAW_X;
-        const uint32_t *source = pixels + row * width;
-        if ((uintptr_t)line & 7) {
-            for (unsigned col = 0; col < width; col++) line[col] = source[col];
-        } else {
-            pixel_pair *dst = (pixel_pair *)line;
-            const pixel_pair *src = (const pixel_pair *)source;
-            for (unsigned col = 0; col < width / 2; col++) dst[col] = src[col];
-        }
+        pixel_pair *dst = (pixel_pair *)(surface + row * width);
+        const pixel_pair *src = (const pixel_pair *)(pixels + row * width);
+        for (unsigned col = 0; col < width / 2; col++) dst[col] = src[col];
     }
     asm volatile("dsb st" ::: "memory");
     return ticks_now();
@@ -177,7 +186,7 @@ static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
 
 void app_display_core_frame(uint64_t release)
 {
-    if (!app_surface)
+    if (!app_display_enabled)
         return;
     uint64_t trace_start = trace_active ? ticks_now() : 0;
     static const uint8_t masks[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66,
@@ -214,7 +223,7 @@ void app_display_core_frame(uint64_t release)
         speed_pixels[20][x] = 0x82a4ad;
     uint64_t copy_start;
     uint64_t now = publish_instrument(&speed_pixels[0][0], APP_DASH_W, APP_DASH_H,
-                                      APP_DASH_Y, release + us_to_ticks(270), &copy_start);
+                                      &speed_surface[0][0], release + us_to_ticks(270), &copy_start);
     if (display_commit_tick) {
         uint64_t gap = now - display_commit_tick;
         if (gap > display_max_gap) display_max_gap = gap;
@@ -305,7 +314,7 @@ static void app_demo_video_frame(void)
             uint64_t release = sched_period_release(period);
             uint64_t copy_start;
             uint64_t now = publish_instrument(&camera_pixels[0][0], APP_METER_W, APP_METER_H,
-                                              APP_VIDEO_Y, release + us_to_ticks(300), &copy_start);
+                                              &camera_surface[0][0], release + us_to_ticks(300), &copy_start);
             uint64_t flags = irq_save();
             if (video_tick) {
                 uint64_t gap = now - video_tick;
@@ -328,7 +337,7 @@ static void app_demo_video_frame(void)
 /* Called by the Tier-3 desktop once per iteration. No waiting in GUI code. */
 void app_desktop_poll(void)
 {
-    if (!app_surface)
+    if (!app_display_enabled)
         return;
     uint64_t period = sched_period_now();
     /* Present queued pixels in a bounded batch on the Tier-3 desktop. */
@@ -380,7 +389,7 @@ int vehicle_app_running(int tier)
 
 int vehicle_app_set_running(int tier, int start)
 {
-    if (!app_surface || tier < TIER1 || tier > TIER3)
+    if (!app_display_enabled || tier < TIER1 || tier > TIER3)
         return -1;
     if (tier == TIER1)
         return start ? 0 : task_kill(dashboard_demo);
@@ -388,8 +397,8 @@ int vehicle_app_set_running(int tier, int start)
         return 0;
     if (tier == TIER3) {
         if (start) {
-            music_demo = proc_spawn("music", EL0_PAINT_MUSIC, 0, 0, (uintptr_t)app_surface, 0,
-                                    APP_DRAW_X, APP_MUSIC_Y, APP_MUSIC_SIZE, APP_MUSIC_SIZE);
+            music_demo = proc_spawn("music", EL0_PAINT_MUSIC, 0, 0, 0, 0,
+                                    0, 0, APP_MUSIC_SIZE, APP_MUSIC_SIZE);
             return music_demo >= 0 ? 0 : -1;
         }
         if (proc_kill(music_demo))
@@ -474,17 +483,13 @@ static int vehicle_lifecycle_check(void)
 
 void app_demo_run(int with_video, int stall)
 {
-    uint64_t pa, bytes;
-    uint32_t w, h;
-    if (fb_present() || fb_reserved_range(&pa, &bytes)) {
+    if (fb_present()) {
         printf("[apps] FAIL framebuffer\nQA DONE\n");
         return;
     }
-    fb_geometry(&w, &h);
-    app_stride = w;
     struct task *dashboard = sched_find("dashboard");
     dashboard_demo = dashboard;
-    app_surface = (uint32_t *)(uintptr_t)pa;
+    app_display_enabled = 1;
     video_configured = with_video;
     int music_ok = vehicle_app_set_running(TIER3, 1);
     struct task *music_task = sched_find("music");

@@ -49,7 +49,16 @@ static uint64_t rtc_base;
 enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_EVENTS };
 static enum monitor_page monitor_tab;
 enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST, APP_ZIP, APP_DEMO, APP_COUNT };
-static lv_obj_t *dock, *icons[APP_COUNT], *dots[APP_COUNT];
+static lv_obj_t *dock, *icons[APP_COUNT], *dots[APP_COUNT], *touch_bar;
+static lv_indev_t *desktop_keypad;
+static lv_group_t *desktop_group;
+enum { BAR_HEIGHT = 64, BAR_WIDTH = 280 };
+struct desktop_page {
+    lv_obj_t *view;
+    enum app_key key;
+};
+static struct desktop_page active_page, back_stack[APP_COUNT];
+static unsigned back_count;
 enum window_state { CLOSED, OPEN, MINIMIZED };
 static enum window_state states[APP_COUNT];
 static enum app_key recent[5];
@@ -82,13 +91,13 @@ static void sync_dock(void)
 {
     enum app_key visible[APP_COUNT] = {APP_LAUNCHER};
     unsigned count = 1;
+    unsigned capacity = (screen_width - 12) / DOCK_STEP;
     for (int key = 0; key < APP_COUNT; key++) {
         lv_obj_add_flag(icons[key], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(dots[key], LV_OBJ_FLAG_HIDDEN);
-        if (key != APP_LAUNCHER && states[key] != CLOSED) visible[count++] = key;
     }
-    if (count == 1)
-        for (unsigned i = 0; i < recent_count; i++) visible[count++] = recent[i];
+    for (unsigned i = 0; i < recent_count && count < capacity; i++)
+        if (states[recent[i]] != CLOSED) visible[count++] = recent[i];
     int width = count * DOCK_STEP + 12;
     lv_obj_set_width(dock, width);
     lv_obj_set_x(dock, (screen_width - width) / 2);
@@ -102,82 +111,67 @@ static void sync_dock(void)
     }
 }
 
-static void show_page(int which)
+static void switch_page(struct desktop_page page)
 {
-    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : which == 4 ? page_files : which == 5 ? page_shell : which == 6 ? page_test : page_zip;
-    lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
-    dock_state(page_keys[which], OPEN);
-    lv_obj_move_foreground(win);
-}
-
-#define CUR_W 16
-#define CUR_H 16
-static uint8_t cursor_px[CUR_W * CUR_H * 4];
-static lv_image_dsc_t cursor_dsc;
-
-static void cursor_px_set(int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
-{
-    uint8_t *p = cursor_px + ((y * CUR_W) + x) * 4;
-    p[0] = b;
-    p[1] = g;
-    p[2] = r;
-    p[3] = a;
-}
-
-/* Tip at (0,0). Black arrow, one-pixel white outline. 1024 bytes, fixed. */
-static void build_cursor(void)
-{
-    static const char *core[CUR_H] = {
-        "#...............",
-        "##..............",
-        "#.#.............",
-        "#..#............",
-        "#...#...........",
-        "#....#..........",
-        "#.....#.........",
-        "#......#........",
-        "#.......#.......",
-        "#........#......",
-        "#....#####......",
-        "#.#.#...........",
-        "##..#...........",
-        "#...#...........",
-        "....#...........",
-        "....#...........",
-    };
-    int black[CUR_H][CUR_W];
-    for (int y = 0; y < CUR_H; y++) {
-        for (int x = 0; x < CUR_W; x++)
-            black[y][x] = core[y][x] == '#';
+    /* Hide the page without discarding its widgets or stopping its app. */
+    if (active_page.view) {
+        lv_obj_add_flag(active_page.view, LV_OBJ_FLAG_HIDDEN);
+        dock_state(active_page.key, active_page.key == APP_LAUNCHER ? CLOSED : MINIMIZED);
     }
-    for (int y = 0; y < CUR_H; y++) {
-        for (int x = 0; x < CUR_W; x++) {
-            if (black[y][x]) {
-                cursor_px_set(x, y, 0, 0, 0, 255);
-                continue;
-            }
-            int edge = 0;
-            for (int dy = -1; dy <= 1 && !edge; dy++) {
-                for (int dx = -1; dx <= 1; dx++) {
-                    int yy = y + dy, xx = x + dx;
-                    if (yy >= 0 && xx >= 0 && yy < CUR_H && xx < CUR_W && black[yy][xx])
-                        edge = 1;
-                }
-            }
-            if (edge)
-                cursor_px_set(x, y, 255, 255, 255, 255);
-            else
-                cursor_px_set(x, y, 0, 0, 0, 0);
+    active_page = page;
+    lv_obj_t *focus = NULL;
+    if (page.view) {
+        lv_obj_add_flag(dock, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(page.view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(page.view);
+        dock_state(page.key, OPEN);
+        if (page.key == APP_NOTES)
+            focus = lv_obj_has_flag(source_dialog, LV_OBJ_FLAG_HIDDEN) ? field : source_name;
+        else if (page.key == APP_SHELL)
+            focus = shell_input;
+        else if (page.key == APP_DEMO)
+            focus = demo_image;
+    } else {
+        lv_obj_remove_flag(dock, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_indev_set_group(desktop_keypad, focus ? desktop_group : NULL);
+    if (focus) lv_group_focus_obj(focus);
+}
+
+static void open_page(lv_obj_t *view, enum app_key key)
+{
+    if (active_page.view == view) return;
+    for (unsigned i = 0; i < back_count; i++) {
+        if (back_stack[i].view == view) {
+            back_count = i;
+            switch_page((struct desktop_page){view, key});
+            return;
         }
     }
-    cursor_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
-    cursor_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
-    cursor_dsc.header.flags = 0;
-    cursor_dsc.header.w = CUR_W;
-    cursor_dsc.header.h = CUR_H;
-    cursor_dsc.header.stride = CUR_W * 4;
-    cursor_dsc.data_size = sizeof cursor_px;
-    cursor_dsc.data = cursor_px;
+    if (active_page.view && back_count < sizeof back_stack / sizeof back_stack[0])
+        back_stack[back_count++] = active_page;
+    switch_page((struct desktop_page){view, key});
+}
+
+static void show_page(int which)
+{
+    lv_obj_t *pages[] = {page_home, page_input, page_cover, page_apps,
+                         page_files, page_shell, page_test, page_zip};
+    open_page(pages[which], page_keys[which]);
+}
+
+enum { POINTER_DIAMETER = 30 };
+static lv_obj_t *pointer_dot;
+
+static void update_pointer_dot(const struct quota_input *event)
+{
+    lv_obj_remove_flag(pointer_dot, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(pointer_dot, event->x - POINTER_DIAMETER / 2,
+                   event->y - POINTER_DIAMETER / 2);
+    if (event->value)
+        lv_obj_add_state(pointer_dot, LV_STATE_PRESSED);
+    else
+        lv_obj_remove_state(pointer_dot, LV_STATE_PRESSED);
 }
 
 static struct quota_input keys[32];
@@ -217,29 +211,9 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
 {
     int32_t w = lv_area_get_width(area);
     uint32_t stride_px = fb_stride / 4u;
-    int mode = app_desktop_mode();
     for (int32_t y = area->y1; y <= area->y2; y++) {
-        uint32_t *dst = fb_px + (uint32_t)y * stride_px;
-        int end = area->x2 + 1;
-        int reserved = 0;
-        if (mode) {
-            if (y >= APP_DASH_Y && y < APP_DASH_Y + APP_DASH_H)
-                reserved = APP_DASH_W;
-            else if (mode == 2 && y >= APP_VIDEO_Y && y < APP_VIDEO_Y + APP_METER_H)
-                reserved = APP_METER_W;
-            else if (y >= APP_MUSIC_Y && y < APP_MUSIC_Y + APP_MUSIC_SIZE)
-                reserved = APP_MUSIC_SIZE;
-        }
-        if (reserved && area->x1 < APP_DRAW_X + reserved && end > APP_DRAW_X) {
-            if (area->x1 < APP_DRAW_X)
-                memcpy(dst + area->x1, px, (size_t)(APP_DRAW_X - area->x1) * 4u);
-            int right = APP_DRAW_X + reserved;
-            if (right < end)
-                memcpy(dst + right, px + (right - area->x1) * 4u,
-                       (size_t)(end - right) * 4u);
-        } else {
-            memcpy(dst + area->x1, px, (size_t)w * 4u);
-        }
+        uint32_t *dst = fb_px + (uint32_t)y * stride_px + area->x1;
+        memcpy(dst, px, (size_t)w * 4u);
         px += w * 4;
     }
     take_dt(&click_stamp, click_dt, &n_click, "click");
@@ -301,6 +275,73 @@ static void take_inputs(void)
     }
 }
 
+enum bar_gesture { BAR_NONE, BAR_TAP, BAR_SWIPE };
+enum { BAR_DOUBLE_MS = 320, BAR_TAP_SLOP = 24, BAR_SWIPE_DISTANCE = 64,
+       BAR_TAP_MS = 280, BAR_SWIPE_MS = 900 };
+static struct {
+    enum bar_gesture pending;
+    uint32_t released_at, pressed_at;
+    int x, y, max_dx, max_dy;
+    bool down, captured, second, go_back, go_home;
+} bar_input;
+
+static int axis_distance(int a, int b)
+{
+    return a > b ? a - b : b - a;
+}
+
+/* Capture contacts that start on the bar, including motion outside its hit area. */
+static bool take_bar_pointer(const struct quota_input *ev)
+{
+    bool down = ev->value != 0;
+    uint32_t now = lvgl_tick_ms();
+    if (down && !bar_input.down) {
+        int left = ((int)fb_w - BAR_WIDTH) / 2;
+        bar_input.captured = ev->y >= (int)fb_h - BAR_HEIGHT &&
+                             ev->x >= left && ev->x < left + BAR_WIDTH;
+        if (bar_input.captured) {
+            bar_input.x = ev->x;
+            bar_input.y = ev->y;
+            bar_input.pressed_at = now;
+            bar_input.max_dx = bar_input.max_dy = 0;
+            bar_input.second = bar_input.pending && now - bar_input.released_at <= BAR_DOUBLE_MS;
+            lv_obj_add_state(touch_bar, LV_STATE_PRESSED);
+        }
+    }
+    bar_input.down = down;
+    if (!bar_input.captured) return false;
+
+    int dx = axis_distance(ev->x, bar_input.x);
+    int dy = axis_distance(ev->y, bar_input.y);
+    if (dx > bar_input.max_dx) bar_input.max_dx = dx;
+    if (dy > bar_input.max_dy) bar_input.max_dy = dy;
+    if (!down) {
+        int up = bar_input.y - ev->y;
+        uint32_t duration = now - bar_input.pressed_at;
+        enum bar_gesture gesture = BAR_NONE;
+        if (up >= BAR_SWIPE_DISTANCE && up > bar_input.max_dx && duration <= BAR_SWIPE_MS)
+            gesture = BAR_SWIPE;
+        else if (bar_input.max_dx <= BAR_TAP_SLOP && bar_input.max_dy <= BAR_TAP_SLOP &&
+                 duration <= BAR_TAP_MS)
+            gesture = BAR_TAP;
+
+        if (bar_input.second && gesture == bar_input.pending) {
+            bar_input.go_home = true;
+            bar_input.pending = BAR_NONE;
+        } else if (bar_input.pending && bar_input.second) {
+            bar_input.go_back = true;
+            bar_input.pending = BAR_NONE;
+        } else if (gesture) {
+            if (bar_input.pending) bar_input.go_back = true;
+            bar_input.pending = gesture;
+            bar_input.released_at = now;
+        }
+        lv_obj_remove_state(touch_bar, LV_STATE_PRESSED);
+        bar_input.second = bar_input.captured = false;
+    }
+    return true;
+}
+
 static void pointer_read(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
@@ -308,6 +349,11 @@ static void pointer_read(lv_indev_t *indev, lv_indev_data_t *data)
     data->continue_reading = false;
     while (ptr_i < nptrs) {
         struct quota_input ev = ptrs[ptr_i++];
+        update_pointer_dot(&ev);
+        if (take_bar_pointer(&ev)) {
+            data->continue_reading = ptr_i < nptrs;
+            break;
+        }
         x = ev.x;
         y = ev.y;
         pressed = ev.value != 0;
@@ -697,9 +743,7 @@ static void shell_append(const char *line)
 
 static void show_demo_window(void)
 {
-    lv_obj_remove_flag(demo_window, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_move_foreground(demo_window);
-    dock_state(APP_DEMO, OPEN);
+    open_page(demo_window, APP_DEMO);
 }
 
 static void select_package_view(lv_obj_t *view)
@@ -770,8 +814,6 @@ static void on_group(lv_event_t *e)
         checks.active = checks.selected = 0;
     }
     if (id == 230) {
-        monitor_visible(page_apps, 0);
-        dock_state(APP_LAUNCHER, CLOSED);
         show_page(5);
         if (!shell_transcript[0]) {
             char help[200];
@@ -861,7 +903,6 @@ static void on_group(lv_event_t *e)
         return;
     }
     if (id == 212) {
-        select_package_view(NULL);
         show_page(4);
         printf("[files] directory opened\n");
         return;
@@ -960,19 +1001,16 @@ static void on_group(lv_event_t *e)
         return;
     }
     if (id >= 205 && id <= 207) {
-        lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
         if (app_desktop_mode()) {
             int tier = id - 204;
             if (!vehicle_app_running(tier) && vehicle_app_set_running(tier, 1)) return;
-            dock_state(APP_SPEED + tier - 1, OPEN);
-            instruments_select(id - 205);
+            open_page(instruments_page(id - 205), APP_SPEED + tier - 1);
             printf("[desktop] app selected %d\n", id - 205 + 1);
         }
         return;
     }
     if (id == 200) {
         show_page(1);
-        lv_group_focus_obj(field);
         printf("[lvgl] input page\n");
         return;
     }
@@ -1080,64 +1118,19 @@ static lv_obj_t *desktop_file(lv_obj_t *screen, int x, int y, const char *name,
     return button;
 }
 
-static void hide_window(lv_event_t *e, int minimized)
+static lv_obj_t *desktop_page_create(lv_obj_t *screen, const char *title)
 {
-    lv_obj_t *win = lv_event_get_user_data(e);
-    lv_obj_add_flag(win, LV_OBJ_FLAG_HIDDEN);
-    enum app_key key = win == page_home ? APP_SYSTEM : win == page_input ? APP_NOTES :
-                       win == page_apps ? APP_LAUNCHER : win == page_files ? APP_FILES : win == page_shell ? APP_SHELL : win == page_test ? APP_TEST : win == page_zip ? APP_ZIP : win == demo_window ? APP_DEMO : APP_COUNT;
-    dock_state(key, minimized ? MINIMIZED : CLOSED);
-    printf("[desktop] window hidden\n");
-}
+    lv_obj_t *page = lv_obj_create(screen);
+    lv_obj_set_size(page, (int)fb_w, (int)fb_h - BAR_HEIGHT);
+    lv_obj_set_style_pad_all(page, 0, 0);
+    lv_obj_set_style_radius(page, 0, 0);
+    lv_obj_set_style_bg_color(page, lv_color_hex(0xf7f9fc), 0);
+    lv_obj_set_style_border_width(page, 0, 0);
+    lv_obj_remove_flag(page, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
 
-static void window_close(lv_event_t *e)
-{
-    hide_window(e, 0);
-}
-
-static void window_minimize(lv_event_t *e)
-{
-    hide_window(e, 1);
-}
-
-static void window_drag(lv_event_t *e)
-{
-    lv_obj_t *win = lv_event_get_user_data(e);
-    lv_obj_move_foreground(win);
-    if (lv_event_get_code(e) == LV_EVENT_RELEASED) {
-        printf("[desktop] moved %ld,%ld\n", (long)lv_obj_get_x(win), (long)lv_obj_get_y(win));
-        return;
-    }
-    if (lv_event_get_code(e) != LV_EVENT_PRESSING)
-        return;
-    lv_point_t v;
-    lv_indev_get_vect(lv_indev_active(), &v);
-    int x = lv_obj_get_x(win) + v.x;
-    int y = lv_obj_get_y(win) + v.y;
-    int max_x = (app_desktop_mode() ? APP_DESK_EDGE : (int)fb_w) - lv_obj_get_width(win);
-    if (x < 0) x = 0;
-    if (x > max_x) x = max_x;
-    if (y < 44) y = 44;
-    int max_y = (int)fb_h - 94 - lv_obj_get_height(win);
-    if (y > max_y) y = max_y;
-    lv_obj_set_pos(win, x, y);
-}
-
-static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, const char *title)
-{
-    lv_obj_t *win = lv_obj_create(screen);
-    lv_obj_set_pos(win, x, y);
-    lv_obj_set_size(win, w, h);
-    lv_obj_set_style_pad_all(win, 0, 0);
-    lv_obj_set_style_radius(win, 16, 0);
-    lv_obj_set_style_clip_corner(win, true, 0);
-    lv_obj_set_style_bg_color(win, lv_color_hex(0xf7f9fc), 0);
-    lv_obj_set_style_border_color(win, lv_color_hex(0xc4cfdf), 0);
-    lv_obj_set_style_border_width(win, 1, 0);
-    lv_obj_remove_flag(win, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *bar = lv_obj_create(win);
-    lv_obj_set_pos(bar, 0, 0);
-    lv_obj_set_size(bar, w, 52);
+    lv_obj_t *bar = lv_obj_create(page);
+    lv_obj_set_size(bar, (int)fb_w, 52);
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_set_style_radius(bar, 0, 0);
     lv_obj_set_style_border_width(bar, 1, 0);
@@ -1145,29 +1138,10 @@ static lv_obj_t *desktop_window(lv_obj_t *screen, int x, int y, int w, int h, co
     lv_obj_set_style_border_color(bar, lv_color_hex(0xdce4ef), 0);
     lv_obj_set_style_bg_color(bar, lv_color_hex(0xebf0f7), 0);
     lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(bar, window_drag, LV_EVENT_PRESSED, win);
-    lv_obj_add_event_cb(bar, window_drag, LV_EVENT_PRESSING, win);
-    lv_obj_add_event_cb(bar, window_drag, LV_EVENT_RELEASED, win);
-    for (int i = 0; i < 2; i++) {
-        lv_obj_t *control = lv_button_create(bar);
-        lv_obj_set_pos(control, 4 + i * 52, 2);
-        lv_obj_set_size(control, 48, 48);
-        lv_obj_set_style_radius(control, 8, 0);
-        lv_obj_set_style_border_width(control, 0, 0);
-        lv_obj_set_style_shadow_width(control, 0, 0);
-        lv_obj_set_style_bg_color(control, lv_color_hex(i ? 0xe0e8f2 : 0xf5e5e9), 0);
-        lv_obj_set_style_bg_opa(control, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_opa(control, LV_OPA_COVER, LV_STATE_PRESSED);
-        lv_obj_set_style_bg_color(control, lv_color_hex(i ? 0xd2dfef : 0xf0cbd3), LV_STATE_PRESSED);
-        lv_obj_t *glyph = desk_label(control, 0, 0, i ? LV_SYMBOL_MINUS : LV_SYMBOL_CLOSE,
-                                     i ? 0x334563 : 0x982c40);
-        lv_obj_center(glyph);
-        lv_obj_add_event_cb(control, i ? window_minimize : window_close, LV_EVENT_CLICKED, win);
-    }
     lv_obj_t *label = desk_label(bar, 0, 0, title, 0x263552);
     lv_obj_center(label);
     lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
-    return win;
+    return page;
 }
 
 static const struct app_entry {
@@ -1576,6 +1550,40 @@ static void refresh_tasks(void)
     }
 }
 
+/* Resolve the first gesture only after giving a matching second gesture a chance. */
+static void bar_navigate(void)
+{
+    if (bar_input.pending && !bar_input.second &&
+        lvgl_tick_ms() - bar_input.released_at >= BAR_DOUBLE_MS) {
+        bar_input.pending = BAR_NONE;
+        bar_input.go_back = true;
+    }
+    if (bar_input.go_home) {
+        bar_input.go_home = bar_input.go_back = false;
+        if (context_layer) dismiss_context(NULL);
+        power_dismiss(NULL);
+        if (active_page.view) switch_page((struct desktop_page){0});
+        back_count = 0;
+        printf("[touch] home\n");
+    } else if (bar_input.go_back) {
+        bar_input.go_back = false;
+        if (context_layer && !lv_obj_has_flag(context_layer, LV_OBJ_FLAG_HIDDEN)) {
+            dismiss_context(NULL);
+        } else if (!lv_obj_has_flag(power_menu, LV_OBJ_FLAG_HIDDEN)) {
+            power_dismiss(NULL);
+        } else if (active_page.view == page_input && !lv_obj_has_flag(source_dialog, LV_OBJ_FLAG_HIDDEN)) {
+            monitor_visible(source_dialog, 0);
+            lv_group_focus_obj(field);
+        } else if (active_page.view == page_home && monitor_tab != SYSTEM_TASK) {
+            select_monitor_tab(SYSTEM_TASK);
+        } else if (active_page.view) {
+            struct desktop_page previous = back_count ? back_stack[--back_count] : (struct desktop_page){0};
+            switch_page(previous);
+        }
+        printf("[touch] back\n");
+    }
+}
+
 int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
 {
     fb_px = pixels;
@@ -1658,10 +1666,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     }
 
     int apps = app_desktop_mode();
-    if (apps) instruments_create(screen, apps);
-    page_home = desktop_window(screen, 88, 124, 720, 460, app_monitor);
-    page_test = desktop_window(screen, 88, 124, 720, 460, "Test");
-    monitor_visible(page_test, 0);
+    if (apps) instruments_create(screen, apps, BAR_HEIGHT);
+    page_home = desktop_page_create(screen, app_monitor);
+    page_test = desktop_page_create(screen, "Test");
     menu_list = lv_obj_create(page_test);
     lv_obj_set_pos(menu_list, 0, 100);
     lv_obj_set_size(menu_list, 220, 360);
@@ -1736,33 +1743,34 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_width(info_crossings, 122);
     lv_obj_set_style_text_align(info_crossings, LV_TEXT_ALIGN_RIGHT, 0);
 
-    page_input = desktop_window(screen, app_desktop_mode() ? 260 : 650, 238, 540, 358, "Notes · Tier 3");
+    page_input = desktop_page_create(screen, "Notes · Tier 3");
     note_status = desk_label(page_input, 28, 70, "", 0x64748b);
     note_disk_init();
     field = lv_textarea_create(page_input);
     lv_obj_set_style_anim_duration(field, 700, LV_PART_CURSOR);
     lv_obj_set_pos(field, 28, 108);
-    lv_obj_set_size(field, 482, 148);
+    lv_obj_set_size(field, (int)w - 56, (int)h - BAR_HEIGHT - 216);
     lv_textarea_set_one_line(field, false);
     lv_textarea_set_placeholder_text(field, "Start typing...");
     lv_obj_set_style_radius(field, 8, 0);
     lv_obj_set_style_border_color(field, lv_color_hex(0xd9e1ee), 0);
     lv_obj_set_style_border_width(field, 1, 0);
     lv_obj_set_style_text_color(field, lv_color_hex(0x263552), 0);
-    lv_obj_t *save = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save", 214);
-    lv_obj_set_pos(save, 398, 283);
-    lv_obj_set_size(save, 112, 40);
+    int note_actions_y = (int)h - BAR_HEIGHT - 84;
+    lv_obj_t *save = add_row(page_input, note_actions_y, 0xdcebf6, 0xc5d9fa, "Save", 214);
+    lv_obj_set_pos(save, (int)w - 140, note_actions_y);
+    lv_obj_set_size(save, 112, 56);
     lv_obj_set_style_bg_color(save, lv_color_hex(0x254e88), 0);
     lv_obj_set_style_text_color(lv_obj_get_child(save, 0), lv_color_white(), 0);
-    lv_obj_t *save_source = add_row(page_input, 283, 0xdcebf6, 0xc5d9fa, "Save As...", 232);
-    lv_obj_set_pos(save_source, 156, 283);
-    lv_obj_set_width(save_source, 132);
-    lv_obj_t *example = add_row(page_input, 283, 0xffffff, 0xdce4ef, "C Example", 236);
-    lv_obj_set_pos(example, 294, 283);
-    lv_obj_set_width(example, 98);
+    lv_obj_t *save_source = add_row(page_input, note_actions_y, 0xdcebf6, 0xc5d9fa, "Save As...", 232);
+    lv_obj_set_pos(save_source, 156, note_actions_y);
+    lv_obj_set_size(save_source, 132, 56);
+    lv_obj_t *example = add_row(page_input, note_actions_y, 0xffffff, 0xdce4ef, "C Example", 236);
+    lv_obj_set_pos(example, 304, note_actions_y);
+    lv_obj_set_size(example, 114, 56);
     lv_obj_t *btn = lv_button_create(page_input);
-    lv_obj_set_pos(btn, 28, 283);
-    lv_obj_set_size(btn, 112, 40);
+    lv_obj_set_pos(btn, 28, note_actions_y);
+    lv_obj_set_size(btn, 112, 56);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0xe4eaf3), 0);
     lv_obj_set_style_text_color(btn, lv_color_hex(0x31445c), 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
@@ -1793,10 +1801,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_pos(confirm_source, 314, 100);
     lv_obj_set_width(confirm_source, 108);
     monitor_visible(source_dialog, 0);
-    lv_indev_set_group(keypad, group);
-    lv_obj_add_flag(page_input, LV_OBJ_FLAG_HIDDEN);
+    desktop_keypad = keypad;
+    desktop_group = group;
 
-    page_cover = desktop_window(screen, app_desktop_mode() ? 310 : 390, 205, 500, 348, "About Quota OS");
+    page_cover = desktop_page_create(screen, "About Quota OS");
     desk_label(page_cover, 28, 70, "Version " QUOTAOS_VERSION "    ARM64", 0x374e90);
     char about_text[160];
     lv_snprintf(about_text, sizeof about_text,
@@ -1810,7 +1818,6 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *back = add_row(page_cover, 233, 0xe4ecff, 0xc5d9fa, app_monitor, 202);
     lv_obj_set_pos(back, 28, 280);
     lv_obj_set_width(back, 440);
-    lv_obj_add_flag(page_cover, LV_OBJ_FLAG_HIDDEN);
 
     task_body = lv_obj_create(page_home);
     lv_obj_set_pos(task_body, 12, 108);
@@ -1869,32 +1876,29 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_text_line_space(events_text, 10, 0);
     select_monitor_tab(SYSTEM_TASK);
 
-    demo_window = desktop_window(screen, 150, 130, GUEST_PREVIEW_WIDTH + 24,
-                                 GUEST_PREVIEW_HEIGHT + 96, WAP_TODO_NAME);
-    demo_output = desk_label(demo_window, 12, GUEST_PREVIEW_HEIGHT + 52, "", 0x243650);
-    demo_status = desk_label(demo_window, 12, 48, "", 0x536782);
+    demo_window = desktop_page_create(screen, WAP_TODO_NAME);
+    demo_output = desk_label(demo_window, 28, GUEST_PREVIEW_HEIGHT + 100, "", 0x243650);
+    demo_status = desk_label(demo_window, 28, 58, "", 0x536782);
     demo_image = lv_image_create(demo_window);
     lv_obj_add_flag(demo_image, LV_OBJ_FLAG_CLICKABLE);
     lv_group_add_obj(group, demo_image);
     lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_PRESSED, NULL);
     lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_RELEASED, NULL);
     lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_KEY, NULL);
-    lv_obj_set_pos(demo_image, 10, 46);
+    lv_obj_align(demo_image, LV_ALIGN_TOP_MID, 0, 80);
     demo_frame.header.magic = LV_IMAGE_HEADER_MAGIC;
     demo_frame.header.cf = LV_COLOR_FORMAT_XRGB8888;
     demo_frame.header.w = GUEST_PREVIEW_WIDTH;
     demo_frame.header.h = GUEST_PREVIEW_HEIGHT;
     demo_frame.header.stride = GUEST_PREVIEW_WIDTH * 4;
     demo_frame.data_size = GUEST_PREVIEW_HEIGHT * GUEST_PREVIEW_WIDTH * 4;
-    monitor_visible(demo_window, 0);
-    page_zip = desktop_window(screen, 216, 170, 560, 220, "ZIP");
+    page_zip = desktop_page_create(screen, "ZIP");
     desk_label(page_zip, 24, 68, "Export the " WAP_TODO_NAME " application package", 0x536782);
     zip_status = desk_label(page_zip, 24, 160, "", 0x64748b);
     lv_obj_t *zip_title, *zip_meta;
     lv_obj_t *export_row = files_row(page_zip, "Export " WAP_TODO_FILENAME, 239, &zip_title, &zip_meta);
     lv_label_set_text(zip_meta, "Stored ZIP application package");
-    monitor_visible(page_zip, 0);
-    page_files = desktop_window(screen, 180, 156, 500, 336, "Files");
+    page_files = desktop_page_create(screen, "Files");
     desk_label(page_files, 24, 68, "Desktop", 0x536782);
     file_entry = desktop_file(page_files, 20, 94, "Note.txt", "TXT", 213, NULL);
     source_entry = desktop_file(page_files, 116, 94, "", ".c", 233, &source_title);
@@ -1904,7 +1908,6 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     monitor_visible(package_entry, 0);
     file_empty = desk_label(page_files, 28, 116, "", 0x64748b);
     lv_obj_add_flag(file_entry, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
     source_icon = desktop_file(screen, 12, 66, "", ".c", 233, &source_caption);
     note_icon = desktop_file(screen, 12, 164, "Note.txt", "TXT", 213, NULL);
     package_icon = desktop_file(screen, 12, 66, WAP_TODO_FILENAME, "WAP", 240, NULL);
@@ -1914,24 +1917,24 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     monitor_visible(source_entry, 0);
     monitor_visible(source_icon, 0);
     monitor_visible(note_icon, 0);
-    page_shell = desktop_window(screen, 160, 148, 670, 390, "Shell");
+    page_shell = desktop_page_create(screen, "Shell");
     shell_history = lv_obj_create(page_shell);
     lv_obj_set_pos(shell_history, 10, 54);
-    lv_obj_set_size(shell_history, 650, 324);
+    lv_obj_set_size(shell_history, (int)w - 20, (int)h - BAR_HEIGHT - 66);
     lv_obj_set_style_bg_color(shell_history, lv_color_hex(0x101216), 0);
     lv_obj_set_style_border_width(shell_history, 0, 0);
     lv_obj_set_style_radius(shell_history, 4, 0);
     lv_obj_set_style_pad_all(shell_history, 12, 0);
     lv_obj_set_scroll_dir(shell_history, LV_DIR_VER);
     shell_output = desk_label(shell_history, 0, 0, "", 0xe4edf9);
-    lv_obj_set_width(shell_output, 610);
+    lv_obj_set_width(shell_output, (int)w - 48);
     lv_label_set_long_mode(shell_output, LV_LABEL_LONG_WRAP);
     shell_prompt = desk_label(shell_history, 0, 0, "quota>", 0xe4edf9);
     shell_input = lv_textarea_create(shell_history);
     lv_textarea_set_one_line(shell_input, true);
     lv_textarea_set_max_length(shell_input, 80);
     lv_obj_set_x(shell_input, 58);
-    lv_obj_set_size(shell_input, 554, 26);
+    lv_obj_set_size(shell_input, (int)w - 106, 26);
     lv_obj_set_style_pad_all(shell_input, 4, 0);
     lv_obj_set_style_text_color(shell_input, lv_color_hex(0xe4edf9), 0);
     lv_obj_set_style_bg_opa(shell_input, LV_OPA_TRANSP, 0);
@@ -1941,25 +1944,23 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_group_add_obj(group, shell_input);
     lv_obj_add_event_cb(shell_input, on_group, LV_EVENT_READY, (void *)(uintptr_t)231);
     shell_refresh();
-    monitor_visible(page_shell, 0);
-    page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
+    page_apps = desktop_page_create(screen, "Apps");
     lv_obj_t *test_entry = NULL;
     static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST, APP_ZIP};
     for (unsigned i = 0; i < sizeof catalog / sizeof catalog[0]; i++) {
         enum app_key key = catalog[i];
-        lv_obj_t *entry = app_icon(page_apps, key, 34 + (int)(i % 3) * 174,
-                                   70 + (int)(i / 3) * 108, 56);
+        lv_obj_t *entry = app_icon(page_apps, key, 90 + (int)(i % 3) * 300,
+                                   112 + (int)(i / 3) * 150, 56);
         if (key == APP_TEST) test_entry = entry;
         if ((key >= APP_SPEED && key <= APP_MUSIC && !apps) || (key == APP_VIDEO && apps != 2)) {
             lv_obj_add_state(entry, LV_STATE_DISABLED);
             lv_obj_set_style_opa(entry, LV_OPA_50, 0);
         }
     }
-    lv_obj_add_flag(page_apps, LV_OBJ_FLAG_HIDDEN);
     screen_width = w;
     dock = lv_obj_create(screen);
     int dock_width = (apps ? 6 : 3) * DOCK_STEP + 12;
-    lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - 96);
+    lv_obj_set_pos(dock, ((int)w - dock_width) / 2, (int)h - BAR_HEIGHT - 96);
     lv_obj_set_size(dock, dock_width, 84);
     lv_obj_set_style_pad_all(dock, 0, 0);
     lv_obj_set_style_radius(dock, 20, 0);
@@ -1974,11 +1975,34 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     for (int tier = 1; apps && tier <= 3; tier++)
         if (vehicle_app_running(tier)) dock_state(APP_SPEED + tier - 1, OPEN);
     dock_state(APP_SYSTEM, OPEN);
-    build_cursor();
-    lv_obj_t *cursor = lv_image_create(lv_layer_sys());
-    lv_image_set_src(cursor, &cursor_dsc);
-    lv_indev_set_cursor(pointer, cursor);
-    printf("[desktop] ready: windows, drag title bars, close/minimize, dock restore\n");
+    pointer_dot = lv_obj_create(lv_layer_sys());
+    lv_obj_remove_style_all(pointer_dot);
+    lv_obj_set_size(pointer_dot, POINTER_DIAMETER, POINTER_DIAMETER);
+    lv_obj_set_style_radius(pointer_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(pointer_dot, lv_color_hex(0x25364b), 0);
+    lv_obj_set_style_bg_color(pointer_dot, lv_color_hex(0x216be0), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(pointer_dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(pointer_dot, lv_color_hex(0xf6f8ff), 0);
+    lv_obj_set_style_border_width(pointer_dot, 2, 0);
+    lv_obj_remove_flag(pointer_dot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(pointer_dot, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *navigation = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(navigation);
+    lv_obj_set_size(navigation, (int)w, BAR_HEIGHT);
+    lv_obj_align(navigation, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(navigation, lv_color_hex(0x16243b), 0);
+    lv_obj_set_style_bg_opa(navigation, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(navigation, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    touch_bar = lv_obj_create(navigation);
+    lv_obj_remove_style_all(touch_bar);
+    lv_obj_set_size(touch_bar, 188, 8);
+    lv_obj_center(touch_bar);
+    lv_obj_set_style_radius(touch_bar, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(touch_bar, lv_color_hex(0xdde5f4), 0);
+    lv_obj_set_style_bg_color(touch_bar, lv_color_hex(0xffffff), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(touch_bar, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(touch_bar, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    printf("[desktop] ready: fullscreen apps and bottom navigation bar\n");
     printf("[desktop] size %ux%u\n", w, h);
     lv_obj_update_layout(screen);
     {
@@ -2128,6 +2152,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         }
         take_inputs();
         lv_timer_handler();
+        bar_navigate();
         app_desktop_stall_probe();
         app_desktop_poll();
         uint64_t panel_now = now_us();

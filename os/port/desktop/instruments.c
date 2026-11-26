@@ -5,14 +5,15 @@ const char app_speed[] = "GPS Speed";
 const char app_video[] = "Flight Camera";
 const char app_music[] = "Music Player";
 
-static lv_obj_t *app_cards[3];
+static lv_obj_t *app_pages[3], *app_frames[3];
+static lv_image_dsc_t app_images[3];
 static lv_obj_t *music_history[8];
 static lv_obj_t *app_rate[3], *app_status[3];
 
 static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail, const char *tier, const char *symbol, uint32_t accent)
 {
     lv_obj_t *card = lv_obj_create(screen);
-    lv_obj_set_pos(card, 860, y);
+    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y);
     lv_obj_set_size(card, 380, 140);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_set_style_radius(card, 16, 0);
@@ -29,17 +30,59 @@ static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char
     lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
     lv_obj_t *tier_label = desk_label(card, 0, 0, tier, accent);
     lv_obj_align(tier_label, LV_ALIGN_TOP_RIGHT, -22, 49);
-    lv_obj_set_style_outline_color(card, lv_color_hex(0x8bf2cb), 0);
     return card;
 }
 
-void instruments_create(lv_obj_t *screen, int apps)
+static void refresh_frames(lv_timer_t *timer)
 {
-    app_cards[0] = app_card(screen, 116, app_speed, "Simulated speed (km/h)", "Tier 1", LV_SYMBOL_CHARGE, 0x69dfbd);
-    app_cards[1] = app_card(screen, 281, app_video, apps == 2 ?
-             "Simulated road  /  25 fps" : "Optional  /  Not running", "Tier 2", LV_SYMBOL_VIDEO, 0x8fcdf5);
-    app_cards[2] = app_card(screen, 446, app_music, "Entertainment  /  Simulated playback", "Tier 3", LV_SYMBOL_AUDIO, 0xd8afff);
-    lv_obj_t *scale = lv_scale_create(app_cards[0]);
+    (void)timer;
+    for (int i = 0; i < 3; i++)
+        if (!lv_obj_has_flag(app_pages[i], LV_OBJ_FLAG_HIDDEN))
+            lv_obj_invalidate(app_frames[i]);
+}
+
+void instruments_create(lv_obj_t *screen, int apps, int bottom_inset)
+{
+    const char *titles[] = {app_speed, app_video, app_music};
+    const char *details[] = {"Simulated speed (km/h)", apps == 2 ?
+                            "Simulated road / 25 fps" : "Optional / Not running",
+                            "Entertainment / Simulated playback"};
+    const char *tiers[] = {"Tier 1", "Tier 2", "Tier 3"};
+    const char *symbols[] = {LV_SYMBOL_CHARGE, LV_SYMBOL_VIDEO, LV_SYMBOL_AUDIO};
+    const uint32_t accents[] = {0x69dfbd, 0x8fcdf5, 0xd8afff};
+    const unsigned widths[] = {APP_DASH_W, APP_METER_W, APP_MUSIC_SIZE};
+    const unsigned heights[] = {APP_DASH_H, APP_METER_H, APP_MUSIC_SIZE};
+    lv_obj_t *cards[3];
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *page = lv_obj_create(screen);
+        app_pages[i] = page;
+        lv_obj_set_size(page, DISPLAY_WIDTH, DISPLAY_HEIGHT - bottom_inset);
+        lv_obj_set_style_bg_color(page, lv_color_hex(0x101a2b), 0);
+        lv_obj_set_style_border_width(page, 0, 0);
+        lv_obj_set_style_pad_all(page, 0, 0);
+        lv_obj_set_style_radius(page, 0, 0);
+        lv_obj_remove_flag(page, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
+        cards[i] = app_card(page, 82, titles[i], details[i], tiers[i], symbols[i], accents[i]);
+        app_images[i] = (lv_image_dsc_t){
+            .header = {
+                .magic = LV_IMAGE_HEADER_MAGIC,
+                .cf = LV_COLOR_FORMAT_XRGB8888,
+                .w = widths[i],
+                .h = heights[i],
+                .stride = widths[i] * 4,
+            },
+            .data_size = widths[i] * heights[i] * 4,
+            .data = (const uint8_t *)vehicle_app_pixels(i + TIER1),
+        };
+        app_frames[i] = lv_image_create(page);
+        lv_image_set_src(app_frames[i], &app_images[i]);
+        lv_image_set_scale(app_frames[i], 1024);
+        lv_image_set_antialias(app_frames[i], false);
+        lv_obj_align(app_frames[i], LV_ALIGN_TOP_MID, 0, 340);
+    }
+    lv_timer_create(refresh_frames, 33, NULL);
+    lv_obj_t *scale = lv_scale_create(cards[0]);
     lv_scale_set_mode(scale, LV_SCALE_MODE_HORIZONTAL_TOP);
     lv_scale_set_label_show(scale, false);
     lv_scale_set_total_tick_count(scale, 9);
@@ -49,7 +92,7 @@ void instruments_create(lv_obj_t *screen, int apps)
     lv_obj_set_pos(scale, 94, 78);
     lv_obj_set_size(scale, 64, 10);
     for (int i = 0; i < 8; i++) {
-        lv_obj_t *bar = lv_bar_create(app_cards[2]);
+        lv_obj_t *bar = lv_bar_create(cards[2]);
         lv_obj_set_pos(bar, 75 + i * 10, 89);
         lv_obj_set_size(bar, 6, 32);
         lv_bar_set_range(bar, 0, 200);
@@ -58,15 +101,14 @@ void instruments_create(lv_obj_t *screen, int apps)
         music_history[i] = bar;
     }
     for (int i = 0; i < 3; i++) {
-        app_rate[i] = desk_label(app_cards[i], 184, 84, "Measuring FPS", 0xf1f6ff);
-        app_status[i] = desk_label(app_cards[i], 184, 109, "", 0xc7d7e6);
+        app_rate[i] = desk_label(cards[i], 184, 84, "Measuring FPS", 0xf1f6ff);
+        app_status[i] = desk_label(cards[i], 184, 109, "", 0xc7d7e6);
     }
 }
 
-void instruments_select(int index)
+lv_obj_t *instruments_page(int index)
 {
-    for (int i = 0; i < 3; i++)
-        lv_obj_set_style_outline_width(app_cards[i], i == index ? 2 : 0, 0);
+    return app_pages[index];
 }
 
 void instruments_refresh(void)

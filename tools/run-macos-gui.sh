@@ -12,6 +12,7 @@ if [[ ! -f "$kernel" ]]; then
     exit 1
 fi
 exec qemu-system-aarch64 -accel hvf -machine virt,gic-version=3 \
-    -cpu host -m 128M -display cocoa -nic none -device ramfb \
+    -cpu host -m 128M -display cocoa,full-screen=off,zoom-to-fit=off,show-cursor=off \
+    -nic none -device ramfb \
     -device virtio-keyboard-device -device virtio-tablet-device \
     -kernel "$kernel" -serial stdio -monitor none
