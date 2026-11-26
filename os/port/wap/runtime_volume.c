@@ -275,6 +275,26 @@ int runtime_volume_fill_segment_page(const struct runtime_volume_file *file,
     return 1;
 }
 
+static int read_index_entry(unsigned index, struct volume_entry *entry)
+{
+    if (state == OFFLINE || state == FAILED || index >= file_count)
+        return -1;
+    uint64_t position = sizeof(struct volume_header) + (uint64_t)index * INDEX_ENTRY_BYTES;
+    int result = read_volume(position, entry, sizeof *entry);
+    if (result != 1)
+        return result;
+
+    unsigned n = 0;
+    while (n < sizeof entry->name && entry->name[n])
+        ++n;
+    if (!n || n == sizeof entry->name ||
+        (entry->offset & (PAGE_BYTES - 1)) || entry->offset < payload_start ||
+        entry->offset >= volume_size || !entry->size ||
+        entry->size > volume_size - entry->offset)
+        return -1;
+    return 1;
+}
+
 /* Binary search the sorted index without retaining index pages across calls. */
 int runtime_volume_find(const char *name, struct runtime_volume_file *file)
 {
@@ -285,32 +305,50 @@ int runtime_volume_find(const char *name, struct runtime_volume_file *file)
     unsigned low = 0, high = file_count;
     while (low < high) {
         unsigned mid = low + (high - low) / 2;
-        uint64_t position = sizeof(struct volume_header) + (uint64_t)mid * INDEX_ENTRY_BYTES;
         struct volume_entry entry;
-        int result = read_volume(position, &entry, sizeof entry);
+        int result = read_index_entry(mid, &entry);
         if (result != 1)
             return result;
-        unsigned n = 0;
-        while (n < sizeof entry.name && entry.name[n])
-            ++n;
-        if (!n || n == sizeof entry.name)
-            return -1;
         int order = strcmp(name, entry.name);
         if (order < 0) {
             high = mid;
         } else if (order > 0) {
             low = mid + 1;
         } else {
-            if ((entry.offset & (PAGE_BYTES - 1)) || entry.offset < payload_start ||
-                entry.offset >= volume_size || !entry.size ||
-                entry.size > volume_size - entry.offset)
-                return -1;
             *file = (struct runtime_volume_file){entry.offset, entry.size};
             return 1;
         }
     }
     return -1;
 }
+
+#ifdef QUOTA_NODE_WEB
+_Static_assert(RUNTIME_VOLUME_MAX_FILES == MAX_FILES, "volume file limit");
+_Static_assert(RUNTIME_VOLUME_NAME_BYTES == sizeof ((struct volume_entry *)0)->name,
+               "volume name capacity");
+
+int runtime_volume_io_pending(void)
+{
+    return state == QUEUED || state == READING;
+}
+
+unsigned runtime_volume_index_count(void)
+{
+    return state == OFFLINE || state == FAILED || probing ? 0 : file_count;
+}
+
+int runtime_volume_index_entry(unsigned index, char name[RUNTIME_VOLUME_NAME_BYTES],
+                               struct runtime_volume_file *file)
+{
+    struct volume_entry entry;
+    int result = read_index_entry(index, &entry);
+    if (result == 1) {
+        memcpy(name, entry.name, sizeof entry.name);
+        *file = (struct runtime_volume_file){entry.offset, entry.size};
+    }
+    return result;
+}
+#endif
 
 void runtime_volume_poll(void)
 {

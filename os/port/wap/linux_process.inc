@@ -197,6 +197,65 @@ static int write_self_map(struct proc *p, const struct runtime_file *file, uint6
 }
 #endif
 
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+/* Stable objects for open descriptors, published after the complete index is
+ * validated. This does not load any library data. */
+static struct runtime_file disk_catalog[RUNTIME_VOLUME_MAX_FILES];
+static struct runtime_volume_file disk_extents[RUNTIME_VOLUME_MAX_FILES];
+static char disk_names[RUNTIME_VOLUME_MAX_FILES][RUNTIME_VOLUME_NAME_BYTES];
+static unsigned disk_catalog_count, disk_catalog_cursor;
+
+int proc_prepare_volume_catalog(void)
+{
+    unsigned count = runtime_volume_index_count();
+    if (!count)
+        return -1;
+    if (disk_catalog_count)
+        return disk_catalog_count == count ? 1 : -1;
+    /* Bound parsing work each time the Tier 3 desktop service polls. */
+    for (unsigned budget = 0; budget < 8 && disk_catalog_cursor < count; ++budget) {
+        unsigned i = disk_catalog_cursor;
+        int result = runtime_volume_index_entry(i, disk_names[i], &disk_extents[i]);
+        if (result != 1)
+            return result;
+        if (i && strcmp(disk_names[i - 1], disk_names[i]) >= 0)
+            return -1;
+        disk_catalog[i].name = disk_names[i];
+        ++disk_catalog_cursor;
+    }
+    if (disk_catalog_cursor != count)
+        return 0;
+    disk_catalog_count = count;
+    printf("[wap-volume] runtime catalog ready files=%u\n", disk_catalog_count);
+    return 1;
+}
+
+static const struct runtime_file *disk_catalog_lookup(const char *name)
+{
+    unsigned low = 0, high = disk_catalog_count;
+    while (low < high) {
+        unsigned mid = low + (high - low) / 2;
+        int order = strcmp(name, disk_catalog[mid].name);
+        if (!order)
+            return &disk_catalog[mid];
+        if (order < 0)
+            high = mid;
+        else
+            low = mid + 1;
+    }
+    return NULL;
+}
+
+static const struct runtime_volume_file *disk_file_extent(const struct runtime_file *file)
+{
+    uintptr_t address = (uintptr_t)file, base = (uintptr_t)disk_catalog;
+    if (address < base || address - base >= disk_catalog_count * sizeof *disk_catalog ||
+        (address - base) % sizeof *disk_catalog)
+        return NULL;
+    return &disk_extents[(address - base) / sizeof *disk_catalog];
+}
+#endif
+
 static const struct runtime_file *runtime_lookup(struct proc *p, uint64_t address)
 {
     char path[256];
@@ -263,6 +322,11 @@ static const struct runtime_file *runtime_lookup(struct proc *p, uint64_t addres
         unsigned n = 0;
         while (prefix[n] && path[n] == prefix[n]) ++n;
         if (prefix[n]) continue;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        const struct runtime_file *disk_file = disk_catalog_lookup(path + n);
+        if (disk_file)
+            return disk_file;
+#endif
         for (const struct runtime_file *f = wap_libs_start; f && f < wap_libs_end; f++)
             if (!strcmp(path + n, f->name)) return f;
     }
@@ -536,6 +600,9 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     }
 #endif
     if (map && (((flags & 3) != 2 && !shared_readonly && !share_writable) || (!(flags & 32) && !file) || (off & 4095))) return -22;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (map && disk_file_extent(file)) return -95;
+#endif
     if (p->mapping.va) va = p->mapping.va;
     else if (map && !(flags & 16)) {
         unsigned first = 0;
@@ -2427,21 +2494,44 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
             st[7] = 4096;
             return copy_process_bytes(p, f->r[op == 79 ? 2 : 1], st, sizeof st, 1) ? -14 : 0;
         }
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        const struct runtime_volume_file *disk_file = disk_file_extent(file);
+        if (disk_file) {
+            st[0] = 1; st[1] = 0x50000 + (disk_file - disk_extents);
+            st[2] = (1ull << 32) | 0100444;
+            st[6] = disk_file->size; st[7] = 4096; st[8] = (st[6] + 511) / 512;
+            return copy_process_bytes(p, f->r[op == 79 ? 2 : 1], st, sizeof st, 1) ? -14 : 0;
+        }
+#endif
         st[0] = 1; st[1] = file == &p->package_files[0] ? 0x10001 :
                              file == &p->package_files[1] ? 0x10002 : file - wap_libs_start + 1;
         st[2] = (1ull << 32) | 0100444; st[6] = file->end - file->begin;
         st[7] = 4096; st[8] = (st[6] + 511) / 512;
         return copy_process_bytes(p, f->r[op == 79 ? 2 : 1], st, sizeof st, 1) ? -14 : 0;
     }
-    if (op == 62) { /* lseek on an image-backed regular file */
+    if (op == 62) { /* lseek on a runtime regular file */
         if (index >= WAP_FDS) return fd <= 2 ? -29 : -9;
         if (!file) return p->files[index].identity ? -29 : -9;
-        if (!file->begin || !p->files[index].position) return -29;
+        if (!p->files[index].position) return -29;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        const struct runtime_volume_file *disk_file = disk_file_extent(file);
+        if (!disk_file && !file->begin) return -29;
+#else
+        if (!file->begin) return -29;
+#endif
         int64_t base, next;
         switch (f->r[2]) {
         case 0: base = 0; break;
         case 1: base = p->files[index].position->offset; break;
-        case 2: base = file->end - file->begin; break;
+        case 2:
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+            if (disk_file) {
+                base = disk_file->size;
+                break;
+            }
+#endif
+            base = file->end - file->begin;
+            break;
         default: return -22;
         }
         if (__builtin_add_overflow(base, (int64_t)f->r[1], &next)) return -75;
@@ -2455,6 +2545,30 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
         if (file == &app_dir || file == &proc_dir || file == &task_dir) return -21;
         if (file == &urandom_file) return -29;
         uint64_t pos = op == 63 ? p->files[index].position->offset : f->r[3];
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        const struct runtime_volume_file *disk_file = disk_file_extent(file);
+        if (disk_file) {
+            uint8_t buffer[512];
+            if (pos >= disk_file->size || !f->r[2])
+                return 0;
+            uint64_t bytes = disk_file->size - pos;
+            if (bytes > f->r[2]) bytes = f->r[2];
+            if (bytes > sizeof buffer) bytes = sizeof buffer;
+            int result = runtime_volume_read_file(disk_file, pos, buffer, bytes);
+            if (result < 0)
+                return -5;
+            if (!result) {
+                p->disk_read_waiting = 1;
+                p->task->state = TASK_BLOCKED;
+                f->elr -= 4;
+                return fd;
+            }
+            if (copy_process_bytes(p, f->r[1], buffer, bytes, 1))
+                return -14;
+            if (op == 63) p->files[index].position->offset += bytes;
+            return bytes;
+        }
+#endif
         uint64_t size = file->end - file->begin;
         if (pos >= size) return 0;
         unsigned bytes = f->r[2] < size - pos ? f->r[2] : size - pos;

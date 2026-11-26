@@ -340,7 +340,7 @@ struct proc {
     struct runtime_volume_file disk_elf;
     struct disk_elf_segment disk_segments[DISK_ELF_MAX_SEGMENTS];
     unsigned disk_segment_count, disk_fault_segment, disk_fault_page;
-    int disk_elf_waiting;
+    int disk_elf_waiting, disk_read_waiting;
 #endif
     unsigned linux_traces;
 #ifdef QUOTA_WAP_LOADER_TRACE
@@ -1241,8 +1241,17 @@ void proc_finish_pending(void)
             finish_one(&procs[i]);
         report_fault(&procs[i]);
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
-        if (sched_current() && sched_current()->tier == TIER3)
-            finish_disk_elf_fault(&procs[i]);
+        if (sched_current() && sched_current()->tier == TIER3) {
+            struct proc *p = &procs[i];
+            finish_disk_elf_fault(p);
+            if (p->alive && !p->draining && p->disk_read_waiting &&
+                !runtime_volume_io_pending()) {
+                uint64_t irq = irq_save();
+                p->disk_read_waiting = 0;
+                task_ready(p->task);
+                irq_restore(irq);
+            }
+        }
 #endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
         if (sched_current() && sched_current()->tier == TIER3)
@@ -1627,7 +1636,14 @@ void proc_el0_svc(struct irq_frame *f)
 #ifdef QUOTA_WAP_FULL_RUNTIME
         uint64_t resume_pc = f->elr;
 #endif
-        int64_t result = p->linux_brk ? runtime_syscall(p, f) : -38;
+        int runtime_abi = p->linux_brk != 0;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB) && defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+        /* The static test image exercises the same file syscalls as ld.so. */
+        if (p->disk_segment_count && (op == 56 || op == 57 || op == 62 ||
+                                     op == 63 || op == 67 || op == 80))
+            runtime_abi = 1;
+#endif
+        int64_t result = runtime_abi ? runtime_syscall(p, f) : -38;
 #if defined(QUOTA_WAP_FULL_RUNTIME) && defined(QUOTA_WAP_LOADER_TRACE)
         if ((op == 19 || op == 20 || op == 21 || op == 59 || op == 199) && result < 0)
             printf("[wap] fd setup pid=%d tid=%u svc=%lu flags=%lx arg1=%lx errno=%ld\n",
@@ -1699,6 +1715,10 @@ void proc_el0_svc(struct irq_frame *f)
         }
 #endif
         f->r[0] = (uint64_t)result;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        if (p->disk_read_waiting)
+            return;
+#endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
         if (p->live_threads > 1 && !p->fork_child && !p->mapping.va && (op == 220 || op == 98 || op == 22 || op == 73 || op == 124 ||
             ((op == 63 || op == 64 || op == 206 || op == 207 || op == 211 || op == 212) && f->elr + 4 == resume_pc)))
@@ -2051,6 +2071,7 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
     p->disk_segment_count = 0;
     p->disk_elf_waiting = 0;
+    p->disk_read_waiting = 0;
 #endif
     build_pt(p);
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST

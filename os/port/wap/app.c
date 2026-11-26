@@ -166,8 +166,10 @@ static int prepare_component(void)
 #endif
 #endif
 #ifdef QUOTA_NODE_WEB
-    if (!strcmp(runtime_components[next_component], "ld-linux-aarch64.so.1"))
-        return proc_prepare_volume_interpreter(&file);
+    if (!strcmp(runtime_components[next_component], "ld-linux-aarch64.so.1")) {
+        int result = proc_prepare_volume_interpreter(&file);
+        return result == 1 ? proc_prepare_volume_catalog() : result;
+    }
 #endif
     uint32_t instruction;
     int result = runtime_volume_read_file(&file, text_offset - 1, &instruction, sizeof instruction);

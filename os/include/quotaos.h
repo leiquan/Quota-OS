@@ -555,6 +555,13 @@ int runtime_volume_fill_segment_page(const struct runtime_volume_file *file,
                                      uint64_t position, unsigned in_page,
                                      unsigned bytes, uint8_t *page);
 #ifdef QUOTA_NODE_WEB
+#define RUNTIME_VOLUME_MAX_FILES 1024
+#define RUNTIME_VOLUME_NAME_BYTES 112
+unsigned runtime_volume_index_count(void);
+int runtime_volume_io_pending(void);
+int runtime_volume_index_entry(unsigned index, char name[RUNTIME_VOLUME_NAME_BYTES],
+                               struct runtime_volume_file *file);
+int proc_prepare_volume_catalog(void);
 int proc_prepare_volume_interpreter(const struct runtime_volume_file *file);
 #endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
