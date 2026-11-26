@@ -4,7 +4,7 @@
 
 # Quota OS · UI 版
 
-**Quick links** · [Run UI](#run-the-desktop) · [Three editions](#quota-os-editions--三个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
+**Quick links** · [Run UI](#run-the-desktop) · [Four editions](#quota-os-editions--四个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
 
 Quota OS is an experimental single-core ARM64 operating system built around resource quotas. Its 1280 × 800 LVGL desktop runs on QEMU with one Cortex-A35 core and 64 MiB of RAM by default. A speedometer uses a fixed Tier 1 CPU slot, a dashcam demo requests a Tier 2 reservation, and music and desktop interaction share the Tier 3 pool. CPU deadlines are measured against the guest clock. The demos use simulated speed, video frames and playback activity.
 
@@ -12,19 +12,20 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 
 [Music Player pressure results / 音乐播放器掉帧实测](docs/tests/music-pressure/) · [官网实验截图](https://www.quotaos.org/zh.html#music-pressure)
 
-## Quota OS editions · 三个发行版
+## Quota OS editions · 四个发行版
 
-CLI, UI and Web UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. UI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js.
+CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. UI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js. Touch UI provides a 900 × 1600 portrait desktop with full-screen applications and a bottom gesture bar.
 
-三个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。
+四个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。Touch UI 提供 900 × 1600 竖屏、全屏应用和底部手势栏。
 
 | Edition · 发行版 | Default QEMU RAM · 默认内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 72.3 KiB |
 | [UI](https://github.com/leiquan/Quota-OS/tree/UI) | 64 MiB | 685.4 KiB |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 1 GiB | 357.5 MiB |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 64 MiB demo · 128 MiB macOS launcher | Build from source · 源码构建 |
 
-The two desktop figures are verified QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
+The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
 图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `todo.wap` 为 **2,021 字节**。
 
