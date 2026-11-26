@@ -15,7 +15,7 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 | 系统实现 | C · AArch64 ASM · LVGL | C · AArch64 ASM · LVGL + C++ (Blink, V8, Node.js) |
 | 应用开发 | C + LVGL | C + LVGL / HTML + CSS + JS / Node.js |
 
-镜像大小取自 2026-11-26 构建的未压缩 ARM64 启动文件。内存一行是 QEMU 实测配置。Web Node 镜像包含系统共享运行时、ICU 数据、V8 快照、字体及动态依赖；本次导出的 Demo 应用包为 **1,644 字节**。
+镜像大小取自 2026-11-26 构建的未压缩 ARM64 启动文件。内存一行是 QEMU 实测配置。Web Node 镜像包含系统共享运行时、ICU 数据、V8 快照、字体及动态依赖；本次导出的 Web Node Demo 应用包为 **1,653 字节**。
 
 两个版本都使用同一套三级配额机制。一级仪表有固定 CPU 时间槽，二级任务通过准入后获得预算，三级应用共享封顶的剩余时间。C LVGL 适合原生仪表和资源紧张的设备；需要网页布局、页面脚本和 Node 文件 API 时选 Web Node。
 
@@ -23,7 +23,7 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 
 - **C LVGL**：在 `kernel/` 开发内核与驱动，在 `port/quotaos/desktop/` 用 C 和 LVGL 实现界面。用 ARM64 工具链执行 `bash tools/build-lvgl-guest.sh`，再用 `QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh` 启动新镜像。在 Apps → Test 检查准入、CPU 配额和仪表提交。
 - **Web Node 系统**：在准备好的 Chromium 142 与 Node 22.21.1 源码上应用分支内的兼容补丁，用 `tools/build-node-web-runtime.py` 联合构建 Blink 和 Node，使二者依赖相同的 `libv8.so`。将 `QUOTA_NODE_WEB_OUT` 指向联合输出，并指定 ARM64 动态加载器、库目录和字体，再执行 `bash tools/build-lvgl-guest.sh`。产物是 `build/quotaos-node-web.bin`。[构建入口](https://github.com/leiquan/Quota-OS/blob/Web-Node/tools/build-node-web-runtime.py) · [镜像配置](https://github.com/leiquan/Quota-OS/blob/Web-Node/tools/wap-runtime.sh)
-- **Web Node 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 Demo。在 Files 双击后，页面通过 `rpc.save(text)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Demo 即可检查原文。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-Node/examples/demo)
+- **Web Node 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 Web Node Demo。在 Files 双击后，页面通过 `rpc.save(text)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Web Node Demo 即可检查原文。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-Node/examples/demo)
 
 ![C LVGL 的二级任务准入检查](docs/screenshots/c-lvgl-admission.png)
 
