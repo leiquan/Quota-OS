@@ -5,6 +5,7 @@ for (const showcase of document.querySelectorAll(".showcase")) {
 function initCarousel(showcase) {
   const gallery = showcase.querySelector(".gallery");
   const controls = showcase.querySelector(".controls");
+  if (!gallery || !controls) return;
   const indicators = controls.querySelector(".indicators");
   const playback = controls.querySelector(".playback");
   const slides = [...gallery.children];
