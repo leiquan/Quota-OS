@@ -609,6 +609,7 @@ struct el0_fault {
 #define EL0_KILL_ROUNDS 100
 #define EL0_FAULT_ROUNDS 100
 
+enum { EL0_PAINT_MUSIC = 18 };
 int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t foreign_pa,
                    uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,
                    uint16_t vw, uint16_t vh);

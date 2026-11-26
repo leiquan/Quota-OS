@@ -388,7 +388,7 @@ int vehicle_app_set_running(int tier, int start)
         return 0;
     if (tier == TIER3) {
         if (start) {
-            music_demo = proc_spawn("music", 0, 0, 0, (uintptr_t)app_surface, 0,
+            music_demo = proc_spawn("music", EL0_PAINT_MUSIC, 0, 0, (uintptr_t)app_surface, 0,
                                     APP_DRAW_X, APP_MUSIC_Y, APP_MUSIC_SIZE, APP_MUSIC_SIZE);
             return music_demo >= 0 ? 0 : -1;
         }
