@@ -148,3 +148,10 @@ a, button, .indicator::before { transition: background-color 160ms ease, color 1
 @media (max-width: 800px) {
   .edition-examples { grid-template-columns: minmax(0, 1fr); }
 }
+
+.touch-captures { display: grid; gap: var(--gap); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.touch-captures figure { min-width: 0; margin: 0; text-align: center; }
+.touch-captures img { width: min(100%, 280px); height: auto; margin-inline: auto; border-radius: 10px; }
+@media (max-width: 540px) {
+  .touch-captures { grid-template-columns: minmax(0, 1fr); }
+}
