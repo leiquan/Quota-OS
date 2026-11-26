@@ -200,7 +200,7 @@ static void show_commands(void)
            "         quota / events Show scheduling counters\n"
            "         timing [disk] Capture raw job and Tier 2 budget ticks\n"
            "Files    pwd            Show the root directory\n"
-           "         ls             List the root directory\n"
+           "         ls [/]         List the root directory\n"
            "         cat FILE       Read a file from the root directory\n"
            "         write FILE TEXT  Save to a writable root disk\n"
            "         rm FILE        Remove from a journaled root disk\n"
@@ -306,6 +306,9 @@ void shell_main(void)
                 printf("Usage: run Test [t2] or run /FILE\n");
         } else if (!strcmp(command, "timing")) {
             trace_timing(arg);
+        } else if (!strcmp(command, "ls")) {
+            if (!*arg || !strcmp(arg, "/")) list_files(1);
+            else printf("Usage: ls [/]\n");
         } else if (*arg)
             printf("Unexpected arguments. Type help for usage.\n");
         else if (!strcmp(command, "help"))
@@ -342,8 +345,6 @@ void shell_main(void)
             sched_read_system_info(&s);
             printf("period=%lu tier1_misses=%lu tier2_short=%lu tier3_over=%lu\n", s.period,
                    s.tier1_misses, s.tier2_short, s.tier3_over);
-        } else if (!strcmp(command, "ls")) {
-            list_files(1);
         } else
             printf("Unknown command: %s. Type help.\n", command);
     }
