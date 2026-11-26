@@ -289,7 +289,9 @@ const struct app_manifest *resource_catalog(int *count);
 
 /* App-demo framebuffer rectangles. LVGL must preserve their pixel writes. */
 #define APP_DESK_EDGE 840
-#define APP_DRAW_X 890
+#define APP_CARD_WIDTH 440
+#define APP_CARD_X ((int)DISPLAY_WIDTH - 40 - APP_CARD_WIDTH)
+#define APP_DRAW_X (APP_CARD_X + 30)
 #define APP_DASH_Y 283
 #define APP_DASH_W 128
 #define APP_DASH_H 28

@@ -12,8 +12,8 @@ static lv_obj_t *app_rate[3], *app_status[3];
 static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail, const char *tier, const char *symbol, uint32_t accent)
 {
     lv_obj_t *card = lv_obj_create(screen);
-    lv_obj_set_pos(card, 860, y);
-    lv_obj_set_size(card, 380, 140);
+    lv_obj_set_pos(card, APP_CARD_X, y);
+    lv_obj_set_size(card, APP_CARD_WIDTH, 140);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_set_style_radius(card, 16, 0);
     lv_obj_set_style_border_width(card, 1, 0);
@@ -62,14 +62,14 @@ static void status_create(lv_obj_t *screen)
     status_panel = app_card(screen, 48, "System Status", "", "Tier 1", LV_SYMBOL_SETTINGS, 0x69dfbd);
     lv_obj_set_height(status_panel, 139);
     lv_obj_set_y(lv_obj_get_child(status_panel, 0), 5);
-    static const char *const titles[] = {"CPU busy (%)", "Reserved / total (KiB)", "Tasks",
+    static const char *const titles[] = {"CPU busy (%)", "Reserved / total (MiB)", "Tasks",
                                          "Tier 1 misses", "Tier 2 shortfalls"};
     for (unsigned i = 0; i < 5; ++i) {
         int y = 39 + (int)i * 18;
         lv_obj_t *key = desk_label(status_panel, 16, y, titles[i], 0xc7d7e6);
         lv_obj_set_style_text_font(key, &lv_font_montserrat_14, 0);
-        status_values[i] = desk_label(status_panel, 148, y, "--", 0xd8f7ef);
-        lv_obj_set_width(status_values[i], 154);
+        status_values[i] = desk_label(status_panel, 166, y, "--", 0xd8f7ef);
+        lv_obj_set_width(status_values[i], APP_CARD_WIDTH - 166 - 84);
         lv_obj_set_style_text_font(status_values[i], &status_font, 0);
         lv_obj_set_style_text_align(status_values[i], LV_TEXT_ALIGN_RIGHT, 0);
     }
@@ -82,7 +82,9 @@ void instruments_status_refresh(void)
         sample.generation == displayed_status.generation || !sample.window_ticks)
         return;
     lv_label_set_text_fmt(status_values[0], "%u", (unsigned)(100 * sample.busy_ticks / sample.window_ticks));
-    lv_label_set_text_fmt(status_values[1], "%u / %u", (unsigned)sample.reserved_kb, (unsigned)sample.total_kb);
+    unsigned reserved_tenths = (unsigned)((sample.reserved_kb * 10u + 512u) / 1024u);
+    lv_label_set_text_fmt(status_values[1], "%u.%u / %u", reserved_tenths / 10u,
+                          reserved_tenths % 10u, (unsigned)(sample.total_kb / 1024u));
     lv_label_set_text_fmt(status_values[2], "%u", sample.tasks);
     char value[24];
     lv_snprintf(value, sizeof value, "%lu", (unsigned long)sample.tier1_misses);
