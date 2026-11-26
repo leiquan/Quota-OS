@@ -126,16 +126,22 @@ static struct smp_wave *current_wave(void)
     return w->period == pk ? w : NULL;
 }
 
-int sched_smp_probe(uint64_t code, uint64_t entry)
+static int request_worker(uint64_t code, uint64_t entry, unsigned seed, const char *input, unsigned length)
 {
     if (!smp_online() || cur->tier != TIER3 || entry >= 4096 || (entry & 3)) return -1;
     if (probe.owner || !smp_prepare(code)) return 0;
+    if (input) smp_hash_input(seed, input, length);
     probe.worst_excess = probe.worst_period = 0;
     probe.entry = entry;
     probe.owner = cur;
     probe.requested = pk;
     probe.waves = probe.assigned = probe.periods = probe.cpu0_over = 0;
     return 1;
+}
+
+int sched_smp_probe(uint64_t code, uint64_t entry)
+{
+    return request_worker(code, entry, 0, NULL, 0);
 }
 
 /* Reclaim only completed leases, once. CPU0 alone modifies the pool. */
@@ -238,6 +244,27 @@ void sched_smp_report(void)
     }
     printf("[smp] periods=%u cpu0_over=%u assigned=%u worst_period=%lu excess=%lu\n",probe.periods,probe.cpu0_over,probe.assigned,probe.worst_period,probe.worst_excess);
     probe.owner = NULL;
+}
+/* -1 selects the synchronous implementation, 0 leaves the write
+ * pending, 1 returns the completed result charged to the shared pool. */
+int sched_record_hash(unsigned seed, const char *input, unsigned length, unsigned *result)
+{
+    extern const char record_hash_page[];
+    static struct task *owner;
+    if (smp_online() != 1 || length > NOTE_DISK_PACKAGE_CAPACITY) return -1;
+    if (!owner) {
+        if (request_worker((uintptr_t)record_hash_page, 0, seed, input, length) != 1) return -1;
+        owner = cur;
+        return 0;
+    }
+    if (cur != owner) return 0;
+    if (!probe.assigned && pk - probe.requested < 64) return 0;
+    if (probe.assigned && (smp_used(0) == UINT64_MAX || current_wave())) return 0;
+    int completed = probe.assigned && smp_hash_result(result);
+    sched_smp_report();
+    owner = NULL;
+    if (completed) printf("[record-hash] cpu=1 bytes=%u fnv=%u\n", length, *result);
+    return completed ? 1 : -1;
 }
 #endif
 static int nslots;
