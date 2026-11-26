@@ -18,8 +18,17 @@ export LC_ALL=C
 mke2fs=${MKE2FS:-mke2fs}
 dumpe2fs=${DUMPE2FS:-dumpe2fs}
 "$mke2fs" -V
-"$mke2fs" -q -F -t ext4 -b 4096 -I 256 -O none,filetype,extent \
-    -E lazy_itable_init=0 -d "$work/root" "$work/root.ext4" 2048
+features=none,filetype,extent
+blocks=2048
+journal=()
+if [[ ${CLI_ROOT_JOURNAL:-0} == 1 ]]; then
+    features+=,has_journal
+    blocks=4096
+    journal=(-J size=4)
+fi
+"$mke2fs" -q -F -t ext4 -b 4096 -I 256 -O "$features" \
+    -E lazy_itable_init=0,lazy_journal_init=0 ${journal[@]+"${journal[@]}"} \
+    -d "$work/root" "$work/root.ext4" "$blocks"
 "$dumpe2fs" -h "$work/root.ext4" | awk '/^Filesystem features|^Filesystem state|^Block size|^Inode size/'
 mv "$work/root.ext4" "$output"
 if command -v sha256sum >/dev/null; then

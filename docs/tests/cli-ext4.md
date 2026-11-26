@@ -57,3 +57,59 @@ require a later phase. An I/O error disables subsequent root I/O for the
 boot. Data may be partially changed if interrupted or if a write or flush
 fails. Crash recovery and atomic replacement require a journal.
 Without `CLI_ROOT_RW=1` the runner attaches the root drive read-only.
+
+## Phase 2 journaled test volume
+
+Build the CLI and generate a fresh fixture using e2fsprogs. Keep the
+fixture itself immutable and test on copies:
+
+```sh
+bash tools/build-cli.sh
+CLI_ROOT_JOURNAL=1 bash tools/make-cli-root-disk.sh build/cli-root-journal.ext4
+python3 tools/check-cli-ext4-recovery.py build/cli-root-journal.ext4 build/phase2-qa
+```
+
+For manual tests, follow the Phase 1 launch command with a copy of the
+journaled image and `CLI_ROOT_RW=1`. `rootwrite FILE TEXT` creates a file
+or replaces the content of an existing file, and `rootrm FILE` removes
+it. A successful replacement writes a fresh data block and flushes it
+before publishing the metadata transaction. The shell reports success
+after the journal commit, home-block checkpoint, and retirement flushes.
+
+The writable journaled profile is a trusted single-group ext4 image with
+4 KiB blocks, 256-byte inodes, `filetype,extent,has_journal`, a one-block
+linear root directory, and the contiguous internal inode-8 JBD2 journal
+created by the fixture script. The writer handles nonempty single-block
+regular files with one link and no external attributes. Text length is
+also limited by the CLI input line. Free space must exist for the fresh
+data block even during a same-size replacement. The writer uses one
+transaction at a time, at most six metadata blocks, and one VirtIO
+request in flight. The journal format uses 32-bit destinations, one
+descriptor and commit, and no journal checksums or fast commits. A
+clean journal can advertise revoke, but pending revoke records and
+multi-transaction logs are outside this recovery profile. Clean Linux
+mounts are supported for the tested profile. Arbitrary dirty Linux
+volumes need Linux recovery. Writable startup refuses incompatible
+layouts. With write opt-in disabled, a dirty journal is refused
+without replay. The existing no-journal Phase 1 disk still supports its
+separate equal-length overwrite operation. Notes keeps its own disk.
+
+The crash harness enables `CLI_ROOT_CRASH_TEST=1`, arms `rootcut` with
+`data`, `log`, `commit`, or `checkpoint`, and kills the waiting QEMU
+process at the matching serial marker. These points follow the data
+flush, the descriptor and journal payload flush, the commit flush, and
+a forced flush of just the first home block respectively. Remove has
+no data-write point. A fresh 4 MiB guest remounts the same image and
+checks complete old or new content as appropriate, free block and inode
+counts, and quota events. Fault tests model QEMU loss after explicit
+barriers. They do not simulate torn sectors or storage that falsely
+acknowledges flushes. The script also checks clean shutdown, Notes,
+EL0, Tier 2 and refusal cases, and saves serial and e2fsck logs.
+
+For Linux interoperability, attach a scratch copy of a resulting image
+as a block device to a Linux guest. Mount as ext4, read the Quota OS file,
+write a different file, then sync and unmount. Start the 4 MiB CLI with
+that same copy and read the Linux-written file. Repeat the Linux mount
+with a copy of `replace-checkpoint-pre-recovery.ext4` to verify Linux
+replays a Quota OS journal and reads the committed file. Inspect the
+result with `e2fsck -fn` after the guest exits.

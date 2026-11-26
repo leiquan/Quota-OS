@@ -10,7 +10,7 @@ typedef int (*ext4_dir_fn)(void *, const char *, unsigned);
 
 enum ext4_result {
     EXT4_OK, EXT4_UNSUPPORTED, EXT4_CORRUPT, EXT4_IO, EXT4_NOT_FOUND,
-    EXT4_READ_ONLY,
+    EXT4_READ_ONLY, EXT4_NO_SPACE,
 };
 
 struct ext4_volume {

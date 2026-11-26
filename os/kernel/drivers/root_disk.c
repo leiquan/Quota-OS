@@ -1,5 +1,6 @@
 #include "quotaos.h"
 #include "root_disk.h"
+#include "ext4_jbd2.h"
 
 enum {
     QUEUE = 8, SECTOR = 512, BLOCK = 4096, SERIAL_BYTES = 20,
@@ -87,11 +88,69 @@ static int read_root_disk(void *context, uint64_t offset, void *output, size_t b
     return 0;
 }
 
+static struct ext4_journal journal;
+
+static int read_block(uint32_t block, void *output)
+{
+    uint64_t sector = (uint64_t)block * (BLOCK / SECTOR);
+    if (sector + BLOCK / SECTOR > capacity) return -1;
+    cached = UINT64_MAX;
+    if (transfer(READ, sector, BLOCK)) return -1;
+    memcpy(output, sector_data, BLOCK);
+    return 0;
+}
+
+static int write_block(uint32_t block, const void *input)
+{
+    uint64_t sector = (uint64_t)block * (BLOCK / SECTOR);
+    if (!writable || failed || sector + BLOCK / SECTOR > capacity) return -1;
+    cached = UINT64_MAX;
+    memcpy(sector_data, input, BLOCK);
+    return transfer(WRITE, sector, BLOCK);
+}
+
+static int flush_disk(void)
+{
+    return transfer(FLUSH, 0, 0);
+}
+
+static enum ext4_cut_point armed_cut;
+static const char *const cut_names[] = {NULL, "data", "log", "commit", "checkpoint"};
+
+int root_disk_write_enabled(void)
+{
+    const char *args = dtb_bootargs();
+    return !strcmp(args, ROOT_RW_BOOTARGS) || !strcmp(args, ROOT_CRASH_BOOTARGS);
+}
+
+int root_disk_arm_cut(const char *name)
+{
+    if (strcmp(dtb_bootargs(), ROOT_CRASH_BOOTARGS)) return -1;
+    for (unsigned i = 1; i < sizeof cut_names / sizeof cut_names[0]; ++i) {
+        if (!strcmp(name, cut_names[i])) {
+            armed_cut = i;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static int crash_cut(enum ext4_cut_point point)
+{
+    if (point != armed_cut) return 0;
+    /* Persist the single home-block write before pausing at the partial checkpoint. */
+    if (point == EXT4_CUT_CHECKPOINT && flush_disk()) return -1;
+    printf("[ext4-cut] %s\n", cut_names[point]);
+    for (;;) asm volatile("wfi");
+}
+
+static const struct ext4_block_io root_io = {read_block, write_block, flush_disk, crash_cut};
+
 int root_disk_mount(struct ext4_volume *volume)
 {
+    if (failed || sched_current()->tier != TIER3) return EXT4_IO;
     if (!initialized) {
-        if (failed) return EXT4_IO;
-        int want_write = !strcmp(dtb_bootargs(), ROOT_RW_BOOTARGS);
+        int want_write = root_disk_write_enabled();
         uint64_t nodes[32];
         int count = dtb_find_bases("virtio,mmio", nodes, 32);
         uint64_t device = 0;
@@ -141,9 +200,23 @@ int root_disk_mount(struct ext4_volume *volume)
             }
             writable = 1;
         }
+        if (writable) {
+            uint64_t blocks = capacity / (BLOCK / SECTOR);
+            int rc = ext4_journal_open(&journal, &root_io,
+                                       blocks > UINT32_MAX ? UINT32_MAX : blocks);
+            if (rc != EXT4_OK && rc != EXT4_NOT_FOUND) {
+                failed = 1;
+                return rc;
+            }
+        }
         initialized = 1;
     }
-    return ext4_mount_ro(volume, read_root_disk, NULL, capacity * SECTOR);
+    int rc = ext4_mount_ro(volume, read_root_disk, NULL, capacity * SECTOR);
+    if (!rc && writable && !journal.io && !volume->overwrite_supported) {
+        memset(volume, 0, sizeof *volume);
+        return EXT4_UNSUPPORTED;
+    }
+    return rc;
 }
 
 int root_disk_overwrite(const struct ext4_volume *volume, const char *name,
@@ -154,6 +227,8 @@ int root_disk_overwrite(const struct ext4_volume *volume, const char *name,
     if (volume->read != read_root_disk || sched_current()->tier != TIER3)
         return EXT4_UNSUPPORTED;
 
+    if (journal.io) return ext4_journal_change(&journal, name, data, bytes, 0);
+
     uint64_t location;
     int rc = ext4_overwrite_location(volume, name, bytes, &location);
     if (rc) return rc;
@@ -163,4 +238,13 @@ int root_disk_overwrite(const struct ext4_volume *volume, const char *name,
     memcpy(sector_data, data, bytes);
     if (transfer(WRITE, sector, BLOCK) || transfer(FLUSH, 0, 0)) return EXT4_IO;
     return EXT4_OK;
+}
+
+int root_disk_remove(const struct ext4_volume *volume, const char *name)
+{
+    if (!writable) return EXT4_READ_ONLY;
+    if (failed) return EXT4_IO;
+    if (!journal.io || volume->read != read_root_disk || sched_current()->tier != TIER3)
+        return EXT4_UNSUPPORTED;
+    return ext4_journal_change(&journal, name, NULL, 0, 1);
 }

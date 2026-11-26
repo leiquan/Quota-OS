@@ -59,7 +59,7 @@ void note_disk_init(void)
     int n = dtb_find_bases("virtio,mmio", nodes, 32);
     for (int i = 0; i < n; ++i) {
 #ifdef QUOTA_CLI
-        if (nodes[i] == ROOT_RW_MMIO && !strcmp(dtb_bootargs(), ROOT_RW_BOOTARGS))
+        if (nodes[i] == ROOT_RW_MMIO && root_disk_write_enabled())
             continue;
 #endif
         if (mmio_rd(nodes[i]+8) == 2 && mmio_rd(nodes[i]+4) == 2) {

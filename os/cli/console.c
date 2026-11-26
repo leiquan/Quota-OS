@@ -87,7 +87,7 @@ static void overwrite_root(char *arg)
     char *data = arg;
     while (*data && *data != ' ') ++data;
     if (!*arg || !*data) {
-        printf("Usage: rootwrite FILE TEXT (file must already have the same length)\n");
+        printf("Usage: rootwrite FILE TEXT\n");
         return;
     }
     *data++ = 0;
@@ -115,7 +115,8 @@ static void show_commands(void)
            "         disk           Show disk status and saved note size\n"
            "         rootls         List the ext4 root\n"
            "         rootcat FILE   Read a file from the ext4 root\n"
-           "         rootwrite FILE TEXT  Overwrite an equal-length file on an enabled test disk\n"
+           "         rootwrite FILE TEXT  Save to an enabled ext4 test disk\n"
+           "         rootrm FILE    Remove a file from a journaled test disk\n"
            "Apps     run test.c     Run the compiled sample in Tier 3\n"
            "         run Test t2    Request a Tier 2 budget for Test\n"
            "         run /FILE      Load an ARM64 console ELF from the root disk\n"
@@ -189,6 +190,19 @@ void shell_main(void)
             }
         } else if (!strcmp(command, "rootwrite")) {
             overwrite_root(arg);
+        } else if (!strcmp(command, "rootcut")) {
+            if (root_disk_arm_cut(arg))
+                printf("Usage: rootcut data|log|commit|checkpoint (crash-test boot only)\n");
+            else
+                printf("ext4 crash point armed\n");
+        } else if (!strcmp(command, "rootrm")) {
+            if (!*arg)
+                printf("Usage: rootrm FILE\n");
+            else if (!ensure_root()) {
+                int rc = root_disk_remove(&root_volume, arg);
+                if (rc) printf("ext4 remove failed: %s\n", ext4_result_text(rc));
+                else printf("ext4 removed\n");
+            }
         } else if (!strcmp(command, "write")) {
             if (!*arg)
                 printf("Usage: write TEXT\n");

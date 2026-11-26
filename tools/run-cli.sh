@@ -27,6 +27,7 @@ if [[ ${CLI_ROOT_RW:-0} == 1 ]]; then
         exit 2
     fi
     bootargs="cli ext4rw"
+    if [[ ${CLI_ROOT_CRASH_TEST:-0} == 1 ]]; then bootargs="cli ext4rw crash-test"; fi
     args+=(-global virtio-mmio.force-legacy=false
            -drive "if=none,id=root,format=raw,cache=writeback,werror=report,rerror=report,file=$CLI_ROOT_DISK"
            -device virtio-blk-device,bus=virtio-mmio-bus.30,drive=root,serial=QUOTA-ROOT)
