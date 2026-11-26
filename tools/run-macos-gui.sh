@@ -11,7 +11,7 @@ if [[ ! -f "$kernel" ]]; then
     echo 'Build the image first: bash tools/build-lvgl-macos.sh' >&2
     exit 1
 fi
-exec qemu-system-aarch64 -accel hvf -machine virt,gic-version=3 \
+exec /bin/bash tools/run-qemu-gui.sh -accel hvf -machine virt,gic-version=3 \
     -cpu host -m 128M -display cocoa -nic none -device ramfb \
     -device virtio-keyboard-device -device virtio-tablet-device \
     -kernel "$kernel" -serial stdio -monitor none

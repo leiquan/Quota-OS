@@ -23,7 +23,7 @@ if [[ ${1:-} == --page || ${1:-} == --page-bytes ]]; then
     if [[ $mode == --page ]]; then fw+=(-fw_cfg "name=opt/quota/webkit-frame,file=${temp//,/,,}/frame"); fi
     shift 2
 fi
-set -- qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
+set -- /bin/bash "$root/tools/run-qemu-gui.sh" -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
     -nic none -device ramfb -icount shift=4,sleep=off ${fw[@]+"${fw[@]}"} \
     -kernel "$kernel" -append webkit -serial stdio -monitor none "$@"
 
