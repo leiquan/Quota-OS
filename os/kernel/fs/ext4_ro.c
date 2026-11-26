@@ -33,7 +33,7 @@ const char *ext4_result_text(int result)
     case EXT4_OK: return "ok";
     case EXT4_UNSUPPORTED: return "unsupported layout or recovery required";
     case EXT4_CORRUPT: return "invalid ext4 metadata";
-    case EXT4_IO: return "block read failed";
+    case EXT4_IO: return "block I/O failed";
     case EXT4_READ_ONLY: return "read-only root disk";
     case EXT4_NOT_FOUND: return "not found";
     default: return "unknown error";
