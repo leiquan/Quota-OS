@@ -172,9 +172,11 @@ def boot(number):
             click(193, y+40)
         generation = until(lambda: record([[text, number == 2]]), 90, "committed Todo record")
         screenshot("committed")
+        result = dict(boot=number, pid=vm.pid, prelaunch_runtime_read_bytes=reads, generation=generation)
+        (out / f"cold-{number}.json").write_text(json.dumps(result, indent=2))
         if number == 2 and args.pressure_rounds:
             pressure_rounds(x, y)
-        return dict(boot=number, pid=vm.pid, prelaunch_runtime_read_bytes=reads, generation=generation)
+        return result
     finally:
         vm.terminate()
         vm.wait(timeout=10)

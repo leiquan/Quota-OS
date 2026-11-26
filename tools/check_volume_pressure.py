@@ -34,7 +34,12 @@ def verify(text):
     pressure = single('combined-pressure')
     for key in ('cpu_peak_us', 'working_set_kib', 'memory_reserved_kib', 'disk_completed'):
         require(pressure[key] > 0, key)
-    require('[quota-test] 5 PASS' in text and 'Strict frame timing: PASS' in text, 'guest trial verdict')
+    require(pressure['memory_available_kib'] == 0 and
+            pressure['working_set_kib'] <= pressure['memory_reserved_kib'],
+            'missing reserved-memory saturation or inconsistent working set')
+    require(0 < pressure['disk_completed'] <= pressure['disk_submitted'],
+            'invalid completed disk work')
+    require('[quota-test] 5 PASS'  in text and 'Strict frame timing: PASS' in text, 'guest trial verdict')
     for i, p in enumerate(periods):
         require(not p['skipped'] and p['runnable'] and 0 < p['min'] <= p['used'] <= p['grant']
                 and p['t3'] <= p['cap'], f"budget in period {p['seq']}")
@@ -72,6 +77,7 @@ def verify(text):
                              max_latency_ticks=max_latency, releases_during_gc=overlap)
     return dict(passed=not errors, violations=len(errors), first_errors=errors[:12],
                 tick_hz=freq, streams=streams, periods=len(periods),
+                pressure=pressure, budget_counters=result,
                 throttled_periods=sum(bool(p['throttled']) for p in periods))
 
 if __name__ == '__main__':
