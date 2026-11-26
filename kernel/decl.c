@@ -567,14 +567,14 @@ int decl_health_fault(int dev, const char *what, uint64_t meas_t, uint64_t decl_
 /* 新设备一律从 Tier 3 开始；系统自己量过、没超过声明才可能进 Tier 1。 */
 static void decl_verify_devices(void)
 {
-    printf("[dev] %d new simulated devices start in Tier 3; verifying\n", NDEV);
-    printf("      (%d jobs, %d aborts each, boot only; realtime services not started)\n",
+    boot_info("[dev] %d new simulated devices start in Tier 3; verifying\n", NDEV);
+    boot_info("      (%d jobs, %d aborts each, boot only; realtime services not started)\n",
            DEV_TRIALS, DEV_TRIALS);
     for (int i = 0; i < NDEV; i++) {
         struct sim_dev *d = &devs[i];
         d->measured = 0;
         dev_measure(d);
-        printf("[dev] %s: job %lu/%u us, stop %lu/%u us (measured/declared)\n", d->name,
+        boot_info("[dev] %s: job %lu/%u us, stop %lu/%u us (measured/declared)\n", d->name,
                up_us(d->job_max_t), d->max_job_us, up_us(d->stop_max_t), d->stop_us);
         if (!clock_is_icount())
             printf("     %s\n", clock_tag());

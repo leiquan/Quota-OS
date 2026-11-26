@@ -5,11 +5,13 @@ source tools/guest-toolchain.sh
 out=build/cli
 mkdir -p "$out" build
 printf '#define QUOTAOS_COMMIT "%s"\n' "$(git rev-parse --short HEAD)" > "$out/commit.h"
+cli_flags=(-DQUOTA_CLI)
+if [[ ${CLI_VERBOSE_BOOT:-0} == 1 ]]; then cli_flags+=(-DQUOTA_VERBOSE_BOOT); fi
 objs=()
 while IFS= read -r f; do
     case "$f" in kernel/demo.c|kernel/apps/*|user/*|kernel/drivers/fb.c|kernel/drivers/input.c|kernel/lvgl_boot.c|kernel/isolate.c|kernel/e4.c) continue;; esac
     obj="$out/${f%.*}.o"; mkdir -p "$(dirname "$obj")"
-    "${cc[@]}" -DQUOTA_CLI -O2 -ffreestanding -fno-builtin -fno-stack-protector -fno-pic -mgeneral-regs-only -mstrict-align -ffunction-sections -fdata-sections -Iinclude -I"$out" -c "$f" -o "$obj"
+    "${cc[@]}" "${cli_flags[@]}" -O2 -ffreestanding -fno-builtin -fno-stack-protector -fno-pic -mgeneral-regs-only -mstrict-align -ffunction-sections -fdata-sections -Iinclude -I"$out" -c "$f" -o "$obj"
     objs+=("$obj")
 done < <(cat kernel/sources.list; echo cli/console.c)
 sed '/__image_end =/i\

@@ -173,7 +173,7 @@ void clock_detect(void)
 {
     uint64_t a = loop_ticks(), b = loop_ticks(), c = loop_ticks();
     icount = a == b && b == c && a >= 16384 && a <= 16384 + 64;
-    printf("[boot] clock: %s\n", icount ? "icount (counter driven by instruction count)"
+    boot_info("[boot] clock: %s\n", icount ? "icount (counter driven by instruction count)"
                                         : "host time (not icount; timings are reference only)");
 }
 

@@ -88,7 +88,7 @@ static void snapshot_dtb(void)
     dtb_copy[6] = (uint8_t)(end >> 8);
     dtb_copy[7] = (uint8_t)end;
     dtb_base = dtb_copy;
-    printf("[boot] DTB snapshot %u bytes (header said %u)\n", end, totalsize);
+    boot_info("[boot] DTB snapshot %u bytes (header said %u)\n", end, totalsize);
 }
 
 static uint64_t parse_memory(const uint8_t *dtb)
@@ -158,7 +158,7 @@ uint64_t dtb_ram_bytes(uint64_t hinted)
 {
     uint64_t span = detect_ram_span();
     uint64_t dtb = 0;
-    printf("[boot] x0=0x%lx physical RAM span %lu MB (probed)\n", hinted, span >> 20);
+    boot_info("[boot] x0=0x%lx physical RAM span %lu MB (probed)\n", hinted, span >> 20);
 
     if (hinted >= 0x40000000ull && hinted + 8 < 0x40000000ull + span) {
         uint32_t magic = *(volatile uint32_t *)hinted;
@@ -181,7 +181,7 @@ uint64_t dtb_ram_bytes(uint64_t hinted)
         return span;
     }
 
-    printf("[boot] DTB at 0x%lx\n", dtb);
+    boot_info("[boot] DTB at 0x%lx\n", dtb);
     dtb_base = (const uint8_t *)dtb;
     snapshot_dtb();
     uint64_t ram = parse_memory(dtb_base);
@@ -189,7 +189,7 @@ uint64_t dtb_ram_bytes(uint64_t hinted)
         printf("[boot] DTB has no memory node, using probed size\n");
         return span;
     }
-    printf("[boot] DTB memory %lu bytes\n", ram);
+    boot_info("[boot] DTB memory %lu bytes\n", ram);
     return ram;
 }
 

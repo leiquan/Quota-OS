@@ -136,7 +136,7 @@ void gic_init(void)
     if ((n = dtb_find_compatible("arm,gic-v3", reg, 4)) >= 4) {
         gicd = reg[0];
         gic_version = 3;
-        printf("[boot] GICv3 from DTB: distributor 0x%lx, redistributor 0x%lx\n", reg[0], reg[2]);
+        boot_info("[boot] GICv3 from DTB: distributor 0x%lx, redistributor 0x%lx\n", reg[0], reg[2]);
         if (v3_init(reg[2], reg[3]) != 0)
             halt();
         return;
@@ -146,7 +146,7 @@ void gic_init(void)
         gicd = reg[0];
         gicc = reg[2];
         gic_version = 2;
-        printf("[boot] GICv2 from DTB: distributor 0x%lx, cpu interface 0x%lx\n", gicd, gicc);
+        boot_info("[boot] GICv2 from DTB: distributor 0x%lx, cpu interface 0x%lx\n", gicd, gicc);
         v2_init();
         return;
     }

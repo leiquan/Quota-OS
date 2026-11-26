@@ -64,12 +64,9 @@ static void show_commands(void)
 
 static void show_welcome(void)
 {
-    printf("\033[2J\033[HQuota OS CLI  |  %s (%s)\n"
-           "ARM64  |  %lu KiB RAM  |  Serial console\n\n"
-           "Common commands\n",
-           QUOTAOS_VERSION, QUOTAOS_COMMIT, resource_ram_kb());
-    show_commands();
-    printf("\n");
+    printf("Quota OS CLI %s | ARM64 | %lu KiB RAM\n", QUOTAOS_VERSION, resource_ram_kb());
+    printf("Common commands: ls, mem, tasks%s. Type help for all commands.\n",
+           __cli_module_size ? ", run test.c" : "");
 }
 
 void shell_main(void)

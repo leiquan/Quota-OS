@@ -230,6 +230,11 @@ extern "C" {
 void uart_init(void);
 void uart_putc(char c);
 void printf(const char *fmt, ...);
+#if defined(QUOTA_CLI) && !defined(QUOTA_VERBOSE_BOOT)
+#define boot_info(...) ((void)0)
+#else
+#define boot_info printf
+#endif
 void readline(char *buf, int cap);
 void put_padded(const char *s, int cols);
 

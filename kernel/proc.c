@@ -1076,9 +1076,9 @@ static void init_gate_map(void)
     memset(el0_l3_gate, 0, sizeof el0_l3_gate);
     el0_l3_gate[l3i] = (gva & ~4095ull) | PTE_VALID | PTE_PAGE | PTE_AF | SH_INNER | PTE_UXN;
     el0_l2_hi[l2i] = (uint64_t)(uintptr_t)el0_l3_gate | PTE_VALID | PTE_PAGE;
-    printf("[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x%lx. It does not map the kernel RAM block, devices, or the framebuffer.\n",
+    boot_info("[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x%lx. It does not map the kernel RAM block, devices, or the framebuffer.\n",
            gva);
-    printf("[proc] permission-only sharing of the kernel L2 is not what this table does.\n");
+    boot_info("[proc] permission-only sharing of the kernel L2 is not what this table does.\n");
 }
 
 void proc_init(void)
@@ -1095,9 +1095,9 @@ void proc_init(void)
     gate_kernel_ttbr = kernel_ttbr;
     gate_user_ttbr = 0;
     init_gate_map();
-    printf("[proc] EL0 slots %d pool %d draw %u queue %d/%d freq %d/period. target %u us is a goal, not a measured bound.\n",
+    boot_info("[proc] EL0 slots %d pool %d draw %u queue %d/%d freq %d/period. target %u us is a goal, not a measured bound.\n",
            EL0_SLOTS, EL0_POOL, EL0_DRAW, EL0_Q_PER, EL0_Q_GLOBAL, EL0_FREQ, EL0_REAP_TARGET_US);
-    printf("[proc] kernel ttbr 0x%lx. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.\n",
+    boot_info("[proc] kernel ttbr 0x%lx. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.\n",
            kernel_ttbr);
 }
 

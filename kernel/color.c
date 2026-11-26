@@ -81,8 +81,8 @@ void color_init(uint64_t ram_bytes)
     t1_colors_used = next;
     memset(shared_next, 0, sizeof shared_next);
     n_shared = 0;
-    printf("[boot] cache colors: %d (model: 2 MB 16-way cache, 4 KB pages);\n", NCOLORS);
-    printf("       tier-1 pages in %u own colors, padding %lu KB\n", t1_colors_used, pad_kb);
+    boot_info("[boot] cache colors: %d (model: 2 MB 16-way cache, 4 KB pages);\n", NCOLORS);
+    boot_info("       tier-1 pages in %u own colors, padding %lu KB\n", t1_colors_used, pad_kb);
 }
 
 /* 着色补齐：Tier 1 颜色里 Tier 1 用不完、别人也不能用的内存。 */

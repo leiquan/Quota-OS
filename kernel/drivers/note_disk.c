@@ -165,7 +165,7 @@ void note_disk_poll(void)
                 phase = READ_A;
             } else if (phase == READY) {
                 document = 0;
-                printf("[files] mounted bytes=%u checksum=%u\n", saved.length, saved.checksum);
+                boot_info("[files] mounted bytes=%u checksum=%u\n", saved.length, saved.checksum);
             }
         } else if (phase == SCRUB) {
             scrub_completed++;

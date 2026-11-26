@@ -1870,7 +1870,7 @@ void sched_start(void (*shell_entry)(void))
     }
     k_arm_abs = epoch + slot_off[0] - G;
     k_arm_rel = 0;
-    printf("[boot] slot table from tick %lu, period %lu ticks, guard %lu ticks\n", epoch, P, G);
+    boot_info("[boot] slot table from tick %lu, period %lu ticks, guard %lu ticks\n", epoch, P, G);
     prev_entry = ticks_now();
     k_eret_ts = prev_entry;
 #ifdef QUOTA_CLI

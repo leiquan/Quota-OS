@@ -137,7 +137,7 @@ void mmu_init(void)
     l1[1] = (uint64_t)l2_ram | PTE_VALID | PTE_TABLE;
     l0[0] = (uint64_t)l1 | PTE_VALID | PTE_TABLE;
 
-    printf("[mmu] tables ready\n");
+    boot_info("[mmu] tables ready\n");
     uint64_t mair = 0xFFull | (0x00ull << 8); /* normal WB, device nGnRnE */
     uint64_t tcr = 16ull | (1ull << 8) | (1ull << 10) | (3ull << 12) | (1ull << 23) | (1ull << 32);
     asm volatile("msr mair_el1, %0" :: "r"(mair));
@@ -150,8 +150,8 @@ void mmu_init(void)
     sctlr |= (1ull << 0) | (1ull << 2) | (1ull << 12);
     asm volatile("msr sctlr_el1, %0; isb" :: "r"(sctlr) : "memory");
     mmu_on = 1;
-    printf("[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000\n");
-    printf("[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.\n");
+    boot_info("[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000\n");
+    boot_info("[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.\n");
 
     /* One aligned page inside RAM, not the last byte. Prove the PTE bits, then restore RW. */
     volatile uint32_t *page = mmu_test_page;
@@ -180,6 +180,8 @@ void mmu_init(void)
     fault_hit = 0;
     page[0] = 0x33333333u;
     int rw_ok = !fault_hit && page[0] == 0x33333333u;
-    printf("[mmu] protect none-fault=%d read=%d write-fault=%d rw=%d\n",
+    if (!(none_fault && read_ok && write_fault && rw_ok))
+        printf("[mmu] Page protection self-test failed\n");
+    boot_info("[mmu] protect none-fault=%d read=%d write-fault=%d rw=%d\n",
            none_fault, read_ok, write_fault, rw_ok);
 }

@@ -194,13 +194,13 @@ void resource_init(uint64_t ram_bytes)
     pressure = 0;
     reason[0] = 0;
     uint32_t reserve_kb = system_reserve_kb();
-    printf("[boot] system reserve %u us/period, %u KB;\n       tier-1 %u us/period, %u KB; guard %u us/period\n",
+    boot_info("[boot] system reserve %u us/period, %u KB;\n       tier-1 %u us/period, %u KB; guard %u us/period\n",
            SYS_RESERVE_US, reserve_kb, resource_t1_cpu_us(), resource_t1_mem_kb(),
            resource_guard_us());
     if (reserve_kb > KERNEL_RESERVE_KB)
-        printf("[boot] system reserve grew from %u KB to %u KB to cover the system footprint; tier-1 declarations unchanged\n",
+        boot_info("[boot] system reserve grew from %u KB to %u KB to cover the system footprint; tier-1 declarations unchanged\n",
                KERNEL_RESERVE_KB, reserve_kb);
-    printf("[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.\n");
+    boot_info("[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.\n");
 }
 
 int resource_pressure(void)
