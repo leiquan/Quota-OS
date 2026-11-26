@@ -15,8 +15,10 @@ The three editions share this directory. Each branch's top-level README describe
 
 ## CLI validation · CLI 验收
 
-The released CLI image is 75,240 bytes. The QEMU default is 32 MiB. At 17 MiB, the serial console and both quota modes of the separately loaded EL0 Test passed in a short run. At 16 MiB, the console responds and Test is refused. The 17 MiB result is for QEMU and the bundled Test workload.
+The CLI boot image is 72.25 KiB (73,984 bytes). The QEMU default is 16 MiB. Serial interaction and the standalone C Test passed in both quota modes at 3 and 16 MiB in short runs. Saving a note and reading it back after a cold boot passed at 16 MiB.
 
-CLI 镜像为 75,240 字节，QEMU 默认 32 MiB。17 MiB 下串口和独立 EL0 Test 的二三级模式均通过短程验证。16 MiB 下串口可用，Test 被准入拒绝。17 MiB 结果适用于 QEMU 和本次 Test 负载。
+CLI 启动镜像为 72.25 KiB（73,984 字节），QEMU 默认 16 MiB。3 MiB 和 16 MiB 均通过串口交互及独立 C Test 的二三级短程验证。16 MiB 下已验证保存及冷启动读回。
 
-[CLI build and launch · 构建与启动](https://github.com/leiquan/Quota-OS/tree/CLI) · [17 MiB](tests/cli/17M.log) · [16 MiB](tests/cli/16M.log) · [Save](tests/cli/disk-boot-1.log) · [Cold readback](tests/cli/disk-boot-2.log)
+[CLI build and launch · 构建与启动](https://github.com/leiquan/Quota-OS/tree/CLI) · [3 MiB](tests/cli-16m/3M.log) · [16 MiB](tests/cli-16m/16M.log) · [Save](tests/cli-16m/disk-boot-1.log) · [Cold readback](tests/cli-16m/disk-boot-2.log)
+
+[Earlier 32 MiB profile · 早期 32 MiB 配置记录](tests/cli/)
