@@ -97,7 +97,7 @@ System 的 Task 标签显示各级任务。显示一级固定槽、二级每周�
 
 [测试范围、限制和原始日志](docs/tests/desktop-1280/REPORT.txt) · [逐轮数据](docs/tests/desktop-1280/pressure-summary.json)
 
-显示缓冲区 4000KiB，部分绘制缓冲区 240KiB，LVGL 堆 256KiB；总内存仍为128MB，一级资源声明保持1500µs/周期、13312KiB。统一显示尺寸配置在 `include/quotaos.h`。
+显示缓冲区 4000KiB，部分绘制缓冲区 240KiB，LVGL 堆 256KiB；总内存仍为128MB，一级资源声明保持1500µs/周期、13312KiB。统一显示尺寸配置在 `os/include/quotaos.h`。
 
 ## 简单桌面
 
@@ -182,14 +182,14 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
   -kernel prebuilt/quotaos.bin -append isolate
 ```
 
-和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `kernel/lvgl_boot.c` 和 `port/desktop/desktop.c`。显示队列在 `kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。菜单宿主计时错过留给菜单那条分支，这次没有改它。
+和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `os/kernel/lvgl_boot.c` 和 `os/port/desktop/desktop.c`。显示队列在 `os/kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。菜单宿主计时错过留给菜单那条分支，这次没有改它。
 
 
 文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。
 
 ## 版本号规则
 
-- 一个版本 = 一次提交，源码和 `prebuilt/` 一起提交。版本号在 `include/quotaos.h` 的 `QUOTAOS_VERSION`，每个版本提交 +1（三位数字）。提交说明以 `v007:` 这样的前缀开头。
+- 一个版本 = 一次提交，源码和 `prebuilt/` 一起提交。版本号在 `os/include/quotaos.h` 的 `QUOTAOS_VERSION`，每个版本提交 +1（三位数字）。提交说明以 `v007:` 这样的前缀开头。
 - 启动横幅第二行是 `Version: 007 (<7 位提交号>)`。提交号由 `Makefile` 在编译时取 `git rev-parse --short=7 HEAD`。
 - **横幅里的提交号 = 这个版本据以编译的提交，也就是版本提交的父提交。** 核对：`git rev-parse --short=7 <版本提交>^` 应等于横幅里的提交号。例：v007 的横幅是 `Version: 007 (82db71a)`。
 - 复现某个版本的 `prebuilt/quotaos.bin`：在版本提交上用 `make SRC_COMMIT=<父提交>` 编译。例：在 f9119e9（v007）上 `make SRC_COMMIT=82db71a` 得到 sha256 `4672719363ac3fdde2d425dbd69a12e9e3241486e6d0bb50250e05d5c9557067`，与 v007 的 `prebuilt/quotaos.bin` 相同。直接 `make` 会把版本提交自己的提交号编进横幅，sha256 也就不同（f9119e9 上是 `7eaad174…`）。
@@ -218,7 +218,7 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
 | | 谁声明 | 规则 | 现在的代码 |
 | --- | --- | --- | --- |
 | 系统预留 | 内核 | 排在 Tier 1 前面的固定 CPU 和内存，不外借 | v007：内存 16 MB，CPU 350 us/周期（icount 实测最坏 15290 tick ≈ 245 us 加余量） |
-| Tier 1 | 厂商，写死在映像里 | 每个任务一个固定值，写进按周期触发的时间槽表；用不完的槽空着，不借给任何人，也不许超过 | v007：时间槽表写死在 `kernel/resource.c`，槽尾由定时器掐断，空槽不外借 |
+| Tier 1 | 厂商，写死在映像里 | 每个任务一个固定值，写进按周期触发的时间槽表；用不完的槽空着，不借给任何人，也不许超过 | v007：时间槽表写死在 `os/kernel/resource.c`，槽尾由定时器掐断，空槽不外借 |
 | Tier 2 | 应用清单 | 最低值（保底）每周期给足；建议值（弹性）只来自空闲，有压力时收回；先问用户 y/n 才启动，停止就释放 | 已实现（代码里叫保底/弹性） |
 | Tier 3 | 不声明 | 系统决定，只分剩下的，碰不到上面三样 | 已实现（轮转） |
 
@@ -316,7 +316,7 @@ icount（`docs/accept-D/qa-icount-run{1,2,3}.txt` 三次逐字节相同；`qa-ic
 
 ## v009：E1 统一声明和按资源准入（内核 sha256 `ede1ecfe159f…`，编译于 d2c58c4）
 
-实现在 `kernel/decl.c`，菜单 11、12 可在 UTM / QEMU 串口里直接看到。
+实现在 `os/kernel/decl.c`，菜单 11、12 可在 UTM / QEMU 串口里直接看到。
 
 - 资源：CPU（us/周期）、内存（KB）、`sim-dma` 和 `sim-blk` 两个**模拟设备**（内核里的软件模型，不是真实硬件）的占用时间（us/周期）。周期 P = 10000 us。
 - 准入，每种资源各算一遍：系统预留 + Tier 1 + Tier 2 最低值之和 + 保护时间 + 本次申请 ≤ 容量。CPU 的保护时间是 4 个槽 × 10 us；设备的保护时间是每条 Tier 1 声明一次实测停住时间。超了就 `REFUSED: <资源名>`，并打印那种资源的算式。Tier 3 不做准入。
@@ -336,7 +336,7 @@ icount（`docs/accept-D/qa-icount-run{1,2,3}.txt` 三次逐字节相同；`qa-ic
 
 ## v010：E2 预算令牌（内核 sha256 `a6f8603f3fc2…`，编译于 4f077b3）
 
-实现在 `kernel/ipc.c`、`kernel/sched.c`，菜单 13 可在 UTM / QEMU 串口里直接看到。做法照 seL4 MCS 的调度上下文借用：
+实现在 `os/kernel/ipc.c`、`os/kernel/sched.c`，菜单 13 可在 UTM / QEMU 串口里直接看到。做法照 seL4 MCS 的调度上下文借用：
 
 - 两个系统调用：`svc #1` 调用（x0 服务端编号，x1 请求），`svc #2` 回复并等下一个请求。驱动 `sim-dma-drv` 是被动服务端：自己不在任何运行队列里，只在有人调用时借调用方的预算运行。
 - 驱动运行的时间记在调用方的预算上（调用方的已用量增加，驱动自己的不变）；调用、回复两次进内核的路径也记在调用方，不记在系统预留。服务端忙时调用方排队，回复后按轮转交给下一个。
@@ -374,7 +374,7 @@ v010 的 e2 日志里「timer IRQ entry - CVAL」最大 342 tick（`docs/accept-
 
 ### E3
 
-实现在 `kernel/dev.c`（闸门、超时、中断）和 `kernel/decl.c`（验证、健康监测、策略）。模拟设备的「硬件」用 EL1 物理定时器代替：作业做完时它经 GIC 的 PPI 30 送来中断，和真设备一样是异步的；中止后设备什么时候停住由模型给出，内核轮询状态量出来。模拟设备是软件模型，不是真实硬件。
+实现在 `os/kernel/dev.c`（闸门、超时、中断）和 `os/kernel/decl.c`（验证、健康监测、策略）。模拟设备的「硬件」用 EL1 物理定时器代替：作业做完时它经 GIC 的 PPI 30 送来中断，和真设备一样是异步的；中止后设备什么时候停住由模型给出，内核轮询状态量出来。模拟设备是软件模型，不是真实硬件。
 
 - 新设备一律从 Tier 3 开始。开机时系统量一遍（8 次完整作业、8 次中止），实测没超过声明才可能进 Tier 1；准入本身仍只看声明值。`sim-blk` 不能打断，中止后要等做完，所以声明的停住上限改为 2000 us（等于最长作业）；它的 Tier 1 拒绝因此多列一条「停止上限超过 Tier 1 限值」。
 - 闸门（驱动 `svc #3` 提交作业）：声明的最长作业 + 切换开销要放得进调用者这一周期剩下的设备预算，并且加上声明的停住上限要在下一个 Tier 1 保护区之前结束；设备在 Tier 3 时只放行 Tier 3 调用者。设备时间记在调用者的设备预算上。
@@ -425,7 +425,7 @@ qa 其他计时演示的中断进入最大都是 3 tick。GICv3 菜单 9 的 5 t
 
 ### E4
 
-实现在 `kernel/sched.c`（带宽）、`kernel/color.c`（着色）、`kernel/e4.c`（演示）和 `kernel/decl.c`（准入）。
+实现在 `os/kernel/sched.c`（带宽）、`os/kernel/color.c`（着色）、`os/kernel/e4.c`（演示）和 `os/kernel/decl.c`（准入）。
 
 - **带宽（MemGuard 的做法）**：每个任务每周期有访存次数预算。QEMU 没有访存事件计数器，所以访存数是模拟的：运行 tick × 任务的访存密度。内核按剩余预算算出还能跑多少 tick，和 CPU 预算取小的写进比较值（相当于计数器溢出中断）。用完就停到下个周期；下个周期额度恢复，超出的部分不带过去（不欠账）。准入多一种资源 `mem-bw`：模拟总线每周期 2000000 次，系统预留 100000，Tier 1 声明 250000（display-vsync 200000、timer-server 50000）。
 - **缓存着色**：模型是 2 MB、16 路组相联、4 KB 页，共 32 种颜色（颜色 = 物理地址第 12–16 位）。系统预留之后的内存是页池，每种颜色一份。开机时 Tier 1 表里每一项按内存大小分到整数个自己独占的颜色，物理页从这些颜色里取，每页写上主人标记；剩下的颜色给其他任务共用。独占颜色里用不完的页别人不能用，算作内存的「保护量」，从应用可用内存里扣掉：128 MB 上 11776 KB（应用可用从 101376 KB 变成 89600 KB），64 MB 上 3584 KB。E1 第 4 项里「放得下」的例子因此从 90000 KB 改为 85000 KB。运行中新加的 Tier 1 应用不重新分颜色（已知限制）。
@@ -660,7 +660,7 @@ UTM 里把虚拟机内存改成 64MB 应得到同样的结果（UTM 上未实测
 
 ## Tier 1 截止期回归（commit B 5b82525）
 
-记账口径（`kernel/sched.c`）：
+记账口径（`os/kernel/sched.c`）：
 
 - 每个周期任务的释放时刻就是理想周期起点 `epoch + k*10000us`，`epoch` 是第一个任务上 CPU 的时刻。延迟 = 第一次上 CPU 的时刻 − 理想起点。调度器实际放行的时刻另记为 `dispatch_lag`，不拿来抵消迟到。
 - 虚拟时钟一次跳过几个整周期，每个周期性 Tier 1 任务每个被跳过的周期都记一次错过（`skipped`），并在 `T1JUMP` 里记下跳之前的周期号、跳过的周期数和时钟间隔。没有豁免。
@@ -699,10 +699,10 @@ python3 tools/tier1_rounds.py build/quotaos.bin /tmp/t1-normal 30      # 不用 
 
 ## 中断控制器（GICv2 / GICv3，commit C 252a90d）
 
-`kernel/drivers/gic.c` 从设备树的 interrupt-controller 节点决定驱动哪种硬件：
+`os/kernel/drivers/gic.c` 从设备树的 interrupt-controller 节点决定驱动哪种硬件：
 
 - `arm,cortex-a15-gic` 或 `arm,gic-400`：GICv2，distributor + 内存映射的 CPU interface。
-- `arm,gic-v3`：GICv3，distributor（亲和路由、Group 1）+ 本核的 redistributor（按 MPIDR 找）+ `ICC_*` 系统寄存器 CPU interface。从 EL2 启动时 `boot/startup.S` 先打开 `ICC_SRE_EL2`。
+- `arm,gic-v3`：GICv3，distributor（亲和路由、Group 1）+ 本核的 redistributor（按 MPIDR 找）+ `ICC_*` 系统寄存器 CPU interface。从 EL2 启动时 `os/boot/startup.S` 先打开 `ICC_SRE_EL2`。
 - 都没有：打印 `[boot] ERROR: …` 并停住，不去碰不存在的寄存器。
 
 检查命令（日志在 `docs/gic-C/`）：
@@ -718,9 +718,9 @@ python3 tools/menu_regress.py compare docs/gic-C/menus-gicv2.txt /tmp/menus-v3.t
 ## 目录
 
 ```text
-boot/        启动、异常向量、链接脚本
-kernel/      串口、设备树、GIC、定时器、资源账本、调度、菜单、统一声明（decl.c）、预算令牌 IPC 和 E3 演示（ipc.c）、设备闸门（dev.c）
-include/     公共类型
+os/boot/        启动、异常向量、链接脚本
+os/kernel/      串口、设备树、GIC、定时器、资源账本、调度、菜单、统一声明（decl.c）、预算令牌 IPC 和 E3 演示（ipc.c）、设备闸门（dev.c）
+os/include/     公共类型
 prebuilt/    编好的 quotaos.bin / quotaos.elf
 docs/demo-output.txt     串口实录
 docs/regress-A/ docs/regress-B/ docs/tier1-B/ docs/gic-C/ docs/accept-D/ docs/regress-D/ docs/accept-v008/ docs/regress-v008/ docs/accept-v009/ docs/regress-v009/ docs/accept-v010/ docs/regress-v010/ docs/accept-v011/ docs/regress-v011/ docs/accept-v012/ docs/regress-v012/ docs/qa-long-v012/ docs/accept-v013/ docs/regress-v013/ docs/accept-v014/ docs/regress-v014/ docs/accept-v015/ docs/regress-v015/   各提交的验收日志

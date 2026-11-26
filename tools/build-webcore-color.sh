@@ -53,7 +53,7 @@ compile_one() {
     -c "$src" -o "$obj"
   echo "$ROOT/$obj" >> build/webcore-color.rsp
 }
-compile_one port/webcore_color.cpp
+compile_one os/port/webcore_color.cpp
 compile_one "$WEB/css/parser/CSSParserFastPaths.cpp"
 compile_one "$WEB/platform/graphics/Color.cpp"
 compile_one "$DER/ColorData.cpp"

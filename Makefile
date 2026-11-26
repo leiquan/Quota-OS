@@ -9,7 +9,7 @@ RUNTIME_LIB ?= -lgcc
 CFLAGS := -std=gnu11 -Wall -Wextra -Werror -O2 \
 	-ffreestanding -fno-stack-protector -fno-builtin -fno-pic -fno-pie \
 	-mgeneral-regs-only -mstrict-align -fno-asynchronous-unwind-tables \
-	-ffile-prefix-map=$(CURDIR)/= -I include -I build
+	-ffile-prefix-map=$(CURDIR)/= -I os/include -I build
 LDFLAGS := -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none
 
 # 启动横幅里的提交号：构建时的 git rev-parse --short=7 HEAD。
@@ -17,7 +17,7 @@ LDFLAGS := -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none
 # 映像里不放时间戳。
 SRC_COMMIT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
 
-SRCS := $(shell cat kernel/sources.list)
+SRCS := $(shell cat os/kernel/sources.list)
 OBJS := $(patsubst %,build/%.o,$(basename $(SRCS)))
 
 .PHONY: all clean run run-small
@@ -34,9 +34,9 @@ build/commit.h: FORCE
 
 build/kernel/main.o: build/commit.h
 
-build/user/paint.elf: user/paint.S user/user.ld
+build/user/paint.elf: os/user/paint.S os/user/user.ld
 	@mkdir -p build/user
-	$(CC) -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none -T user/user.ld -o $@ user/paint.S
+	$(CC) -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none -T os/user/user.ld -o $@ os/user/paint.S
 
 build/user/paint.bin: build/user/paint.elf
 	$(CROSS)objcopy -O binary $< $@
@@ -46,16 +46,16 @@ build/kernel/proc.o: build/user/paint.bin
 .PHONY: FORCE
 FORCE:
 
-build/%.o: %.c include/quotaos.h Makefile
+build/%.o: os/%.c os/include/quotaos.h Makefile
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-build/%.o: %.S Makefile
+build/%.o: os/%.S Makefile
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-build/quotaos.elf: $(OBJS) boot/linker.ld
-	$(CC) $(CFLAGS) $(LDFLAGS) -T boot/linker.ld -o $@ $(OBJS) $(RUNTIME_LIB)
+build/quotaos.elf: $(OBJS) os/boot/linker.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) -T os/boot/linker.ld -o $@ $(OBJS) $(RUNTIME_LIB)
 
 build/quotaos.bin: build/quotaos.elf
 	$(CROSS)objcopy -O binary $< $@

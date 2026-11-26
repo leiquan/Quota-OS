@@ -54,9 +54,9 @@ CLI 启动镜像为 72.25 KiB（73,984 字节），QEMU 默认 4 MiB。3 MiB 和
 
 | Directory · 目录 | Contents · 内容 |
 |---|---|
-| `boot/`, `kernel/`, `include/` | Startup, kernel, drivers and shared interfaces · 启动、内核、驱动及公共接口 |
-| `port/`, `third_party/` | Quota OS integrations and vendored upstream dependencies · 系统适配与随仓库维护的上游依赖 |
-| `user/`, `cli/`, `examples/` | User-mode programs, CLI samples and Web UI examples, as present in each edition · 按发行版提供的用户态程序、CLI 样例与 Web UI 示例 |
+| `os/boot/`, `os/kernel/`, `os/include/` | Startup, kernel, drivers and shared interfaces · 启动、内核、驱动及公共接口 |
+| `os/port/`, `os/third_party/` | Quota OS integrations and vendored upstream dependencies · 系统适配与随仓库维护的上游依赖 |
+| `os/user/`, `os/cli/`, `examples/` | User-mode programs, CLI samples and Web UI examples, as present in each edition · 按发行版提供的用户态程序、CLI 样例与 Web UI 示例 |
 | `tools/` | Build, launch, regression and historical reproducer scripts · 构建、启动、回归与历史问题复现脚本 |
 | `prebuilt/` | Published desktop preview and versioned experimental images. Consult `SHA256SUMS` alongside the artifact · 桌面预览与历史实验镜像，下载后查验同目录的校验清单 |
 | `docs/` | Website and evidence. Per-run logs remain under their original paths · 官网与验收证据，逐轮日志保留原路径 |

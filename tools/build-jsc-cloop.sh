@@ -7,7 +7,7 @@
 # Flags: ENABLE_JIT=0 ENABLE_C_LOOP=1 ENABLE_YARR_JIT=0 ENABLE_WEBASSEMBLY=0
 #        asserts on (no NDEBUG), so the generated LLInt matches OFFLINE_ASM_ASSERT_ENABLED.
 #
-# The tree needs the patch port/patches/jsc-cloop-7625.2.8.18.3.patch
+# The tree needs the patch os/port/patches/jsc-cloop-7625.2.8.18.3.patch
 # (16-bit CLoop register accessors, storeh lowering, return helpers 32-37).
 set -euo pipefail
 

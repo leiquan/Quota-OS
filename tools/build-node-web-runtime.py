@@ -35,11 +35,11 @@ def main():
     node_root = args.node.resolve(strict=True)
     link(node_root, root / "node")
     entry = node_root / "src/quota_node_main.cc"
-    source = repo / "port/node/main.cc"
+    source = repo / "os/port/node/main.cc"
     if not entry.is_file() or entry.read_bytes() != source.read_bytes():
         link(source, entry)
-    link(repo / "port/blink", integration / "window")
-    link(repo / "include/guest_page_services.h", integration / "include/guest_page_services.h")
+    link(repo / "os/port/blink", integration / "window")
+    link(repo / "os/include/guest_page_services.h", integration / "include/guest_page_services.h")
     node_scripts = ["node.gni", "unofficial.gni", "src/inspector/unofficial.gni"]
     node_scripts += [f"deps/{name}/unofficial.gni" for name in (
         "ada", "llhttp", "ncrypto", "nghttp2", "simdjson", "nbytes", "simdutf", "brotli",

@@ -8,17 +8,18 @@ CXX=aarch64-linux-gnu-g++
 CC=aarch64-linux-gnu-gcc
 KFLAGS=(-std=gnu11 -Wall -Wextra -Werror -O2 -ffreestanding -fno-stack-protector
     -fno-builtin -fno-pic -fno-pie -ftls-model=local-exec -mgeneral-regs-only -mstrict-align
-    -fno-asynchronous-unwind-tables -I include -I build)
+    -fno-asynchronous-unwind-tables -I os/include -I build)
 mkdir -p build/kernel build/user build
 $CC -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none \
-    -T user/user.ld -o build/user/paint.elf user/paint.S
+    -T os/user/user.ld -o build/user/paint.elf os/user/paint.S
 aarch64-linux-gnu-objcopy -O binary build/user/paint.elf build/user/paint.bin
 short=$(git rev-parse --short=7 HEAD)
 printf '#define QUOTAOS_COMMIT "%s"\n' "$short" > build/commit.h
 echo "banner parent $short"
-$CC -c kernel/jsc_stack.S -o build/kernel/jsc_stack.o
-for f in kernel/main.c kernel/resource.c kernel/color.c kernel/fb.c kernel/webkit.c kernel/wkalloc.c kernel/sched.c kernel/uart.c kernel/jsc_sys.c kernel/jsc_icu_stubs.c kernel/mmu.c kernel/proc.c; do
-    $CC "${KFLAGS[@]}" -c -o "build/${f%.c}.o" "$f"
+$CC -c os/kernel/jsc_stack.S -o build/kernel/jsc_stack.o
+for f in os/kernel/main.c os/kernel/resource.c os/kernel/color.c os/kernel/fb.c os/kernel/webkit.c os/kernel/wkalloc.c os/kernel/sched.c os/kernel/uart.c os/kernel/jsc_sys.c os/kernel/jsc_icu_stubs.c os/kernel/mmu.c os/kernel/proc.c; do
+    rel=${f#os/}
+    $CC "${KFLAGS[@]}" -c -o "build/${rel%.c}.o" "$f"
 done
 INCS=$(cat /tmp/jsc-build/incs.line)
 $CXX -std=c++23 -Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack-protector \
@@ -27,10 +28,10 @@ $CXX -std=c++23 -Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack
     -DGIGACAGE_ENABLED=0 -DUSE_SYSTEM_MALLOC=1 \
     -I /tmp/jsc-build/include -I /tmp/jsc-build/gen \
     $INCS -idirafter /usr/include \
-    -c port/jsc_guest.cpp -o build/jsc_guest.o
+    -c os/port/jsc_guest.cpp -o build/jsc_guest.o
 $CXX -std=c++23 -Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack-protector \
     -ffunction-sections -fdata-sections -w \
-    -c port/jsc_link_stubs.cpp -o build/jsc_link_stubs.o
+    -c os/port/jsc_link_stubs.cpp -o build/jsc_link_stubs.o
 
 python3 - << 'PY'
 import os
@@ -46,7 +47,7 @@ PY
 
 "$ROOT/tools/build-webcore-color.sh"
 mapfile -t KERN < <(find build/boot build/kernel -name '*.o' | sort)
-ld.lld -m aarch64linux -T boot/linker.ld --gc-sections \
+ld.lld -m aarch64linux -T os/boot/linker.ld --gc-sections \
     --no-undefined \
     -o build/quotaos-jsc.elf \
     "${KERN[@]}" \
