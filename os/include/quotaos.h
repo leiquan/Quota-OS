@@ -338,6 +338,10 @@ void sched_volume_pressure_begin(struct task *probe);
 void sched_volume_pressure_end(void);
 void sched_volume_pressure_dump(void);
 #endif
+#ifdef QUOTA_WEB_COLD_TRACE
+void sched_cold_disk(unsigned phase, uint64_t address);
+void sched_cold_report(void);
+#endif
 void app_frame_trace_start(void);
 void app_frame_trace_dump(void);
 void app_desktop_stall_probe(void);

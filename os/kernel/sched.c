@@ -513,12 +513,66 @@ static void chain_note(struct task *t, int reason, uint64_t seen)
     c->jump_n = n;
 }
 
+#ifdef QUOTA_WEB_COLD_TRACE
+struct cold_span {
+    uint64_t start, end, op, pc, timer;
+    unsigned ec;
+    int task;
+};
+static struct cold_span cold_sync, cold_peak;
+static struct {
+    uint64_t tick, address;
+    unsigned phase;
+} cold_disk;
+static struct cold_miss {
+    struct cold_span sync, peak;
+    uint64_t release, start, deadline, seen, entry, timer, disk_tick, disk_address;
+    unsigned disk_phase;
+    int id, prev, reason;
+} cold_misses[256];
+static unsigned cold_count, cold_printed, cold_lost;
+void sched_cold_disk(unsigned phase, uint64_t address)
+{
+    cold_disk.tick = ticks_now();
+    cold_disk.phase = phase;
+    cold_disk.address = address;
+}
+void sched_cold_report(void)
+{
+    if (cold_printed < cold_count) {
+        const struct cold_miss *m = &cold_misses[cold_printed++];
+        printf("[cold-miss] task=%d name=%s prev=%d reason=%d release=%lu start=%lu deadline=%lu seen=%lu entry=%lu timer=%lu disk_phase=%u disk_tick=%lu disk_addr=%lx loss=%u\n",
+               m->id, tasks[m->id].name, m->prev, m->reason, m->release, m->start,
+               m->deadline, m->seen, m->entry, m->timer, m->disk_phase, m->disk_tick,
+               m->disk_address, cold_lost);
+        const struct cold_span *spans[] = {&m->sync, &m->peak};
+        for (unsigned i = 0; i < 2; ++i) {
+            const struct cold_span *span = spans[i];
+            printf("[cold-sync] peak=%u task=%d ec=%u op=%lu pc=%lx start=%lu end=%lu ticks=%lu timer=%lu\n",
+                   i, span->task, span->ec, span->op, span->pc, span->start, span->end,
+                   span->end - span->start, span->timer);
+        }
+    }
+}
+#endif
+
 static void miss(struct task *t, int reason, uint64_t done)
 {
     t->misses++;
     t->w.misses += rec;
     if (t->tier != TIER1)
         return;
+#ifdef QUOTA_WEB_COLD_TRACE
+    if (cold_count < sizeof cold_misses / sizeof cold_misses[0]) {
+        cold_misses[cold_count++] = (struct cold_miss){
+            cold_sync, cold_peak, t->release_ts, t->start_ts, t->release_ts + t->deadline_t,
+            done, obs_entry, obs_cval, cold_disk.tick, cold_disk.address, cold_disk.phase,
+            t->id, obs_prev ? obs_prev->id : -1, reason,
+        };
+    } else {
+        ++cold_lost;
+    }
+#endif
     /* J = 从上一个周期起点到这次作业完成（或判定错过）这段里时钟跳动的总长。 */
     uint64_t ps = epoch + t->job_period * P;
     uint64_t lat = done > t->release_ts ? done - t->release_ts : 0;
@@ -1963,6 +2017,10 @@ uint64_t handle_sync(uint64_t frame_sp)
     asm volatile("mrs %0, esr_el1" : "=r"(esr));
     uint32_t ec = (uint32_t)((esr >> 26) & 0x3f);
     if ((f->spsr & 0xfu) == 0) {
+#ifdef QUOTA_WEB_COLD_TRACE
+        struct cold_span span = {k_entry_ts, 0, ec == 0x15 ? f->r[8] : esr & 0xffff,
+                                 f->elr, k_cval, ec, cur->id};
+#endif
         k_ipc_op = 0;
         if (ec == 0x15) {
 #ifdef QUOTA_CALLER_ACCOUNTED_SVC
@@ -1973,6 +2031,11 @@ uint64_t handle_sync(uint64_t frame_sp)
             uint64_t start = caller_work ? ticks_now() : 0;
 #endif
             proc_el0_svc(f);
+#ifdef QUOTA_WEB_COLD_TRACE
+            span.end = ticks_now();
+            cold_sync = span;
+            if (span.end - span.start > cold_peak.end - cold_peak.start) cold_peak = span;
+#endif
 #ifdef QUOTA_CALLER_ACCOUNTED_SVC
             if (caller_work) {
                 uint64_t elapsed = ticks_now() - start;
@@ -1985,8 +2048,14 @@ uint64_t handle_sync(uint64_t frame_sp)
             }
 #endif
         }
-        else
+        else {
             proc_el0_abort(f, esr);
+#ifdef QUOTA_WEB_COLD_TRACE
+            span.end = ticks_now();
+            cold_sync = span;
+            if (span.end - span.start > cold_peak.end - cold_peak.start) cold_peak = span;
+#endif
+        }
         return schedule(frame_sp, 0);
     }
     if (ec == 0x15) {

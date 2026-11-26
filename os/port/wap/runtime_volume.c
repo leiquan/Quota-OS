@@ -367,6 +367,9 @@ void runtime_volume_poll(void)
             return;
         }
         mmio_wr(device + 0x64, 1);
+#ifdef QUOTA_WEB_COLD_TRACE
+        sched_cold_disk(2, request.sector * SECTOR_BYTES);
+#endif
         if (probing) {
             struct volume_header header;
             memcpy(&header, page, sizeof header);
@@ -406,6 +409,9 @@ void runtime_volume_poll(void)
     asm volatile("dsb sy" ::: "memory");
     started = now_us();
     state = READING;
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_disk(1, request.sector * SECTOR_BYTES);
+#endif
     mmio_wr(device + 0x50, 0);
 }
 #endif

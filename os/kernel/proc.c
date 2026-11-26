@@ -1127,6 +1127,9 @@ static int block_on_disk_elf(struct proc *p, uint64_t far, uint64_t esr)
             return 0;
         p->disk_fault_page = page;
         p->disk_elf_waiting = 2;
+#ifdef QUOTA_WEB_COLD_TRACE
+        sched_cold_disk(3, page);
+#endif
         p->task->state = TASK_BLOCKED;
         return 1;
     }
