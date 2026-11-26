@@ -10,6 +10,8 @@ Quota OS is an experimental single-core ARM64 operating system built around reso
 
 Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
 
+[Music Player pressure results / 音乐播放器掉帧实测](docs/tests/music-pressure/) · [官网实验截图](https://www.quotaos.org/zh.html#music-pressure)
+
 ## Quota OS editions · 三个发行版
 
 CLI, UI and Web UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. UI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js.
