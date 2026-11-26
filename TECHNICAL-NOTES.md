@@ -8,6 +8,10 @@ AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中�
 
 License: [Apache-2.0](LICENSE)
 
+## Music Player 的三级帧率
+
+[逐轮数据、截图、镜像校验值和串口日志](docs/tests/music-pressure/)记录了本次 UI、Web UI 的组合压力验证。截图采样和整段均值分别列出。
+
 ## 分级应用演示
 
 ![Apps 与车载桌面](docs/screenshots/apps.png)
