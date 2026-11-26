@@ -71,7 +71,6 @@ LVGL image
    Upstream v9.3.0, commit c033a98afddd65aaafeebea625382a94020fe4a7,
    licence third_party/lvgl/LICENCE.txt
    Output build/quotaos-lvgl.bin. Installed as prebuilt/quotaos.bin.
-   prebuilt/quotaos-lvgl.bin is a copy of that file.
    prebuilt/quotaos-serial.bin is the previous serial drop-in.
 
 Build targets

@@ -8,8 +8,5 @@ GUI remains Tier3/EL1; Notes memory is session-only.
 Framebuffer4000KiB, draw240KiB, heap256KiB, fixed reservation4496KiB.
 Current hashes are in SHA256SUMS.
 
-Latest optimization cycle: cycle-01; see docs/tests/optimization/cycle-01/REPORT.txt
-
-Latest optimization cycle: cycle-02; see docs/tests/optimization/cycle-02/REPORT.txt
-
-Latest optimization cycle: cycle-04; see docs/tests/optimization/cycle-04/REPORT.txt
+Optimization reports: docs/tests/optimization/cycle-{01,02,04}/REPORT.txt.
+Desktop artifacts: prebuilt/quotaos.bin and prebuilt/quotaos.elf.

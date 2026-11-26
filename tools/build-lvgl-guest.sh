@@ -1,7 +1,7 @@
 #!/bin/bash
 # LVGL guest. Upstream tree: third_party/lvgl (v9.3.0, see PIN.txt).
 # Writes build/quotaos-lvgl.bin. After a QEMU check, that file is installed
-# as prebuilt/quotaos.bin and copied to prebuilt/quotaos-lvgl.bin.
+# as prebuilt/quotaos.bin.
 # Does not touch prebuilt/quotaos-serial.bin or history.
 set -euo pipefail
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
