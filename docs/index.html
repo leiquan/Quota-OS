@@ -23,7 +23,7 @@
 <dl class="platform"><div><dt>Edition</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/GUI">GUI</a></dd></div><div><dt>Processor</dt><dd>ARM64 · Cortex-A35 (2 vCPUs)</dd></div><div><dt>RAM</dt><dd>64 MiB</dd></div><div><dt>Boot image</dt><dd>764.8 KiB</dd></div><div><dt>Interface and timing</dt><dd>1600 × 900 · LVGL / ramfb · QEMU TCG / icount</dd></div></dl>
 <dl class="platform"><div><dt>Edition</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">Web UI</a></dd></div><div><dt>Processor</dt><dd>ARM64 · Cortex-A35 (2 vCPUs)</dd></div><div><dt>RAM</dt><dd>512 MiB</dd></div><div><dt>Boot image</dt><dd>874.2 KiB + runtime volume</dd></div><div><dt>Interface and timing</dt><dd>1600 × 900 · LVGL / ramfb · QEMU TCG / icount</dd></div></dl>
 <dl class="platform"><div><dt>Edition</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/Touch-UI">Touch UI</a></dd></div><div><dt>Processor</dt><dd>ARM64 · Cortex-A35 (2 vCPUs)</dd></div><div><dt>RAM</dt><dd>512 MiB</dd></div><div><dt>Boot image</dt><dd>825.0 KiB (LVGL)</dd></div><div><dt>Interface and timing</dt><dd>900 × 1600 · LVGL / ramfb · QEMU virtual tablet</dd></div></dl>
-<p class="platform-note">Boot image sizes are for uncompressed ARM64 images.</p>
+<p class="platform-note">The table lists target configurations and uncompressed ARM64 boot image sizes. CLI and GUI ship with the configurations shown. The two-vCPU, 512 MiB Web UI and Touch UI launchers are undergoing release verification. In CLI, <code>ls</code> and <code>ls /</code> list the mounted ext4 root. Use <code>cat /filename</code> to read a text file from that disk.</p>
 </section>
 <section class="wrap section" id="model">
 <h2>Three tiers of CPU allocation</h2>
