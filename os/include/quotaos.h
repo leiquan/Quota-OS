@@ -558,6 +558,10 @@ int runtime_volume_fill_segment_page(const struct runtime_volume_file *file,
 int proc_prepare_volume_interpreter(const struct runtime_volume_file *file);
 #endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+#ifdef QUOTA_NODE_WEB
+int64_t proc_spawn_disk_elf_test(const struct runtime_volume_file *file,
+                                 const void *header, const void *program_headers);
+#endif
 int runtime_volume_acquire(uint64_t offset, const uint8_t **data);
 void runtime_volume_release(const uint8_t *data);
 int64_t proc_spawn_volume_probe(const char *name, const struct runtime_volume_file *file,

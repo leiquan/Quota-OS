@@ -290,6 +290,14 @@ static int can_queue_socket(struct packet_socket *socket, struct packet_socket *
 #define SHM_OBJECTS 24
 #endif
 
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+#define DISK_ELF_MAX_SEGMENTS 32
+struct disk_elf_segment {
+    uint64_t file_position;
+    unsigned address, file_bytes, memory_bytes, permissions, first_frame;
+};
+#endif
+
 struct proc {
 #ifdef QUOTA_WAP_FULL_RUNTIME
     struct wap_thread threads[WAP_THREADS];
@@ -328,6 +336,12 @@ struct proc {
     struct runtime_file package_files[2];
     unsigned char package_contents[2][4096];
     unsigned image_pages;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    struct runtime_volume_file disk_elf;
+    struct disk_elf_segment disk_segments[DISK_ELF_MAX_SEGMENTS];
+    unsigned disk_segment_count, disk_fault_segment, disk_fault_page;
+    int disk_elf_waiting;
+#endif
     unsigned linux_traces;
 #ifdef QUOTA_WAP_LOADER_TRACE
     unsigned mapping_traces, failed_map_traces, failed_message_traces, ancillary_traces, stream_stall_traces;
@@ -424,6 +438,9 @@ struct elf_mapping {
     enum wap_role role;
     const unsigned char *backend;
     unsigned backend_size;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    const struct runtime_volume_file *volume_file;
+#endif
     const unsigned char *file;
     unsigned pages;
     unsigned load_bias;
@@ -1018,6 +1035,76 @@ static void finish_volume_wait(struct proc *p)
 }
 #endif
 
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+static void clean_code(void *p, uint64_t n);
+static uint64_t code_pte(uint64_t pa);
+static uint64_t data_pte(uint64_t pa);
+
+static int block_on_disk_elf(struct proc *p, uint64_t far, uint64_t esr)
+{
+    unsigned ec = (esr >> 26) & 0x3f;
+    if (!p || p->task->tier != TIER3 || (esr & 0x3f) != 7 ||
+        (esr & (1u << 10)) || (ec != 0x20 && ec != 0x24) ||
+        far < ELF_BASE || far >= ELF_INTERP_BASE)
+        return 0;
+    unsigned page = far & ~4095u;
+    if (image_pt[p->slot][(page - ELF_BASE) >> 12] & PTE_VALID)
+        return 0;
+    for (unsigned i = 0; i < p->disk_segment_count; ++i) {
+        const struct disk_elf_segment *segment = &p->disk_segments[i];
+        unsigned first = segment->address & ~4095u;
+        if (page < first || page >= segment->address + segment->memory_bytes)
+            continue;
+        if ((ec == 0x20 && !(segment->permissions & 1)) ||
+            (ec == 0x24 && (esr & 0x40) && !(segment->permissions & 2)))
+            return 0;
+        p->disk_fault_segment = i;
+        p->disk_fault_page = page;
+        p->disk_elf_waiting = 1;
+        p->task->state = TASK_BLOCKED;
+        return 1;
+    }
+    return 0;
+}
+
+static void finish_disk_elf_fault(struct proc *p)
+{
+    if (!p->alive || p->draining || !p->disk_elf_waiting)
+        return;
+    const struct disk_elf_segment *segment = &p->disk_segments[p->disk_fault_segment];
+    unsigned page = p->disk_fault_page;
+    unsigned first = segment->address & ~4095u;
+    unsigned frame = segment->first_frame + (page - first) / 4096;
+    uint8_t *destination = pool[image_frames[p->slot][frame]];
+    unsigned start = page < segment->address ? segment->address : page;
+    unsigned end = segment->address + segment->file_bytes;
+    if (end > page + 4096)
+        end = page + 4096;
+    unsigned bytes = end > start ? end - start : 0;
+    uint64_t position = segment->file_position + (bytes ? start - segment->address : 0);
+    int result = runtime_volume_fill_segment_page(&p->disk_elf, position, start - page,
+                                                  bytes, destination);
+    if (!result)
+        return;
+    if (result > 0 && (segment->permissions & 1))
+        clean_code(destination, 4096);
+    uint64_t irq = irq_save();
+    p->disk_elf_waiting = 0;
+    if (result < 0) {
+        reap_timed(p, "elf-page-read", ticks_now(), sched_period_now());
+    } else {
+        uintptr_t pa = (uintptr_t)destination;
+        image_pt[p->slot][(page - ELF_BASE) >> 12] = segment->permissions & 1
+            ? code_pte(pa) | PTE_PXN
+            : data_pte(pa) | ((segment->permissions & 2) ? ELF_PRIVATE_WRITABLE : AP_RO);
+        asm volatile("dsb ishst" ::: "memory");
+        tlb_asid(p->asid);
+        task_ready(p->task);
+    }
+    irq_restore(irq);
+}
+#endif
+
 static void finish_one(struct proc *p)
 {
     int refused = 0;
@@ -1153,6 +1240,10 @@ void proc_finish_pending(void)
         if (procs[i].draining)
             finish_one(&procs[i]);
         report_fault(&procs[i]);
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        if (sched_current() && sched_current()->tier == TIER3)
+            finish_disk_elf_fault(&procs[i]);
+#endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
         if (sched_current() && sched_current()->tier == TIER3)
             finish_volume_wait(&procs[i]);
@@ -1204,6 +1295,10 @@ void proc_el0_abort(struct irq_frame *f, uint64_t esr)
     uint64_t pte = 0;
 
     asm volatile("mrs %0, far_el1" : "=r"(far));
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (block_on_disk_elf(p, far, esr))
+        return;
+#endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
     unsigned ec = (esr >> 26) & 0x3f;
     if (p && p->console == CONSOLE_VOLUME_PROBE && p->task == sched_current() &&
@@ -1953,6 +2048,10 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     p->sub_n = 0;
     p->unpaced_draw = role == EL0_PAINT_MUSIC;
     p->image_pages = 0;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    p->disk_segment_count = 0;
+    p->disk_elf_waiting = 0;
+#endif
     build_pt(p);
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
     if (p->volume_data_offset)
@@ -1989,7 +2088,12 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     memset(p->signal_actions, 0, sizeof p->signal_actions);
     if (image) {
         memset(image_pt[p->slot], 0, sizeof image_pt[0]);
-        map_image(p, image->file, image->load_bias, headers, header_count);
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        if (image->volume_file)
+            map_disk_image(p, image, headers, header_count);
+        else
+#endif
+            map_image(p, image->file, image->load_bias, headers, header_count);
         if (image->interp_entry) {
             map_image(p, image->interpreter, ELF_INTERP_BASE,
                       image->interpreter + image->interp_phoff, image->interp_count);
@@ -2193,8 +2297,13 @@ static int prepare_interpreter(struct elf_mapping *image)
     return parse_interpreter(image, wap_interp_start, end - start);
 }
 
-static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigned char *document, unsigned size,
-                         const unsigned char *backend, unsigned backend_size, enum wap_role role)
+static int64_t spawn_elf_source(const unsigned char *elf, unsigned bytes, const unsigned char *document, unsigned size,
+                         const unsigned char *backend, unsigned backend_size, enum wap_role role,
+                         const unsigned char *program_headers
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+                         , const struct runtime_volume_file *disk_file
+#endif
+                         )
 {
     if (!elf || bytes < 64 || elf_number(elf, 4) != 0x464c457f ||
         elf[4] != 2 || elf[5] != 1 || elf[6] != 1 || (elf[7] != 0 && elf[7] != 3) ||
@@ -2210,23 +2319,32 @@ static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigne
     unsigned count = elf_number(elf + 56, 2);
     if (!count || count > 32 || phoff < 64 || phoff > bytes || bytes - phoff < count * 56)
         return -1;
+    if (!program_headers)
+        program_headers = elf + phoff;
     if (entry >= ELF_BASE && entry < ELF_BASE + ELF_WINDOW) {
         if (size > sizeof procs[0].package_contents[0] || backend_size > sizeof procs[0].package_contents[1] || (!backend && backend_size)) return -1;
         struct elf_mapping image = { .role = role, .file = elf, .load_bias = bias, .backend = backend, .backend_size = backend_size };
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        image.volume_file = disk_file;
+#endif
         uint64_t next_page = ELF_BASE;
         int executable_entry = 0, interpreter = 0;
         /* WAP roles open private package files; the legacy tile ABI shares
          * document storage with pixel rows in the same page. */
         if ((entry & 3) || (role == WAP_SINGLE && size > GUEST_TILE_OFFSET)) return -1;
         for (unsigned i = 0; i < count; ++i) {
-            const unsigned char *ph = elf + phoff + 56 * i;
+            const unsigned char *ph = program_headers + 56 * i;
             unsigned type = elf_number(ph, 4), flags = elf_number(ph + 4, 4);
             if (type == 3) {
                 static const char name[] = "/lib/ld-linux-aarch64.so.1";
                 uint64_t pos = elf_number(ph + 8, 8);
                 if (interpreter || pos > bytes || sizeof name > bytes - pos ||
-                    elf_number(ph + 32, 8) != sizeof name ||
-                    elf[pos + sizeof name - 1] || strcmp((const char *)elf + pos, name)) return -1;
+                    elf_number(ph + 32, 8) != sizeof name) return -1;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+                /* The volume parser validates PT_INTERP before publishing its headers. */
+                if (!disk_file)
+#endif
+                    if (elf[pos + sizeof name - 1] || strcmp((const char *)elf + pos, name)) return -1;
                 interpreter = 1;
                 continue;
             }
@@ -2246,7 +2364,11 @@ static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigne
             if (phoff >= off && phoff - off <= len && count * 56u <= len - (phoff - off))
                 image.phdr_va = va + (phoff - off);
             next_page = (va + mem + 4095) & ~4095ull;
-            image.pages += ((next_page - (va & ~4095ull)) >> 12) - shared_image_pages(elf, flags, off, va, len);
+            image.pages += (next_page - (va & ~4095ull)) >> 12;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+            if (!disk_file)
+#endif
+                image.pages -= shared_image_pages(elf, flags, off, va, len);
             if (flags == 5 && entry >= va && entry + 4 <= va + len) executable_entry = 1;
         }
         if (bias && !interpreter) return -1;
@@ -2262,10 +2384,13 @@ static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigne
             system_layout.role = WAP_SINGLE;
         }
 #endif
-        return spawn_image(&image, NULL, 0, document, size, elf + phoff, count, entry,
+        return spawn_image(&image, NULL, 0, document, size, program_headers, count, entry,
                            document ? CONSOLE_PAGE : CONSOLE_LINUX_BOOTSTRAP, (role == WAP_BACKEND || role == WAP_NODE_ONLY) ? "wap-backend" : "elf-page",
                            0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (disk_file) return -1;
+#endif
     if (role != WAP_SINGLE) return -1;
     const unsigned char *code = NULL, *data = NULL;
     unsigned code_size = 0, data_size = 0;
@@ -2299,6 +2424,29 @@ static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigne
     return spawn_image(NULL, (const char *)code, code_size, data, data_size, elf + phoff, count, (unsigned)entry,
                        document ? CONSOLE_PAGE : CONSOLE_LINUX_BOOTSTRAP, "elf-bootstrap", 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
+
+static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigned char *document, unsigned size,
+                         const unsigned char *backend, unsigned backend_size, enum wap_role role)
+{
+    return spawn_elf_source(elf, bytes, document, size, backend, backend_size, role, NULL
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+                            , NULL
+#endif
+                            );
+}
+
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB) && defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+int64_t proc_spawn_disk_elf_test(const struct runtime_volume_file *file,
+                                 const void *header, const void *program_headers)
+{
+    if (file->size > UINT32_MAX)
+        return -1;
+    static const unsigned char document[] = "";
+    return spawn_elf_source(header, file->size, document, 0, NULL, 0,
+                            WAP_PAGE_ONLY, program_headers, file);
+}
+#endif
+
 
 int64_t proc_spawn_bootstrap_elf(const unsigned char *elf, unsigned bytes)
 {

@@ -21,7 +21,11 @@ static int same_package(const unsigned char *data, unsigned size)
 static const char *const runtime_components[] = {
     "quota-blink", "libv8.so", "node", "ld-linux-aarch64.so.1",
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+#ifdef QUOTA_NODE_WEB
+    "quota-disk-elf-test",
+#else
     "quota-pager-test",
+#endif
 #endif
 };
 /* ELF64 little-endian records from the ARM64 runtime volume. */
@@ -50,9 +54,13 @@ static struct runtime_elf_header header;
 static unsigned next_segment, load_segments;
 static int interpreter_seen;
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+static int64_t probe_handle;
+#ifdef QUOTA_NODE_WEB
+static struct runtime_elf_segment probe_headers[32];
+#else
 static uint64_t probe_data_offset;
 static unsigned probe_data_size;
-static int64_t probe_handle;
+#endif
 #endif
 
 static int prepare_component(void)
@@ -109,7 +117,7 @@ static int prepare_component(void)
                                       ((segment.offset ^ segment.vaddr) & (segment.align - 1)))))
                 return -1;
             ++load_segments;
-#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+#if defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST) && !defined(QUOTA_NODE_WEB)
             if (!strcmp(runtime_components[next_component], "quota-pager-test")) {
                 if (segment.memsz != 4096 ||
                     !((segment.flags == 5 && segment.vaddr == 0x3000 &&
@@ -130,6 +138,10 @@ static int prepare_component(void)
                     text_offset = segment.offset + (header.entry - segment.vaddr) + 1;
             }
         }
+#if defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST) && defined(QUOTA_NODE_WEB)
+        if (!strcmp(runtime_components[next_component], "quota-disk-elf-test"))
+            probe_headers[next_segment] = segment;
+#endif
         ++next_segment;
         return 0;
     }
@@ -138,6 +150,12 @@ static int prepare_component(void)
         (next_component == 2 && !interpreter_seen))
         return -1;
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+#ifdef QUOTA_NODE_WEB
+    if (!strcmp(runtime_components[next_component], "quota-disk-elf-test")) {
+        probe_handle = proc_spawn_disk_elf_test(&file, &header, probe_headers);
+        return probe_handle > 0 ? 1 : -1;
+    }
+#else
     if (!strcmp(runtime_components[next_component], "quota-pager-test")) {
         if (load_segments != 2 || header.entry != 0x3000 || !probe_data_offset)
             return -1;
@@ -145,6 +163,7 @@ static int prepare_component(void)
                                               probe_data_offset, probe_data_size);
         return probe_handle > 0 ? 1 : -1;
     }
+#endif
 #endif
 #ifdef QUOTA_NODE_WEB
     if (!strcmp(runtime_components[next_component], "ld-linux-aarch64.so.1"))
@@ -166,7 +185,7 @@ static void reset_component(void)
     next_segment = 0;
     load_segments = 0;
     interpreter_seen = 0;
-#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+#if defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST) && !defined(QUOTA_NODE_WEB)
     probe_data_offset = 0;
     probe_data_size = 0;
 #endif

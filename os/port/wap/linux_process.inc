@@ -2656,15 +2656,47 @@ static void map_image_range(struct proc *p, const unsigned char *file, unsigned 
     }
 }
 
-static void map_image(struct proc *p, const unsigned char *file, unsigned bias,
-                      const unsigned char *headers, unsigned count)
+static void install_image_table(struct proc *p)
 {
-    map_image_range(p, file, bias, headers, count, 0, ELF_WINDOW, &p->image_pages);
     uint64_t *table = image_pt[p->slot];
     for (unsigned i = 0; i < (ELF_WINDOW >> 21); ++i)
         pt_l2[p->slot][(ELF_BASE >> 21) + i] = (uintptr_t)(table + i * 512) | PTE_VALID | PTE_PAGE;
     asm volatile("dsb ishst" ::: "memory");
 }
+
+static void map_image(struct proc *p, const unsigned char *file, unsigned bias,
+                      const unsigned char *headers, unsigned count)
+{
+    map_image_range(p, file, bias, headers, count, 0, ELF_WINDOW, &p->image_pages);
+    install_image_table(p);
+}
+
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+/* The ELF entry path has already validated segment ranges and reserved frames. */
+static void map_disk_image(struct proc *p, const struct elf_mapping *image,
+                           const unsigned char *headers, unsigned count)
+{
+    p->disk_elf = *image->volume_file;
+    for (unsigned i = 0; i < count; ++i) {
+        const unsigned char *ph = headers + i * 56;
+        if (elf_number(ph, 4) != 1)
+            continue;
+        struct disk_elf_segment *segment = &p->disk_segments[p->disk_segment_count++];
+        *segment = (struct disk_elf_segment){
+            .file_position = elf_number(ph + 8, 8),
+            .address = image->load_bias + elf_number(ph + 16, 8),
+            .file_bytes = elf_number(ph + 32, 8),
+            .memory_bytes = elf_number(ph + 40, 8),
+            .permissions = elf_number(ph + 4, 4),
+            .first_frame = p->image_pages,
+        };
+        unsigned first = segment->address & ~4095u;
+        unsigned end = (segment->address + segment->memory_bytes + 4095) & ~4095u;
+        p->image_pages += (end - first) / 4096;
+    }
+    install_image_table(p);
+}
+#endif
 
 #ifdef QUOTA_LINUX_APP_RUNTIME
 /* Only the immutable system image that passed spawn_elf validation is executable. */
