@@ -234,3 +234,5 @@ Change the heading in the file and launch again to see the new text. This is a s
 在 macOS 上执行上面的命令，就能在 QEMU 中看到文件里的标题和正文。当前采用宿主 WebKit 排版、来宾显示的静态预览。
 
 For the cross-platform transport check use `--page-bytes FILE`; the serial console reports the file length and checksum. Run `python3 tools/webkit-document-check.py` for all five boundary cases. With no argument the launcher boots the separate in-guest JSC and WebCore CSS color test.
+
+公共内核和 LVGL 桌面的改动先提交到 `C-LVGL`。在 `Web-Node` 合并基础版后，分别验证 64 MiB 桌面配额场景和 1 GiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-Node` 维护。

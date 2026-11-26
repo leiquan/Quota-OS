@@ -107,7 +107,7 @@ static struct task *slot_owner[MAX_SLOTS];
 
 /* 上一段内核停留 */
 static uint64_t prev_entry;
-#ifdef QUOTA_WAP_FULL_RUNTIME
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
 static uint64_t caller_work_ticks;
 #endif
 static int prev_guard;          /* 上一段停留以等待槽起点结束 */
@@ -1360,7 +1360,7 @@ static uint64_t schedule(uint64_t sp, int timer)
     obs_now = entry;
 
     uint64_t system_entry = prev_entry;
-#ifdef QUOTA_WAP_FULL_RUNTIME
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
     system_entry += caller_work_ticks;
     caller_work_ticks = 0;
 #endif
@@ -1566,16 +1566,16 @@ uint64_t handle_sync(uint64_t frame_sp)
     if ((f->spsr & 0xfu) == 0) {
         k_ipc_op = 0;
         if (ec == 0x15) {
-#ifdef QUOTA_WAP_FULL_RUNTIME
-            /* Exec image construction is synchronous work owned by the caller.
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
+            /* Selected synchronous services run on the caller's budget.
              * Charge the measured handler interval before dispatch so this
              * period's remaining Tier 3 pool includes it. */
-            int exec_work = cur->tier == TIER3 && f->r[8] == 221;
-            uint64_t start = exec_work ? ticks_now() : 0;
+            int caller_work = cur->tier == TIER3 && proc_svc_charges_caller(f);
+            uint64_t start = caller_work ? ticks_now() : 0;
 #endif
             proc_el0_svc(f);
-#ifdef QUOTA_WAP_FULL_RUNTIME
-            if (exec_work) {
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
+            if (caller_work) {
                 uint64_t elapsed = ticks_now() - start;
                 tier_charge(cur, elapsed);
                 cur->used_t += elapsed;

@@ -572,6 +572,9 @@ void job_resume(void);
  */
 void proc_init(void);
 void proc_on_switch(struct task *next);
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
+int proc_svc_charges_caller(const struct irq_frame *f);
+#endif
 void proc_el0_svc(struct irq_frame *f);
 void proc_el0_abort(struct irq_frame *f, uint64_t esr);
 

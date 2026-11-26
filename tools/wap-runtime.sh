@@ -26,7 +26,7 @@ configure_wap_runtime() {
             EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_ELECTRON_RUNTIME"
         fi
         if [ "${QUOTA_WAP_FULL_RUNTIME:-0}" = 1 ]; then
-            EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_WAP_FULL_RUNTIME"
+            EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_WAP_FULL_RUNTIME -DQUOTA_CALLER_ACCOUNTED_SVC"
         fi
     fi
 }
