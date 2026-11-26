@@ -1,8 +1,10 @@
 # Quota OS（版本 016）
 
-UI, Web UI and Touch UI each use 512 MiB of QEMU RAM by default. CLI uses 4 MiB. Web UI loads its runtime from a separate read-only disk. Historical results below retain their original RAM settings.
+三个图形版均以双核为优化目标。每版按自己的默认内存，用同一镜像对比单核与双核的交互延迟，记录第二核执行的任务。三级满载时按原始时钟验证 GPS Speed 10 ms、Flight Camera 40 ms，检查漏帧、超时和二级欠配额。确认响应改善并通过独立验收后，再切换该版默认核数。
 
-UI、Web UI 和 Touch UI 默认使用 512 MiB QEMU 内存（`-m 512M`），CLI 为 4 MiB。Web UI 从独立只读卷加载 Blink、V8 和 Node.js。下方历史测试保留各自的内存配置。
+UI uses 64 MiB. Web UI and Touch UI each use 512 MiB of QEMU RAM by default. CLI uses 4 MiB. Web UI loads its runtime from a separate read-only disk. Historical results below retain their original RAM settings.
+
+UI 默认使用 64 MiB，Web UI 和 Touch UI 默认使用 512 MiB QEMU 内存（`-m 512M`），CLI 为 4 MiB。Web UI 从独立只读卷加载 Blink、V8 和 Node.js。下方历史测试保留各自的内存配置。
 
 ## Touch UI 竖屏版
 
