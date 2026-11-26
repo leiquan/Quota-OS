@@ -1377,15 +1377,24 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
     if (file == &window_device && (op == 63 || op == 64)) {
         if (make_handle(p) != page_owner) return -13;
         if (op == 63) {
-            if (f->r[2] != sizeof window_input[0]) return -22;
+            if (f->r[2] != sizeof(struct window_event)) return -22;
+#ifdef QUOTA_NODE_WEB
+            /* Blink drains input before painting. Yield the stream after a
+             * complete drag so a burst of gestures cannot defer its frame. */
+            if (window_wait_present) return -11;
+#endif
             if (!input_count) return -11;
-            if (copy_process_bytes(p, f->r[1], &window_input[input_head], sizeof window_input[0], 1)) return -14;
+            struct window_input_entry *entry = &window_input[input_head];
+            if (copy_process_bytes(p, f->r[1], &entry->event, sizeof entry->event, 1)) return -14;
+#ifdef QUOTA_NODE_WEB
+            window_wait_present = entry->drag_end;
+#endif
             input_head = (input_head + 1) % 64;
             --input_count;
 #ifdef QUOTA_GUI_EXT4
             touch_ext4_record_page_stage(TOUCH_PAGE_INPUT, electron_generation);
 #endif
-            return sizeof window_input[0];
+            return sizeof entry->event;
         }
         unsigned row = p->files[index].position->offset;
         if (row >= GUEST_PREVIEW_HEIGHT || f->r[2] != sizeof page_pixels[0]) return -22;
@@ -1396,6 +1405,9 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
 #endif
         if (++row == GUEST_PREVIEW_HEIGHT) {
             __atomic_store_n(&electron_generation, generation+1, __ATOMIC_RELEASE);
+#ifdef QUOTA_NODE_WEB
+            window_wait_present = 0;
+#endif
 #ifdef QUOTA_GUI_EXT4
             touch_ext4_record_page_stage(TOUCH_PAGE_LAST_ROW, generation + 1);
 #endif

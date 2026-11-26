@@ -111,8 +111,16 @@ static unsigned electron_generation;
 static int64_t backend_owner, backend_ui;
 static char backend_line[129];
 static int backend_line_ready;
-static struct { uint32_t kind, x, y; } window_input[64];
+struct window_event { uint32_t kind, x, y; };
+_Static_assert(sizeof(struct window_event) == 12, "window input ABI");
+static struct window_input_entry {
+    struct window_event event;
+    unsigned drag_end;
+} window_input[64];
 static unsigned input_head, input_count;
+#ifdef QUOTA_NODE_WEB
+static int window_wait_present;
+#endif
 #endif
 static int64_t page_owner;
 static unsigned page_rows;
@@ -123,7 +131,8 @@ int proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y)
     uint64_t flags = irq_save();
     int queued = handle > 0 && handle == page_owner && input_count < 64;
     if (queued) {
-        window_input[(input_head + input_count) % 64] = (typeof(window_input[0])){kind, x, y};
+        window_input[(input_head + input_count) % 64] =
+            (struct window_input_entry){{kind, x, y}, 0};
         ++input_count;
     }
     irq_restore(flags);
@@ -140,8 +149,10 @@ int proc_page_drag(int64_t handle, unsigned x, unsigned start_y, unsigned end_y)
     uint64_t flags = irq_save();
     int queued = handle > 0 && handle == page_owner && input_count <= 62;
     if (queued) {
-        window_input[(input_head + input_count) % 64] = (typeof(window_input[0])){1, x, start_y};
-        window_input[(input_head + input_count + 1) % 64] = (typeof(window_input[0])){2, x, end_y};
+        window_input[(input_head + input_count) % 64] =
+            (struct window_input_entry){{1, x, start_y}, 0};
+        window_input[(input_head + input_count + 1) % 64] =
+            (struct window_input_entry){{2, x, end_y}, 1};
         input_count += 2;
     }
     irq_restore(flags);
@@ -2506,7 +2517,10 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
             page_owner = make_handle(p);
             page_rows = 0;
 #ifdef QUOTA_LINUX_APP_RUNTIME
-        electron_generation = input_count = input_head = 0;
+            electron_generation = input_count = input_head = 0;
+#ifdef QUOTA_NODE_WEB
+            window_wait_present = 0;
+#endif
 #endif
         }
         p->session_owned = auth_state() == AUTH_OPEN;
@@ -2844,6 +2858,9 @@ static int64_t connect_wap_pair(int64_t ui, int64_t js)
     page_rows = 0;
 #ifdef QUOTA_LINUX_APP_RUNTIME
     electron_generation = input_count = input_head = 0;
+#ifdef QUOTA_NODE_WEB
+    window_wait_present = 0;
+#endif
 #endif
     task_ready(front->task);
     task_ready(back->task);
