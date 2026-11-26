@@ -17,6 +17,20 @@ __attribute__((weak)) int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h
 static int admit_lvgl(void)
 {
     uint64_t need = (uint64_t)LVGL_HEAP_BYTES + LVGL_DRAW_BYTES + LVGL_FB_BYTES;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    /* The framebuffer lies below the application pool. Verify that backing
+     * before excluding its bytes from the desktop's application charge. */
+    extern char __image_start[];
+    uint64_t fb, bytes;
+    uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
+    uint64_t end = base + (uint64_t)system_reserve_kb() * 1024u;
+    if (fb_reserved_range(&fb, &bytes) || fb < base || fb > end ||
+        bytes != LVGL_FB_BYTES || bytes > end - fb) {
+        printf("[admit] framebuffer outside the system reserve\n");
+        return -1;
+    }
+    need -= bytes;
+#endif
     uint32_t need_kb = (uint32_t)((need + 1023u) / 1024u);
     uint64_t cap_kb = resource_app_mem_capacity_kb();
     printf("[admit] lvgl heap %u KB draw %u KB framebuffer %u KB, fixed, pool expand 0\n",
