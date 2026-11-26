@@ -42,6 +42,7 @@ def report_frame_trace(log):
             gap, release, wait, draw, copy = (value * 1e6 / hz for value in max(long_gaps))
             print(f"frame trace {stream}: {len(rows)} frames, {len(long_gaps)} long gaps, "
                   f"worst {gap:.3f} us = release {release:.3f} + wait {wait:+.3f} + draw/phase {draw:+.3f} + copy {copy:+.3f}", flush=True)
+            raise AssertionError(f"stream {stream} exceeded {period_us} us")
         else:
             print(f"frame trace {stream}: {len(rows)} frames, no long gaps", flush=True)
 
@@ -131,6 +132,7 @@ def boot():
 
             if args.combined:
                 report_frame_trace(log)
+                wait(r"Strict frame timing: PASS", offset)
             q.call("screendump", {"filename":str((args.out/"test.ppm").resolve())})
         finally:
             proc.terminate()
