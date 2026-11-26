@@ -1,8 +1,8 @@
 Web Node edition
 
-The C-LVGL branch is the base for shared kernel and desktop work. Keep shared
+The LVGL branch is the base for shared kernel and desktop work. Keep shared
 fixes in their own commits so Web-Node can take them without importing a
-runtime into C-LVGL. Both editions use tools/build-desktop-image.sh. The Web
+runtime into LVGL. Both editions use tools/build-desktop-image.sh. The Web
 Node entry point adds port/quotaos/wap/sources.list and a runtime payload
 hook. ZIP decoding and manifest validation belong to the WAP extension.
 
