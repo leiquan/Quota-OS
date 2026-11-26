@@ -3,12 +3,12 @@
  * Alternate two records so a torn update leaves the prior version readable. */
 #include "quotaos.h"
 
-enum { BLOCK = 512, MAGIC = 0x514e5431, FLUSH_FEATURE = 1u << 9, SOURCE_MAGIC = 0x514e5432, SOURCE_NAME = 32 };
+enum { BLOCK = 512, MAGIC = 0x514e5431, FLUSH_FEATURE = 1u << 9, SOURCE_MAGIC = 0x514e5432, SOURCE_NAME = 32, PACKAGE_MAGIC = 0x51415031, NOTE_DATA_MAGIC = 0x514e4431, NOTE_DATA_SLOT = 3, PACKAGE_EXT = 4, HELLO_SLOT = 5, DOCUMENT_COUNT = 6, LEGACY_BYTES = BLOCK-16, PACKAGE_BANK_BYTES = 4*BLOCK };
 struct record {
     uint32_t magic, generation, length, checksum;
-    char text[BLOCK - 16];
+    char text[PACKAGE_BANK_BYTES - 16];
 };
-_Static_assert(sizeof(struct record) == BLOCK, "note sector");
+_Static_assert(sizeof(struct record) == PACKAGE_BANK_BYTES, "package bank");
 struct descriptor { uint64_t addr; uint32_t length; uint16_t flags, next; };
 static struct descriptor desc[8] __attribute__((aligned(16)));
 static struct { uint16_t flags, idx, ring[8], event; } avail __attribute__((aligned(4)));
@@ -16,13 +16,13 @@ static volatile struct { uint16_t flags, idx; struct {uint32_t id, len;} ring[8]
 static struct { uint32_t type, reserved; uint64_t sector; } header;
 static volatile uint8_t status;
 static char serial[21];
-static struct record transfer, documents[2];
-static unsigned document;
+static struct record transfer, documents[DOCUMENT_COUNT];
+static unsigned document, document_count = PACKAGE_EXT;
 #define saved (documents[document])
 static uint64_t base, submitted, last_period;
 static unsigned submitted_once, inflight;
 static uint16_t completed;
-static int slots[2];
+static int slots[DOCUMENT_COUNT];
 #define slot (slots[document])
 enum phase { OFFLINE, IDENTIFY, READ_A, READ_B, READY, WRITE, FLUSH, VERIFY, FAILED };
 static enum phase phase;
@@ -66,6 +66,8 @@ void note_disk_init(void)
     avail.flags = 1;
     mmio_wr(base+0x44, 1);
     mmio_wr(base+0x70, 15);
+    if (mmio_rd(base + 0x104) || mmio_rd(base + 0x100) >= 16)
+        document_count = (mmio_rd(base + 0x104) || mmio_rd(base + 0x100) >= 18) ? DOCUMENT_COUNT : HELLO_SLOT;
     phase = IDENTIFY;
 }
 
@@ -75,7 +77,7 @@ static uint32_t checksum(const struct record *r)
     for (unsigned i = 0; i < r->length; ++i)
         hash = (hash ^ (uint8_t)r->text[i]) * 16777619u;
     if (r->magic == SOURCE_MAGIC)
-        for (unsigned i = sizeof r->text - SOURCE_NAME; i < sizeof r->text; i++)
+        for (unsigned i = LEGACY_BYTES - SOURCE_NAME; i < LEGACY_BYTES; i++)
             hash = (hash ^ (uint8_t)r->text[i]) * 16777619u;
     return hash;
 }
@@ -99,12 +101,14 @@ static void submit(void)
     header.type = phase == IDENTIFY ? 8 : phase == WRITE ? 1 : flush ? 4 : 0;
     header.sector = phase == READ_B || (phase == WRITE && !slot);
     if (phase == VERIFY) header.sector = slot;
-    header.sector += document * 2;
+    if (document == PACKAGE_EXT) header.sector = 8 + 4 * header.sector;
+    else if (document == HELLO_SLOT) header.sector += 16;
+    else header.sector += document * 2;
     if (phase == IDENTIFY || flush) header.sector = 0;
     status = 255;
     desc[0] = (struct descriptor){(uintptr_t)&header, sizeof header, 1, flush ? 2 : 1};
     desc[1] = (struct descriptor){phase == IDENTIFY ? (uintptr_t)serial : (uintptr_t)&transfer,
-        phase == IDENTIFY ? 20 : BLOCK, phase == WRITE ? 1 : 3, 2};
+        phase == IDENTIFY ? 20 : document == PACKAGE_EXT ? PACKAGE_BANK_BYTES : BLOCK, phase == WRITE ? 1 : 3, 2};
     desc[2] = (struct descriptor){(uintptr_t)&status, 1, 2, 0};
     avail.ring[avail.idx % 8] = 0;
     asm volatile("dmb oshst" ::: "memory");
@@ -130,18 +134,22 @@ void note_disk_poll(void)
         if (phase == IDENTIFY) {
             phase = !strcmp(serial, "QUOTA-NOTES") ? READ_A : OFFLINE;
         } else if (phase == READ_A || phase == READ_B) {
-            if ((transfer.magic == MAGIC || (document && transfer.magic == SOURCE_MAGIC &&
-                transfer.length < sizeof transfer.text - SOURCE_NAME &&
-                valid_source_name(transfer.text + sizeof transfer.text - SOURCE_NAME))) &&
-                transfer.length < sizeof transfer.text &&
-                !transfer.text[transfer.length] && transfer.checksum == checksum(&transfer) &&
+            int valid = document == NOTE_DATA_SLOT
+                ? transfer.magic == NOTE_DATA_MAGIC && transfer.length <= LEGACY_BYTES
+                : (document == 2 || document == PACKAGE_EXT)
+                ? transfer.magic == PACKAGE_MAGIC && transfer.length && transfer.length <= (document == PACKAGE_EXT ? sizeof transfer.text : LEGACY_BYTES)
+                : (transfer.magic == MAGIC || (document == 1 && transfer.magic == SOURCE_MAGIC &&
+                    transfer.length < LEGACY_BYTES - SOURCE_NAME &&
+                    valid_source_name(transfer.text + LEGACY_BYTES - SOURCE_NAME))) &&
+                    transfer.length < LEGACY_BYTES && !transfer.text[transfer.length];
+            if (valid && transfer.checksum == checksum(&transfer) &&
                 (!saved.magic || (int32_t)(transfer.generation-saved.generation)>0)) {
                 saved = transfer;
                 slot = phase == READ_B;
             }
             phase = phase == READ_A ? READ_B : READY;
-            if (phase == READY && !document) {
-                document = 1;
+            if (phase == READY && document + 1 < document_count) {
+                document++;
                 phase = READ_A;
             } else if (phase == READY) {
                 document = 0;
@@ -172,7 +180,7 @@ static int save_document(const char *text, unsigned index, const char *name)
 {
     if (phase != READY || sched_current()->tier != TIER3) return -1;
     if (name && !valid_source_name(name)) return -3;
-    unsigned limit = sizeof transfer.text - (name ? SOURCE_NAME : 0);
+    unsigned limit = LEGACY_BYTES - (name ? SOURCE_NAME : 0);
     unsigned n = 0;
     while (n < limit && text[n]) n++;
     if (n == limit) return -2;
@@ -188,13 +196,67 @@ static int save_document(const char *text, unsigned index, const char *name)
     return 0;
 }
 
+static int save_binary(unsigned index, uint32_t magic, const unsigned char *bytes, unsigned length)
+{
+    if (phase != READY || sched_current()->tier != TIER3 || !bytes ||
+        length > (index == PACKAGE_EXT ? sizeof transfer.text : LEGACY_BYTES))
+        return -1;
+    document = index;
+    memset(&transfer, 0, sizeof transfer);
+    transfer.magic = magic;
+    transfer.generation = saved.generation + 1;
+    transfer.length = length;
+    memcpy(transfer.text, bytes, length);
+    transfer.checksum = checksum(&transfer);
+    phase = WRITE;
+    return 0;
+}
+
+int note_disk_save_package(const unsigned char *bytes, unsigned length)
+{
+    return length ? save_binary(document_count > PACKAGE_EXT ? PACKAGE_EXT : 2, PACKAGE_MAGIC, bytes, length) : -1;
+}
+
+int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_t *generation)
+{
+    if (!generation || save_binary(NOTE_DATA_SLOT, NOTE_DATA_MAGIC, bytes, length))
+        return -1;
+    *generation = transfer.generation;
+    return 0;
+}
+
+/* A write is acknowledged only once virtio-blk completed its flush. */
+int note_disk_wap_note_committed(uint32_t generation)
+{
+    const struct record *record = &documents[NOTE_DATA_SLOT];
+    if (record->magic == NOTE_DATA_MAGIC && record->generation == generation)
+        return 1;
+    if (document == NOTE_DATA_SLOT && (phase == WRITE || phase == FLUSH) &&
+        transfer.generation == generation)
+        return 0;
+    return -1;
+}
+
+const unsigned char *note_disk_wap_note(unsigned *length)
+{
+    *length = documents[NOTE_DATA_SLOT].length;
+    return documents[NOTE_DATA_SLOT].magic ? (const unsigned char *)documents[NOTE_DATA_SLOT].text : NULL;
+}
+
+const unsigned char *note_disk_package(unsigned *length)
+{
+    const struct record *r = documents[PACKAGE_EXT].magic ? &documents[PACKAGE_EXT] : &documents[2];
+    *length = r->length;
+    return r->magic ? (const unsigned char *)r->text : NULL;
+}
+
 int note_disk_save(const char *text) { return save_document(text, 0, NULL); }
 int note_disk_save_source(const char *text, const char *name) { return save_document(text, 1, name); }
 const char *note_disk_source_name(void)
 {
     const struct record *source = &documents[1];
     if (!source->magic) return NULL;
-    return source->magic == SOURCE_MAGIC ? source->text + sizeof source->text - SOURCE_NAME : "hello.c";
+    return source->magic == SOURCE_MAGIC ? source->text + LEGACY_BYTES - SOURCE_NAME : "hello.c";
 }
 const char *note_disk_source(void) { return documents[1].magic ? documents[1].text : 0; }
 
@@ -213,10 +275,19 @@ int note_disk_verify_result(void) { return phase == FAILED ? -1 : verify_result;
 const char *note_disk_text(void) { return documents[0].magic ? documents[0].text : 0; }
 const char *note_disk_status(void)
 {
-    if (phase == READY) return documents[0].magic || documents[1].magic ? "Saved" : "Ready";
+    if (phase == READY) return documents[0].magic || documents[1].magic || documents[2].magic || documents[PACKAGE_EXT].magic ? "Saved" : "Ready";
     if (phase == WRITE || phase == FLUSH) return "Saving...";
     if (phase == FAILED) return "Disk error";
     if (phase == VERIFY) return "Verifying...";
     if (phase == OFFLINE) return "No Notes disk";
     return "Opening disk...";
 }
+
+int note_disk_power_ready(void)
+{
+    if (phase == FAILED) return -1;
+    return phase == READY || phase == OFFLINE;
+}
+
+const char *note_disk_hello(void) { return documents[HELLO_SLOT].magic ? documents[HELLO_SLOT].text : NULL; }
+int note_disk_save_hello(const char *text) { return document_count > HELLO_SLOT ? save_document(text, HELLO_SLOT, NULL) : -1; }

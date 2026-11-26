@@ -1,26 +1,17 @@
-# Quota OS — WebKit port
+# Quota OS · Web Node 版
 
-Run `bash tools/run-webkit.sh` with QEMU ARM64 installed. This branch brings up upstream JavaScriptCore and a WebCore CSS parser on Quota OS. The current test evaluates two scripts, parses a CSS hex color, fills the guest framebuffer and returns to the kernel. The QEMU window shows a solid red 640 × 480 frame. HTML layout and interactive browser windows are still pending.
+C LVGL 版（`C-LVGL`）提供 C 应用和 LVGL 桌面。Web Node 版（`Web-Node`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
 
-运行 `bash tools/run-webkit.sh` 可验证 JavaScriptCore 和 WebCore 的颜色解析。当前显示的是 640 × 480 的红色测试画面，HTML 排版和可交互的浏览器窗口尚待移植。
+从 Files 双击 `demo.wap`，Blink 在普通桌面窗口中渲染 HTML/CSS 并执行页面 JS，Node 后台通过本地消息处理保存请求。两个来宾进程加载同一份系统 V8。示例只包含 [app.json](examples/demo/app.json)、[app.html](examples/demo/app.html) 和 [app.js](examples/demo/app.js)。
 
-[Serial log](docs/tests/webkit-stack/guest.log) · [Actual QEMU output](docs/tests/webkit-stack/frame.png) · [LVGL desktop branch](https://github.com/leiquan/Quota-OS/tree/Desktop-LVGL-120X800)
+| 代码位置 | 职责 |
+|---|---|
+| `kernel/`、`boot/` | 配额、调度、内存保护、进程、设备和文件服务 |
+| `port/quotaos/desktop/` | LVGL 桌面、Files、窗口与输入 |
+| `port/quotaos/wap/` | 应用包启动、窗口恢复、前后台共享的 RPC |
+| `port/quotaos/blink/`、`port/quotaos/node/` | 页面绘制、输入以及 Node 文件描述符上的消息传输 |
 
-## Preview a local HTML page
-
-On macOS with QEMU and the Xcode command-line tools installed, run:
-
-```sh
-bash tools/run-webkit.sh --page examples/webkit/hello.html
-```
-
-![HTML page captured from QEMU](docs/tests/webkit-page/hello.png)
-
-Change the heading in the file and launch again to see the new text. This is a static preview of self-contained UTF-8 HTML (1–16,384 bytes). macOS WKWebView lays out the document with inline CSS and system fonts, with page JavaScript disabled. The launcher supplies the same HTML and its rendered 1280 × 800 XRGB frame through QEMU fw_cfg; Quota OS displays that frame in ramfb. In-guest WebCore layout, scrolling and interactive browsing remain pending.
-
-在 macOS 上执行上面的命令，就能在 QEMU 中看到文件里的标题和正文。当前采用宿主 WebKit 排版、来宾显示的静态预览。
-
-For the cross-platform transport check use `--page-bytes FILE`; the serial console reports the file length and checksum. Run `python3 tools/webkit-document-check.py` for all five boundary cases. With no argument the launcher boots the separate in-guest JSC and WebCore CSS color test.
+ARM64 运行时的联合构建入口是 [build-node-web-runtime.py](tools/build-node-web-runtime.py)，输入为准备好的 Chromium 142 源码、已应用兼容补丁的 Node 22.21.1 源码和目标 sysroot。镜像构建入口是 [build-lvgl-guest.sh](tools/build-lvgl-guest.sh)。配置 `QUOTA_NODE_WEB_OUT` 后，构建器从联合输出收集两个可执行文件、共享库和运行数据。[扩展运行时构建配置](tools/wap-runtime.sh)
 
 ## LVGL desktop baseline
 
@@ -31,22 +22,7 @@ Quota OS is an experimental single-core ARM64 operating system built around reso
 
 Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
 
-## Desktop editions / 桌面发行版
-
-The default LVGL build runs the lightweight desktop. Quota OS LVGL+WebKit adds an optional in-guest runtime with WebKit for the interface and Node.js for the backend. The runtime is under development.
-
-默认构建为轻量 LVGL 桌面。Quota OS LVGL+WebKit 在此基础上增加可选的来宾运行时，由 WebKit 提供界面、Node.js 提供后台。该运行时仍在开发中。
-
-| Edition / 发行版 | Tier 1 / 一级 | Tier 2 / 二级 | Tier 3 / 三级 |
-|---|---|---|---|
-| Quota OS LVGL | LVGL | LVGL | LVGL |
-| Quota OS LVGL+WebKit | LVGL | LVGL | LVGL or WebKit + Node.js |
-
-The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. GPS Speed must submit a frame every 10 ms. Once admitted, the Flight Camera must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.
-
-Quota OS LVGL+WebKit 的验收场景是在同一桌面上运行三个应用：一级速度表每 10 ms 提交一帧；二级行车记录仪获准后拿足预留 CPU 时间，每 40 ms 提交一帧；三级网页同时触发 JavaScript 垃圾回收。三者在同一镜像中运行时的配额和帧间隔仍待验证。
-
-## Run the desktop
+## Run the prebuilt LVGL desktop
 
 [Download the desktop preview](https://github.com/leiquan/Quota-OS/releases/latest) for the standalone ARM64 image and launch commands. If you prefer a local checkout, use the launcher below.
 
@@ -197,3 +173,27 @@ The earlier Cortex-A72 / 128 MiB release passed 100 desktop-stall boots, 100 lif
 In the earlier live-checks regression, 100 lifecycle cold boots and 100 desktop-stall cold boots passed under QEMU TCG with `-icount shift=4,sleep=off`. The two ordinary application modes passed 10 cold boots each. In the separate 128 B/s disk test, two sustained saves took 14.315 s and 13.211 s of guest time. The speedometer committed 1,431 and 1,321 frames respectively, with zero deadline misses. A fresh guest reopened the note through Files and the test compared the bytes. [First boot](docs/tests/optimization/live-checks/save.log) · [Second boot](docs/tests/optimization/live-checks/reopen.log) · [Live checks](docs/tests/optimization/live-checks/ui.log) · [Regression logs](docs/tests/optimization/live-checks/regressions.tar.gz)
 
 This branch builds the LVGL desktop. WebKit and JavaScriptCore development lives on [Desktop-Webkit-120X800](https://github.com/leiquan/Quota-OS/tree/Desktop-Webkit-120X800). Earlier design notes, build instructions and historical experiments are in the [technical notes](TECHNICAL-NOTES.md). [Apache 2.0 license](LICENSE)
+
+## Historical WebKit prototypes
+
+Run `bash tools/run-webkit.sh` with QEMU ARM64 installed. This branch brings up upstream JavaScriptCore and a WebCore CSS parser on Quota OS. The current test evaluates two scripts, parses a CSS hex color, fills the guest framebuffer and returns to the kernel. The QEMU window shows a solid red 640 × 480 frame. HTML layout and interactive browser windows are still pending.
+
+运行 `bash tools/run-webkit.sh` 可验证 JavaScriptCore 和 WebCore 的颜色解析。当前显示的是 640 × 480 的红色测试画面，HTML 排版和可交互的浏览器窗口尚待移植。
+
+[Serial log](docs/tests/webkit-stack/guest.log) · [Actual QEMU output](docs/tests/webkit-stack/frame.png) · [LVGL desktop branch](https://github.com/leiquan/Quota-OS/tree/Desktop-LVGL-120X800)
+
+### Preview a local HTML page
+
+On macOS with QEMU and the Xcode command-line tools installed, run:
+
+```sh
+bash tools/run-webkit.sh --page examples/webkit/hello.html
+```
+
+![HTML page captured from QEMU](docs/tests/webkit-page/hello.png)
+
+Change the heading in the file and launch again to see the new text. This is a static preview of self-contained UTF-8 HTML (1–16,384 bytes). macOS WKWebView lays out the document with inline CSS and system fonts, with page JavaScript disabled. The launcher supplies the same HTML and its rendered 1280 × 800 XRGB frame through QEMU fw_cfg; Quota OS displays that frame in ramfb. In-guest WebCore layout, scrolling and interactive browsing remain pending.
+
+在 macOS 上执行上面的命令，就能在 QEMU 中看到文件里的标题和正文。当前采用宿主 WebKit 排版、来宾显示的静态预览。
+
+For the cross-platform transport check use `--page-bytes FILE`; the serial console reports the file length and checksum. Run `python3 tools/webkit-document-check.py` for all five boundary cases. With no argument the launcher boots the separate in-guest JSC and WebCore CSS color test.

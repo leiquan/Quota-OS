@@ -12,8 +12,13 @@ _start:
      * 用 ELF 启动时入口仍是这里，第一条指令直接跳过头部。 */
     b       past_header
     .word   0                 /* code1 */
+#ifdef QUOTA_WAP_FULL_RUNTIME
+    .quad   0x80000           /* linked offset from the start of RAM */
+    .quad   __boot_image_size /* reserve BSS when QEMU places the DTB */
+#else
     .quad   0                 /* text_offset */
     .quad   0                 /* image_size */
+#endif
     .quad   2                 /* flags: 内核可放在任意偏移 */
     .quad   0
     .quad   0
@@ -102,3 +107,53 @@ _boot_stack:
     .skip 16384
 .global _boot_stack_top
 _boot_stack_top:
+
+#ifdef QUOTA_WAP_FULL_RUNTIME
+.text
+.global wap_fp_save
+wap_fp_save:
+    stp q0, q1, [x0, #0]
+    stp q2, q3, [x0, #32]
+    stp q4, q5, [x0, #64]
+    stp q6, q7, [x0, #96]
+    stp q8, q9, [x0, #128]
+    stp q10, q11, [x0, #160]
+    stp q12, q13, [x0, #192]
+    stp q14, q15, [x0, #224]
+    stp q16, q17, [x0, #256]
+    stp q18, q19, [x0, #288]
+    stp q20, q21, [x0, #320]
+    stp q22, q23, [x0, #352]
+    stp q24, q25, [x0, #384]
+    stp q26, q27, [x0, #416]
+    stp q28, q29, [x0, #448]
+    stp q30, q31, [x0, #480]
+    add x0,x0,#512
+    mrs x1,fpcr
+    mrs x2,fpsr
+    stp x1,x2,[x0]
+    ret
+.global wap_fp_restore
+wap_fp_restore:
+    ldp q0, q1, [x0, #0]
+    ldp q2, q3, [x0, #32]
+    ldp q4, q5, [x0, #64]
+    ldp q6, q7, [x0, #96]
+    ldp q8, q9, [x0, #128]
+    ldp q10, q11, [x0, #160]
+    ldp q12, q13, [x0, #192]
+    ldp q14, q15, [x0, #224]
+    ldp q16, q17, [x0, #256]
+    ldp q18, q19, [x0, #288]
+    ldp q20, q21, [x0, #320]
+    ldp q22, q23, [x0, #352]
+    ldp q24, q25, [x0, #384]
+    ldp q26, q27, [x0, #416]
+    ldp q28, q29, [x0, #448]
+    ldp q30, q31, [x0, #480]
+    add x0,x0,#512
+    ldp x1,x2,[x0]
+    msr fpcr,x1
+    msr fpsr,x2
+    ret
+#endif

@@ -106,6 +106,7 @@ struct task {
     uint64_t work_t;            /* KIND_JOB：每个作业的工作量 */
     uint64_t deadline_t;        /* KIND_JOB：相对释放时刻的截止期 */
     uint64_t refundable_t; /* Current-period job reservation included in the pool calculation. */
+    int start_next_period;
     uint64_t last_used_t;
     uint64_t period_grant_t, last_grant_t;
     uint64_t used_t;            /* 本周期已用 */
@@ -246,6 +247,7 @@ void gic_eoi(uint32_t iar);
 void timer_init(void);
 uint64_t ticks_now(void);
 uint64_t timer_freq(void);
+int timer_realtime(uint64_t ts[2]);
 uint64_t us_to_ticks(uint64_t us);
 uint64_t ticks_to_us(uint64_t t);
 uint64_t now_us(void);
@@ -528,9 +530,19 @@ void input_set_span(uint32_t w, uint32_t h);
 int input_service_poll(void);
 int input_pop(struct quota_input *ev);
 uint32_t input_drop_count(void);
+void rng_init(void);
+int rng_read(void *dst, unsigned bytes);
 void note_disk_init(void);
 void note_disk_poll(void);
+int note_disk_power_ready(void);
+int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_t *generation);
+int note_disk_wap_note_committed(uint32_t generation);
+const unsigned char *note_disk_wap_note(unsigned *length);
+int note_disk_save_package(const unsigned char *bytes, unsigned length);
+const unsigned char *note_disk_package(unsigned *length);
 int note_disk_save(const char *text);
+int note_disk_save_hello(const char *text);
+const char *note_disk_hello(void);
 int note_disk_save_source(const char *text, const char *name);
 const char *note_disk_source_name(void);
 const char *note_disk_source(void);
@@ -607,7 +619,16 @@ int64_t proc_spawn(const char *name, uint64_t role, uint64_t limit, uint64_t for
 int proc_kill(int64_t handle);
 int c_demo_compile(const char *source);
 int64_t c_demo_run(void);
+int c_demo_compiled(void);
 int64_t proc_spawn_console(const char *code, unsigned bytes);
+void proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y);
+int proc_backend_output(int64_t handle, char *out, unsigned size);
+const uint32_t *proc_page_surface(int64_t handle, unsigned *frame_number);
+int64_t proc_spawn_wap_elf(const unsigned char *elf, unsigned bytes,
+                           const unsigned char *html, unsigned html_size,
+                           const unsigned char *backend, unsigned backend_size);
+int64_t proc_spawn_page_elf(const unsigned char *elf, unsigned bytes, const unsigned char *document, unsigned size);
+int64_t proc_spawn_bootstrap_elf(const unsigned char *elf, unsigned bytes);
 const char *proc_console_text(void);
 void proc_ledger(const char *tag);
 int proc_pages_free(void);

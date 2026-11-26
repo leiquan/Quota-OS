@@ -11,6 +11,7 @@
  * "qa-long" 只跑演示 9，周期数取 QA_LONG_PERIODS。两种都以 "QA DONE" 结束。
  */
 #include "quotaos.h"
+#include "shell.h"
 
 #define QA_PERIODS       1000u
 #define QA_LONG_PERIODS  100000u
@@ -1210,6 +1211,7 @@ void shell_main(void)
         run_qa(1);
     /* Empty bootargs are the owner's UTM default. That path is LVGL.
      * The serial menu is only -append serial. e4, qa stay explicit. */
+    if (!strcmp(args, "shell")) shell_serial();
     if (strcmp(args, "serial") != 0) {
         if (args[0] == 0)
             printf("[boot] no bootarg, starting LVGL\n");

@@ -6,11 +6,28 @@
 set -euo pipefail
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
-CC=${CC:-aarch64-linux-gnu-gcc}
-OBJCOPY=${OBJCOPY:-aarch64-linux-gnu-objcopy}
-NM=${NM:-aarch64-linux-gnu-nm}
-RUNTIME_LIB=${RUNTIME_LIB:--lgcc}
+if [ -n "${QUOTA_LLVM_BIN:-}" ]; then
+    cc=("$QUOTA_LLVM_BIN/clang" --target=aarch64-none-elf)
+    link_flags=(-nostdlib -static "-fuse-ld=${QUOTA_LLD:-ld.lld}")
+    OBJCOPY=${OBJCOPY:-"$QUOTA_LLVM_BIN/llvm-objcopy"}
+    NM=${NM:-"$QUOTA_LLVM_BIN/llvm-nm"}
+    READELF=${READELF:-"$QUOTA_LLVM_BIN/llvm-readelf"}
+    RUNTIME_LIB=${RUNTIME_LIB:-}
+    lv_headers=(-Itools/freestanding)
+else
+    cc=("${CC:-aarch64-linux-gnu-gcc}")
+    link_flags=(-nostdlib -nostartfiles -static -no-pie)
+    OBJCOPY=${OBJCOPY:-aarch64-linux-gnu-objcopy}
+    NM=${NM:-aarch64-linux-gnu-nm}
+    RUNTIME_LIB=${RUNTIME_LIB:--lgcc}
+    lv_headers=()
+fi
 EXTRA_CFLAGS=${EXTRA_CFLAGS:-}
+image_name=quotaos-lvgl
+if [[ -n "${QUOTA_NODE_WEB_OUT:-}${QUOTA_WAP_PAGE_ELF:-}${QUOTA_WAP_INTERPRETER:-}" ]]; then
+    source tools/wap-runtime.sh
+    configure_wap_runtime
+fi
 CFLAGS=($EXTRA_CFLAGS -std=gnu11 -Wall -Wextra -Werror -O2 -ffreestanding -fno-stack-protector
     -fno-builtin -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align
     -fno-asynchronous-unwind-tables -I include -I build)
@@ -18,17 +35,20 @@ mkdir -p build build/user
 short=$(git rev-parse --short=7 HEAD)
 printf '#define QUOTAOS_COMMIT "%s"\n' "$short" > build/commit.h
 echo "banner parent $short"
-$CC -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none \
+"${cc[@]}" "${link_flags[@]}" -Wl,--build-id=none \
     -T user/user.ld -o build/user/paint.elf user/paint.S
 $OBJCOPY -O binary build/user/paint.elf build/user/paint.bin
 objs=()
 while IFS= read -r f; do
     obj="build/${f%.*}.o"
     mkdir -p "$(dirname "$obj")"
-    $CC "${CFLAGS[@]}" -c -o "$obj" "$f"
+    case "$f" in
+        *.S) "${cc[@]}" $EXTRA_CFLAGS -Iinclude -Ibuild -c -o "$obj" "$f" ;;
+        *) "${cc[@]}" "${CFLAGS[@]}" -c -o "$obj" "$f" ;;
+    esac
     objs+=("$obj")
-done < kernel/sources.list
-LVFLAGS=($EXTRA_CFLAGS -std=gnu11 -O2 -ffreestanding -fno-stack-protector -fno-builtin
+done < <(cat kernel/sources.list port/quotaos/wap/sources.list)
+LVFLAGS=(${lv_headers[@]:+"${lv_headers[@]}"} $EXTRA_CFLAGS -std=gnu11 -O2 -ffreestanding -fno-stack-protector -fno-builtin
     -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align
     -fno-asynchronous-unwind-tables -Wno-unused-parameter -w
     -DLV_CONF_INCLUDE_SIMPLE -I third_party/lvgl -I port/quotaos -I include)
@@ -37,7 +57,7 @@ while IFS= read -r src; do
     rel=${src#third_party/lvgl/}
     obj="build/lvgl/${rel%.c}.o"
     mkdir -p "$(dirname "$obj")"
-    $CC "${LVFLAGS[@]}" -c -o "$obj" "$src"
+    "${cc[@]}" "${LVFLAGS[@]}" -c -o "$obj" "$src"
     objs+=("$obj")
 done < <(find third_party/lvgl/src/libs/bin_decoder -name '*.c'; find third_party/lvgl/src \
     -path 'third_party/lvgl/src/libs' -prune -o \
@@ -53,11 +73,14 @@ done < <(find third_party/lvgl/src/libs/bin_decoder -name '*.c'; find third_part
 for src in port/quotaos/desktop/*.c; do
     obj="build/${src%.c}.o"
     mkdir -p "$(dirname "$obj")"
-    $CC "${LVFLAGS[@]}" -c -o "$obj" "$src"
+    "${cc[@]}" "${LVFLAGS[@]}" -c -o "$obj" "$src"
     objs+=("$obj")
 done
-$CC -nostdlib -nostartfiles -static -no-pie -Wl,--build-id=none \
-    -T boot/linker.ld -o build/quotaos-lvgl.elf "${objs[@]}" $RUNTIME_LIB
-$OBJCOPY -O binary build/quotaos-lvgl.elf build/quotaos-lvgl.bin
-echo "linked $(wc -c < build/quotaos-lvgl.bin) bytes"
-$NM build/quotaos-lvgl.elf | grep -E "lvgl_demo_run|__image_end" || true
+if [[ -n "${QUOTA_WAP_PAGE_ELF:-}" ]]; then
+    embed_wap_runtime
+fi
+"${cc[@]}" "${link_flags[@]}" -Wl,--build-id=none \
+    -T boot/linker.ld -o "build/$image_name.elf" "${objs[@]}" $RUNTIME_LIB
+$OBJCOPY -O binary "build/$image_name.elf" "build/$image_name.bin"
+echo "linked $(wc -c < "build/$image_name.bin") bytes"
+$NM "build/$image_name.elf" | grep -E "lvgl_demo_run|__image_end" || true

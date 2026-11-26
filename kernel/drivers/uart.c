@@ -47,6 +47,8 @@ static char uart_getc(void)
         c = uart_getc_nonblock();
         if (c >= 0)
             return (char)c;
+        const char *text = proc_console_text();
+        if (text) printf("\n%s\n", text);
         asm volatile("wfi");
     }
 }

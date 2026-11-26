@@ -1,0 +1,2632 @@
+diff --git a/deps/ada/ada.cpp b/deps/ada/ada.cpp
+--- a/deps/ada/ada.cpp
++++ b/deps/ada/ada.cpp
+@@ -1,5 +1,6 @@
+ /* auto-generated on 2024-09-02 20:07:32 -0400. Do not edit! */
+ /* begin file src/ada.cpp */
++#include <iterator>
+ #include "ada.h"
+ /* begin file src/checkers.cpp */
+ 
+diff --git a/deps/ngtcp2/unofficial.gni b/deps/ngtcp2/unofficial.gni
+--- a/deps/ngtcp2/unofficial.gni
++++ b/deps/ngtcp2/unofficial.gni
+@@ -58,8 +58,7 @@
+     ]
+ 
+     sources = gypi_values.nghttp3_sources +
+-              gypi_values.ngtcp2_sources +
+-              gypi_values.ngtcp2_sources_quictls
++              gypi_values.ngtcp2_sources
+     if (node_use_openssl) {
+       deps = [ "../openssl" ]
+     }
+diff --git a/deps/openssl/openssl/crypto/thread/arch/thread_posix.c b/deps/openssl/openssl/crypto/thread/arch/thread_posix.c
+--- a/deps/openssl/openssl/crypto/thread/arch/thread_posix.c
++++ b/deps/openssl/openssl/crypto/thread/arch/thread_posix.c
+@@ -10,7 +10,9 @@
+ #include <internal/thread_arch.h>
+ 
+ #if defined(OPENSSL_THREADS_POSIX)
+-# define _GNU_SOURCE
++# ifndef _GNU_SOURCE
++#  define _GNU_SOURCE
++# endif
+ # include <errno.h>
+ # include <sys/types.h>
+ # include <unistd.h>
+diff --git a/deps/zstd/lib/compress/zstd_preSplit.c b/deps/zstd/lib/compress/zstd_preSplit.c
+--- a/deps/zstd/lib/compress/zstd_preSplit.c
++++ b/deps/zstd/lib/compress/zstd_preSplit.c
+@@ -182,8 +182,8 @@
+         }
+     }
+     assert(pos == blockSize);
++    (void)flushEvents; (void)removeEvents;
+     return blockSize;
+-    (void)flushEvents; (void)removeEvents;
+ }
+ 
+ /* ZSTD_splitBlock_fromBorders(): very fast strategy :
+diff --git a/src/api/environment.cc b/src/api/environment.cc
+--- a/src/api/environment.cc
++++ b/src/api/environment.cc
+@@ -106,9 +106,19 @@
+   return result;
+ }
+ 
++NodeArrayBufferAllocator::NodeArrayBufferAllocator() {
++  zero_fill_field_ = static_cast<uint32_t*>(allocator_->Allocate(sizeof(*zero_fill_field_)));
++  CHECK_NOT_NULL(zero_fill_field_);
++  *zero_fill_field_ = 1;
++}
++
++NodeArrayBufferAllocator::~NodeArrayBufferAllocator() {
++  allocator_->Free(zero_fill_field_, sizeof(*zero_fill_field_));
++}
++
+ void* NodeArrayBufferAllocator::Allocate(size_t size) {
+   void* ret;
+-  if (zero_fill_field_ || per_process::cli_options->zero_fill_all_buffers)
++  if (*zero_fill_field_ || per_process::cli_options->zero_fill_all_buffers)
+     ret = allocator_->Allocate(size);
+   else
+     ret = allocator_->AllocateUninitialized(size);
+@@ -308,6 +318,10 @@
+                     MultiIsolatePlatform* platform,
+                     const SnapshotData* snapshot_data,
+                     const IsolateSettings& settings) {
++  if (params->cpp_heap == nullptr) {
++    params->cpp_heap =
++        v8::CppHeap::Create(platform, v8::CppHeapCreateParams{{}}).release();
++  }
+   Isolate* isolate = Isolate::Allocate();
+   if (isolate == nullptr) return nullptr;
+ 
+@@ -351,9 +365,12 @@
+                     uv_loop_t* event_loop,
+                     MultiIsolatePlatform* platform,
+                     const EmbedderSnapshotData* snapshot_data,
+-                    const IsolateSettings& settings) {
++                    const IsolateSettings& settings,
++                    std::unique_ptr<v8::CppHeap> cpp_heap) {
+   Isolate::CreateParams params;
+   if (allocator != nullptr) params.array_buffer_allocator = allocator;
++  if (cpp_heap)
++    params.cpp_heap = cpp_heap.release();
+   return NewIsolate(&params,
+                     event_loop,
+                     platform,
+@@ -639,7 +656,7 @@
+ 
+ MaybeLocal<Object> GetPerContextExports(Local<Context> context,
+                                         IsolateData* isolate_data) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   EscapableHandleScope handle_scope(isolate);
+ 
+   Local<Object> global = context->Global();
+@@ -685,7 +702,7 @@
+ // This runs at runtime, regardless of whether the context
+ // is created from a snapshot.
+ Maybe<void> InitializeContextRuntime(Local<Context> context) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   HandleScope handle_scope(isolate);
+ 
+   // When `IsCodeGenerationFromStringsAllowed` is true, V8 takes the fast path
+@@ -764,7 +781,7 @@
+ }
+ 
+ Maybe<void> InitializeBaseContextForSnapshot(Local<Context> context) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   HandleScope handle_scope(isolate);
+ 
+   // Delete `Intl.v8BreakIterator`
+@@ -789,7 +806,7 @@
+ }
+ 
+ Maybe<void> InitializeMainContextForSnapshot(Local<Context> context) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   HandleScope handle_scope(isolate);
+ 
+   // Initialize the default values.
+@@ -807,7 +824,7 @@
+ MaybeLocal<Object> InitializePrivateSymbols(Local<Context> context,
+                                             IsolateData* isolate_data) {
+   CHECK(isolate_data);
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   EscapableHandleScope scope(isolate);
+   Context::Scope context_scope(context);
+ 
+@@ -820,7 +837,7 @@
+ 
+   Local<Object> private_symbols_object;
+   if (!private_symbols->NewInstance(context).ToLocal(&private_symbols_object) ||
+-      private_symbols_object->SetPrototype(context, Null(isolate))
++      private_symbols_object->SetPrototypeV2(context, Null(isolate))
+           .IsNothing()) {
+     return MaybeLocal<Object>();
+   }
+@@ -831,7 +848,7 @@
+ MaybeLocal<Object> InitializePerIsolateSymbols(Local<Context> context,
+                                                IsolateData* isolate_data) {
+   CHECK(isolate_data);
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   EscapableHandleScope scope(isolate);
+   Context::Scope context_scope(context);
+ 
+@@ -846,7 +863,7 @@
+   Local<Object> per_isolate_symbols_object;
+   if (!per_isolate_symbols->NewInstance(context).ToLocal(
+           &per_isolate_symbols_object) ||
+-      per_isolate_symbols_object->SetPrototype(context, Null(isolate))
++      per_isolate_symbols_object->SetPrototypeV2(context, Null(isolate))
+           .IsNothing()) {
+     return MaybeLocal<Object>();
+   }
+@@ -857,7 +874,7 @@
+ Maybe<void> InitializePrimordials(Local<Context> context,
+                                   IsolateData* isolate_data) {
+   // Run per-context JS files.
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Context::Scope context_scope(context);
+   Local<Object> exports;
+ 
+@@ -871,7 +888,7 @@
+   CHECK(!exports->Has(context, primordials_string).FromJust());
+ 
+   Local<Object> primordials = Object::New(isolate);
+-  if (primordials->SetPrototype(context, Null(isolate)).IsNothing() ||
++  if (primordials->SetPrototypeV2(context, Null(isolate)).IsNothing() ||
+       exports->Set(context, primordials_string, primordials).IsNothing()) {
+     return Nothing<void>();
+   }
+diff --git a/src/base_object-inl.h b/src/base_object-inl.h
+--- a/src/base_object-inl.h
++++ b/src/base_object-inl.h
+@@ -55,7 +55,6 @@
+ v8::Local<v8::Object> BaseObject::object(v8::Isolate* isolate) const {
+   v8::Local<v8::Object> handle = object();
+ 
+-  DCHECK_EQ(handle->GetCreationContextChecked()->GetIsolate(), isolate);
+   DCHECK_EQ(env()->isolate(), isolate);
+ 
+   return handle;
+diff --git a/src/crypto/crypto_context.cc b/src/crypto/crypto_context.cc
+--- a/src/crypto/crypto_context.cc
++++ b/src/crypto/crypto_context.cc
+@@ -1020,7 +1020,7 @@
+                            Local<Array> cert_array,
+                            std::vector<X509*>* certs) {
+   ClearErrorOnReturn clear_error_on_return;
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Environment* env = Environment::GetCurrent(context);
+   uint32_t array_length = cert_array->Length();
+ 
+diff --git a/src/crypto/crypto_timing.cc b/src/crypto/crypto_timing.cc
+--- a/src/crypto/crypto_timing.cc
++++ b/src/crypto/crypto_timing.cc
+@@ -12,7 +12,6 @@
+ 
+ using v8::CFunction;
+ using v8::FastApiCallbackOptions;
+-using v8::FastApiTypedArray;
+ using v8::FunctionCallbackInfo;
+ using v8::Local;
+ using v8::Object;
+@@ -51,21 +50,21 @@
+ }
+ 
+ bool FastTimingSafeEqual(Local<Value> receiver,
+-                         const FastApiTypedArray<uint8_t>& a,
+-                         const FastApiTypedArray<uint8_t>& b,
++                         Local<Value> a,
++                         Local<Value> b,
+                          // NOLINTNEXTLINE(runtime/references)
+                          FastApiCallbackOptions& options) {
+-  uint8_t* data_a;
+-  uint8_t* data_b;
+-  if (a.length() != b.length() || !a.getStorageIfAligned(&data_a) ||
+-      !b.getStorageIfAligned(&data_b)) {
++  FAST_SPREAD_BUFFER_ARG(a, a_buffer);
++  FAST_SPREAD_BUFFER_ARG(b, b_buffer);
++  if (a_buffer_length != b_buffer_length) {
+     TRACK_V8_FAST_API_CALL("crypto.timingSafeEqual.error");
+-    options.fallback = true;
++    v8::HandleScope scope(options.isolate);
++    THROW_ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH(options.isolate);
+     return false;
+   }
+ 
+   TRACK_V8_FAST_API_CALL("crypto.timingSafeEqual.ok");
+-  return CRYPTO_memcmp(data_a, data_b, a.length()) == 0;
++  return CRYPTO_memcmp(a_buffer_data, b_buffer_data, a_buffer_length) == 0;
+ }
+ 
+ static CFunction fast_timing_safe_equal(CFunction::Make(FastTimingSafeEqual));
+diff --git a/src/crypto/crypto_x509.cc b/src/crypto/crypto_x509.cc
+--- a/src/crypto/crypto_x509.cc
++++ b/src/crypto/crypto_x509.cc
+@@ -97,7 +97,7 @@
+   if (!bio) return {};
+   BUF_MEM* mem = bio;
+   Local<Value> ret;
+-  if (!String::NewFromUtf8(context->GetIsolate(),
++  if (!String::NewFromUtf8(Isolate::GetCurrent(),
+                            mem->data,
+                            NewStringType::kNormal,
+                            mem->length)
+@@ -121,7 +121,7 @@
+   }
+ 
+   Local<Value> result;
+-  if (!String::NewFromUtf8(context->GetIsolate(), str).ToLocal(&result)) {
++  if (!String::NewFromUtf8(Isolate::GetCurrent(), str).ToLocal(&result)) {
+     return {};
+   }
+   return result;
+@@ -136,12 +136,12 @@
+   unsigned char* value_str;
+   int value_str_size = ASN1_STRING_to_UTF8(&value_str, str);
+   if (value_str_size < 0) {
+-    return Undefined(context->GetIsolate());
++    return Undefined(Isolate::GetCurrent());
+   }
+   DataPointer free_value_str(value_str, value_str_size);
+ 
+   Local<Value> result;
+-  if (!String::NewFromUtf8(context->GetIsolate(),
++  if (!String::NewFromUtf8(Isolate::GetCurrent(),
+                            reinterpret_cast<const char*>(value_str),
+                            NewStringType::kNormal,
+                            value_str_size)
+@@ -155,7 +155,7 @@
+   if (!bio) return {};
+   BUF_MEM* mem = bio;
+   Local<Value> ret;
+-  if (!String::NewFromUtf8(context->GetIsolate(),
++  if (!String::NewFromUtf8(Isolate::GetCurrent(),
+                            mem->data,
+                            NewStringType::kNormal,
+                            mem->length)
+diff --git a/src/encoding_binding.cc b/src/encoding_binding.cc
+--- a/src/encoding_binding.cc
++++ b/src/encoding_binding.cc
+@@ -73,7 +73,7 @@
+                               int index,
+                               InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  v8::HandleScope scope(context->GetIsolate());
++  v8::HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   // Recreate the buffer in the constructor.
+   InternalFieldInfo* casted_info = static_cast<InternalFieldInfo*>(info);
+diff --git a/src/env-inl.h b/src/env-inl.h
+--- a/src/env-inl.h
++++ b/src/env-inl.h
+@@ -62,31 +62,6 @@
+   return event_loop_;
+ }
+ 
+-inline void IsolateData::SetCppgcReference(v8::Isolate* isolate,
+-                                           v8::Local<v8::Object> object,
+-                                           void* wrappable) {
+-  v8::CppHeap* heap = isolate->GetCppHeap();
+-  CHECK_NOT_NULL(heap);
+-  v8::WrapperDescriptor descriptor = heap->wrapper_descriptor();
+-  uint16_t required_size = std::max(descriptor.wrappable_instance_index,
+-                                    descriptor.wrappable_type_index);
+-  CHECK_GT(object->InternalFieldCount(), required_size);
+-
+-  uint16_t* id_ptr = nullptr;
+-  {
+-    Mutex::ScopedLock lock(isolate_data_mutex_);
+-    auto it =
+-        wrapper_data_map_.find(descriptor.embedder_id_for_garbage_collected);
+-    CHECK_NE(it, wrapper_data_map_.end());
+-    id_ptr = &(it->second->cppgc_id);
+-  }
+-
+-  object->SetAlignedPointerInInternalField(descriptor.wrappable_type_index,
+-                                           id_ptr);
+-  object->SetAlignedPointerInInternalField(descriptor.wrappable_instance_index,
+-                                           wrappable);
+-}
+-
+ inline uint16_t* IsolateData::embedder_id_for_cppgc() const {
+   return &(wrapper_data_->cppgc_id);
+ }
+diff --git a/src/env.cc b/src/env.cc
+--- a/src/env.cc
++++ b/src/env.cc
+@@ -23,6 +23,7 @@
+ #include "util-inl.h"
+ #include "v8-cppgc.h"
+ #include "v8-profiler.h"
++#include "v8-sandbox.h"  // v8::Object::Wrap(), v8::Object::Unwrap()
+ 
+ #include <algorithm>
+ #include <atomic>
+@@ -72,7 +73,6 @@
+ using v8::Uint32;
+ using v8::Undefined;
+ using v8::Value;
+-using v8::WrapperDescriptor;
+ using worker::Worker;
+ 
+ int const ContextEmbedderTag::kNodeContextTag = 0x6e6f64;
+@@ -530,6 +530,14 @@
+   CreateEnvProxyTemplate(this);
+ }
+ 
++// Previously, the general convention of the wrappable layout for cppgc in
++// the ecosystem is:
++// [  0  ] -> embedder id
++// [  1  ] -> wrappable instance
++// Now V8 has deprecated this layout-based tracing enablement, embedders
++// should simply use v8::Object::Wrap() and v8::Object::Unwrap(). We preserve
++// this layout only to distinguish internally how the memory of a Node.js
++// wrapper is managed or whether a wrapper is managed by Node.js.
+ constexpr uint16_t kDefaultCppGCEmbedderID = 0x90de;
+ Mutex IsolateData::isolate_data_mutex_;
+ std::unordered_map<uint16_t, std::unique_ptr<PerIsolateWrapperData>>
+@@ -567,37 +575,9 @@
+   v8::CppHeap* cpp_heap = isolate->GetCppHeap();
+ 
+   uint16_t cppgc_id = kDefaultCppGCEmbedderID;
+-  if (cpp_heap != nullptr) {
+-    // The general convention of the wrappable layout for cppgc in the
+-    // ecosystem is:
+-    // [  0  ] -> embedder id
+-    // [  1  ] -> wrappable instance
+-    // If the Isolate includes a CppHeap attached by another embedder,
+-    // And if they also use the field 0 for the ID, we DCHECK that
+-    // the layout matches our layout, and record the embedder ID for cppgc
+-    // to avoid accidentally enabling cppgc on non-cppgc-managed wrappers .
+-    v8::WrapperDescriptor descriptor = cpp_heap->wrapper_descriptor();
+-    if (descriptor.wrappable_type_index == BaseObject::kEmbedderType) {
+-      cppgc_id = descriptor.embedder_id_for_garbage_collected;
+-      DCHECK_EQ(descriptor.wrappable_instance_index, BaseObject::kSlot);
+-    }
+-    // If the CppHeap uses the slot we use to put non-cppgc-traced BaseObject
+-    // for embedder ID, V8 could accidentally enable cppgc on them. So
+-    // safe guard against this.
+-    DCHECK_NE(descriptor.wrappable_type_index, BaseObject::kSlot);
+-  } else {
+-    cpp_heap_ = CppHeap::Create(
+-        platform,
+-        CppHeapCreateParams{
+-            {},
+-            WrapperDescriptor(
+-                BaseObject::kEmbedderType, BaseObject::kSlot, cppgc_id)});
+-    isolate->AttachCppHeap(cpp_heap_.get());
+-  }
+   // We do not care about overflow since we just want this to be different
+   // from the cppgc id.
+   uint16_t non_cppgc_id = cppgc_id + 1;
+-
+   {
+     // GC could still be run after the IsolateData is destroyed, so we store
+     // the ids in a static map to ensure pointers to them are still valid
+@@ -620,20 +600,12 @@
+   }
+ }
+ 
+-IsolateData::~IsolateData() {
+-  if (cpp_heap_ != nullptr) {
+-    v8::Locker locker(isolate_);
+-    // The CppHeap must be detached before being terminated.
+-    isolate_->DetachCppHeap();
+-    cpp_heap_->Terminate();
+-  }
+-}
+-
+-// Public API
++// Deprecated API, embedders should use v8::Object::Wrap() directly instead.
+ void SetCppgcReference(Isolate* isolate,
+                        Local<Object> object,
+                        void* wrappable) {
+-  IsolateData::SetCppgcReference(isolate, object, wrappable);
++  v8::Object::Wrap<v8::CppHeapPointerTag::kDefaultTag>(
++      isolate, object, static_cast<v8::Object::Wrappable*>(wrappable));
+ }
+ 
+ void IsolateData::MemoryInfo(MemoryTracker* tracker) const {
+@@ -1776,10 +1748,10 @@
+         context->GetDataFromSnapshotOnce<Array>(
+             info_->js_execution_async_resources).ToLocalChecked();
+   } else {
+-    js_execution_async_resources = Array::New(context->GetIsolate());
++    js_execution_async_resources = Array::New(Isolate::GetCurrent());
+   }
+   js_execution_async_resources_.Reset(
+-      context->GetIsolate(), js_execution_async_resources);
++      Isolate::GetCurrent(), js_execution_async_resources);
+ 
+   // The native_execution_async_resources_ field requires v8::Local<> instances
+   // for async calls whose resources were on the stack as JS objects when they
+@@ -1819,7 +1791,7 @@
+   info.async_id_fields = async_id_fields_.Serialize(context, creator);
+   if (!js_execution_async_resources_.IsEmpty()) {
+     info.js_execution_async_resources = creator->AddData(
+-        context, js_execution_async_resources_.Get(context->GetIsolate()));
++        context, js_execution_async_resources_.Get(Isolate::GetCurrent()));
+     CHECK_NE(info.js_execution_async_resources, 0);
+   } else {
+     info.js_execution_async_resources = 0;
+diff --git a/src/env.h b/src/env.h
+--- a/src/env.h
++++ b/src/env.h
+@@ -157,7 +157,6 @@
+       ArrayBufferAllocator* node_allocator = nullptr,
+       const EmbedderSnapshotData* embedder_snapshot_data = nullptr,
+       std::shared_ptr<PerIsolateOptions> options = nullptr);
+-  ~IsolateData();
+ 
+   SET_MEMORY_INFO_NAME(IsolateData)
+   SET_SELF_SIZE(IsolateData)
+@@ -176,10 +175,6 @@
+ 
+   uint16_t* embedder_id_for_cppgc() const;
+   uint16_t* embedder_id_for_non_cppgc() const;
+-
+-  static inline void SetCppgcReference(v8::Isolate* isolate,
+-                                       v8::Local<v8::Object> object,
+-                                       void* wrappable);
+ 
+   inline uv_loop_t* event_loop() const;
+   inline MultiIsolatePlatform* platform() const;
+@@ -264,7 +259,6 @@
+   const SnapshotData* snapshot_data_;
+   std::optional<SnapshotConfig> snapshot_config_;
+ 
+-  std::unique_ptr<v8::CppHeap> cpp_heap_;
+   std::shared_ptr<PerIsolateOptions> options_;
+   worker::Worker* worker_context_ = nullptr;
+   PerIsolateWrapperData* wrapper_data_;
+diff --git a/src/histogram.cc b/src/histogram.cc
+--- a/src/histogram.cc
++++ b/src/histogram.cc
+@@ -187,7 +187,8 @@
+                                const int64_t value,
+                                FastApiCallbackOptions& options) {
+   if (value < 1) {
+-    options.fallback = true;
++    Environment* env = Environment::GetCurrent(options.isolate);
++    THROW_ERR_OUT_OF_RANGE(env, "value is out of range");
+     return;
+   }
+   HistogramBase* histogram;
+diff --git a/src/inspector/network_agent.cc b/src/inspector/network_agent.cc
+--- a/src/inspector/network_agent.cc
++++ b/src/inspector/network_agent.cc
+@@ -29,31 +29,31 @@
+ Maybe<protocol::String> ObjectGetProtocolString(v8::Local<v8::Context> context,
+                                                 Local<Object> object,
+                                                 Local<v8::String> property) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(v8::Isolate::GetCurrent());
+   Local<Value> value;
+   if (!object->Get(context, property).ToLocal(&value) || !value->IsString()) {
+     return Nothing<protocol::String>();
+   }
+   Local<v8::String> str = value.As<v8::String>();
+-  return Just(ToProtocolString(context->GetIsolate(), str));
++  return Just(ToProtocolString(v8::Isolate::GetCurrent(), str));
+ }
+ 
+ // Get a protocol string property from the object.
+ Maybe<protocol::String> ObjectGetProtocolString(v8::Local<v8::Context> context,
+                                                 Local<Object> object,
+                                                 const char* property) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(v8::Isolate::GetCurrent());
+   return ObjectGetProtocolString(
+-      context, object, OneByteString(context->GetIsolate(), property));
++      context, object, OneByteString(v8::Isolate::GetCurrent(), property));
+ }
+ 
+ // Get a protocol double property from the object.
+ Maybe<double> ObjectGetDouble(v8::Local<v8::Context> context,
+                               Local<Object> object,
+                               const char* property) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(v8::Isolate::GetCurrent());
+   Local<Value> value;
+-  if (!object->Get(context, OneByteString(context->GetIsolate(), property))
++  if (!object->Get(context, OneByteString(v8::Isolate::GetCurrent(), property))
+            .ToLocal(&value) ||
+       !value->IsNumber()) {
+     return Nothing<double>();
+@@ -65,9 +65,9 @@
+ Maybe<int> ObjectGetInt(v8::Local<v8::Context> context,
+                         Local<Object> object,
+                         const char* property) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(v8::Isolate::GetCurrent());
+   Local<Value> value;
+-  if (!object->Get(context, OneByteString(context->GetIsolate(), property))
++  if (!object->Get(context, OneByteString(v8::Isolate::GetCurrent(), property))
+            .ToLocal(&value) ||
+       !value->IsInt32()) {
+     return Nothing<int>();
+@@ -79,9 +79,9 @@
+ Maybe<bool> ObjectGetBool(v8::Local<v8::Context> context,
+                           Local<Object> object,
+                           const char* property) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(v8::Isolate::GetCurrent());
+   Local<Value> value;
+-  if (!object->Get(context, OneByteString(context->GetIsolate(), property))
++  if (!object->Get(context, OneByteString(v8::Isolate::GetCurrent(), property))
+            .ToLocal(&value) ||
+       !value->IsBoolean()) {
+     return Nothing<bool>();
+@@ -93,9 +93,9 @@
+ MaybeLocal<v8::Object> ObjectGetObject(v8::Local<v8::Context> context,
+                                        Local<Object> object,
+                                        const char* property) {
+-  EscapableHandleScope handle_scope(context->GetIsolate());
++  EscapableHandleScope handle_scope(v8::Isolate::GetCurrent());
+   Local<Value> value;
+-  if (!object->Get(context, OneByteString(context->GetIsolate(), property))
++  if (!object->Get(context, OneByteString(v8::Isolate::GetCurrent(), property))
+            .ToLocal(&value) ||
+       !value->IsObject()) {
+     return {};
+@@ -106,7 +106,7 @@
+ // Create a protocol::Network::Headers from the v8 object.
+ std::unique_ptr<protocol::Network::Headers> createHeadersFromObject(
+     v8::Local<v8::Context> context, Local<Object> headers_obj) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(v8::Isolate::GetCurrent());
+ 
+   std::unique_ptr<protocol::DictionaryValue> dict =
+       protocol::DictionaryValue::create();
+@@ -127,7 +127,7 @@
+              .To(&property_value)) {
+       return {};
+     }
+-    dict->setString(ToProtocolString(context->GetIsolate(), property_name),
++    dict->setString(ToProtocolString(v8::Isolate::GetCurrent(), property_name),
+                     property_value);
+   }
+ 
+@@ -137,7 +137,7 @@
+ // Create a protocol::Network::Request from the v8 object.
+ std::unique_ptr<protocol::Network::Request> createRequestFromObject(
+     v8::Local<v8::Context> context, Local<Object> request) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(v8::Isolate::GetCurrent());
+   protocol::String url;
+   if (!ObjectGetProtocolString(context, request, "url").To(&url)) {
+     return {};
+@@ -169,7 +169,7 @@
+ // Create a protocol::Network::Response from the v8 object.
+ std::unique_ptr<protocol::Network::Response> createResponseFromObject(
+     v8::Local<v8::Context> context, Local<Object> response) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(v8::Isolate::GetCurrent());
+   protocol::String url;
+   if (!ObjectGetProtocolString(context, response, "url").To(&url)) {
+     return {};
+diff --git a/src/internal_only_v8.cc b/src/internal_only_v8.cc
+--- a/src/internal_only_v8.cc
++++ b/src/internal_only_v8.cc
+@@ -33,8 +33,8 @@
+     if (creation_context != context_) {
+       return false;
+     }
+-    for (Local<Value> proto = object->GetPrototype(); proto->IsObject();
+-         proto = proto.As<Object>()->GetPrototype()) {
++    for (Local<Value> proto = object->GetPrototypeV2(); proto->IsObject();
++         proto = proto.As<Object>()->GetPrototypeV2()) {
+       if (search_ == proto) return true;
+     }
+     return false;
+diff --git a/src/js_native_api_v8.cc b/src/js_native_api_v8.cc
+--- a/src/js_native_api_v8.cc
++++ b/src/js_native_api_v8.cc
+@@ -1577,7 +1577,7 @@
+   CHECK_TO_OBJECT(env, context, obj, object);
+ 
+   // This doesn't invokes Proxy's [[GetPrototypeOf]] handler.
+-  v8::Local<v8::Value> val = obj->GetPrototype();
++  v8::Local<v8::Value> val = obj->GetPrototypeV2();
+   *result = v8impl::JsValueFromV8LocalValue(val);
+   return GET_RETURN_STATUS(env);
+ }
+diff --git a/src/js_native_api_v8.h b/src/js_native_api_v8.h
+--- a/src/js_native_api_v8.h
++++ b/src/js_native_api_v8.h
+@@ -53,7 +53,7 @@
+ struct napi_env__ {
+   explicit napi_env__(v8::Local<v8::Context> context,
+                       int32_t module_api_version)
+-      : isolate(context->GetIsolate()),
++      : isolate(v8::Isolate::GetCurrent()),
+         context_persistent(isolate, context),
+         module_api_version(module_api_version) {
+     napi_clear_last_error(this);
+diff --git a/src/module_wrap.cc b/src/module_wrap.cc
+--- a/src/module_wrap.cc
++++ b/src/module_wrap.cc
+@@ -91,7 +91,7 @@
+                                     Local<String> specifier,
+                                     Local<FixedArray> import_attributes) {
+   CHECK_EQ(import_attributes->Length() % elements_per_attribute, 0);
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   std::size_t h1 = specifier->GetIdentityHash();
+   size_t num_attributes = import_attributes->Length() / elements_per_attribute;
+   ImportAttributeVector attributes;
+@@ -1016,7 +1016,7 @@
+     return {};
+   }
+   DCHECK_NOT_NULL(resolved_module);
+-  return resolved_module->module_.Get(context->GetIsolate());
++  return resolved_module->module_.Get(Isolate::GetCurrent());
+ }
+ 
+ // static
+@@ -1025,7 +1025,7 @@
+     Local<String> specifier,
+     Local<FixedArray> import_attributes,
+     Local<Module> referrer) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Environment* env = Environment::GetCurrent(context);
+   if (env == nullptr) {
+     THROW_ERR_EXECUTION_ENVIRONMENT_NOT_AVAILABLE(isolate);
+@@ -1069,7 +1069,7 @@
+     Local<Value> resource_name,
+     Local<String> specifier,
+     Local<FixedArray> import_attributes) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Environment* env = Environment::GetCurrent(context);
+   if (env == nullptr) {
+     THROW_ERR_EXECUTION_ENVIRONMENT_NOT_AVAILABLE(isolate);
+@@ -1291,7 +1291,7 @@
+     Local<FixedArray> import_attributes,
+     Local<Module> referrer) {
+   Environment* env = Environment::GetCurrent(context);
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   CHECK(specifier->Equals(context, env->original_string()).ToChecked());
+   CHECK(!env->temporary_required_module_facade_original.IsEmpty());
+   return env->temporary_required_module_facade_original.Get(isolate);
+diff --git a/src/node.cc b/src/node.cc
+--- a/src/node.cc
++++ b/src/node.cc
+@@ -232,44 +232,6 @@
+ }
+ #endif  // HAVE_INSPECTOR
+ 
+-#define ATOMIC_WAIT_EVENTS(V)                                               \
+-  V(kStartWait,           "started")                                        \
+-  V(kWokenUp,             "was woken up by another thread")                 \
+-  V(kTimedOut,            "timed out")                                      \
+-  V(kTerminatedExecution, "was stopped by terminated execution")            \
+-  V(kAPIStopped,          "was stopped through the embedder API")           \
+-  V(kNotEqual,            "did not wait because the values mismatched")     \
+-
+-static void AtomicsWaitCallback(Isolate::AtomicsWaitEvent event,
+-                                Local<v8::SharedArrayBuffer> array_buffer,
+-                                size_t offset_in_bytes, int64_t value,
+-                                double timeout_in_ms,
+-                                Isolate::AtomicsWaitWakeHandle* stop_handle,
+-                                void* data) {
+-  Environment* env = static_cast<Environment*>(data);
+-
+-  const char* message = "(unknown event)";
+-  switch (event) {
+-#define V(key, msg)                         \
+-    case Isolate::AtomicsWaitEvent::key:    \
+-      message = msg;                        \
+-      break;
+-    ATOMIC_WAIT_EVENTS(V)
+-#undef V
+-  }
+-
+-  fprintf(stderr,
+-          "(node:%d) [Thread %" PRIu64 "] Atomics.wait(%p + %zx, %" PRId64
+-          ", %.f) %s\n",
+-          static_cast<int>(uv_os_getpid()),
+-          env->thread_id(),
+-          array_buffer->Data(),
+-          offset_in_bytes,
+-          value,
+-          timeout_in_ms,
+-          message);
+-}
+-
+ void Environment::InitializeDiagnostics() {
+   isolate_->GetHeapProfiler()->AddBuildEmbedderGraphCallback(
+       Environment::BuildEmbedderGraph, this);
+@@ -278,17 +240,6 @@
+   }
+   if (options_->trace_uncaught)
+     isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
+-  if (options_->trace_atomics_wait) {
+-    ProcessEmitDeprecationWarning(
+-        Environment::GetCurrent(isolate_),
+-        "The flag --trace-atomics-wait is deprecated.",
+-        "DEP0165");
+-    isolate_->SetAtomicsWaitCallback(AtomicsWaitCallback, this);
+-    AddCleanupHook([](void* data) {
+-      Environment* env = static_cast<Environment*>(data);
+-      env->isolate()->SetAtomicsWaitCallback(nullptr, nullptr);
+-    }, this);
+-  }
+   if (options_->trace_promises) {
+     isolate_->SetPromiseHook(TracePromises);
+   }
+@@ -814,9 +765,6 @@
+                 "--no-harmony-import-attributes") == v8_args.end()) {
+     v8_args.emplace_back("--harmony-import-attributes");
+   }
+-  // TODO(nicolo-ribaudo): remove this once V8 doesn't enable it by default
+-  // anymore.
+-  v8_args.emplace_back("--no-harmony-import-assertions");
+ 
+   if (!per_process::cli_options->per_isolate->max_old_space_size_percentage
+            .empty()) {
+@@ -834,8 +782,6 @@
+   }
+ 
+   // Support stable Phase 5 WebAssembly proposals
+-  v8_args.emplace_back("--experimental-wasm-imported-strings");
+-  v8_args.emplace_back("--experimental-wasm-memory64");
+   v8_args.emplace_back("--experimental-wasm-exnref");
+ 
+ #ifdef __POSIX__
+@@ -1288,6 +1234,14 @@
+     result->platform_ = per_process::v8_platform.Platform();
+   }
+ 
++  if (!(flags & ProcessInitializationFlags::kNoInitializeCppgc) && !cppgc::IsInitialized()) {
++    v8::PageAllocator* allocator = nullptr;
++    if (result->platform_ != nullptr) {
++      allocator = result->platform_->GetPageAllocator();
++    }
++    cppgc::InitializeProcess(allocator);
++  }
++
+   if (!(flags & ProcessInitializationFlags::kNoInitializeV8)) {
+     V8::Initialize();
+ 
+@@ -1295,14 +1249,6 @@
+     // TODO(legendecas): Replace this global disablement with case suppressions.
+     // https://github.com/nodejs/node-v8/issues/301
+     absl::SetMutexDeadlockDetectionMode(absl::OnDeadlockCycle::kIgnore);
+-  }
+-
+-  if (!(flags & ProcessInitializationFlags::kNoInitializeCppgc)) {
+-    v8::PageAllocator* allocator = nullptr;
+-    if (result->platform_ != nullptr) {
+-      allocator = result->platform_->GetPageAllocator();
+-    }
+-    cppgc::InitializeProcess(allocator);
+   }
+ 
+ #if NODE_USE_V8_WASM_TRAP_HANDLER
+diff --git a/src/node.h b/src/node.h
+--- a/src/node.h
++++ b/src/node.h
+@@ -584,7 +584,8 @@
+     struct uv_loop_s* event_loop,
+     MultiIsolatePlatform* platform,
+     const EmbedderSnapshotData* snapshot_data = nullptr,
+-    const IsolateSettings& settings = {});
++    const IsolateSettings& settings = {},
++    std::unique_ptr<v8::CppHeap> cpp_heap = {});
+ NODE_EXTERN v8::Isolate* NewIsolate(
+     std::shared_ptr<ArrayBufferAllocator> allocator,
+     struct uv_loop_s* event_loop,
+@@ -1043,7 +1044,7 @@
+ 
+ #define NODE_DEFINE_CONSTANT(target, constant)                                 \
+   do {                                                                         \
+-    v8::Isolate* isolate = target->GetIsolate();                               \
++    v8::Isolate* isolate = v8::Isolate::GetCurrent();                          \
+     v8::Local<v8::Context> context = isolate->GetCurrentContext();             \
+     v8::Local<v8::String> constant_name = v8::String::NewFromUtf8Literal(      \
+         isolate, #constant, v8::NewStringType::kInternalized);                 \
+@@ -1059,7 +1060,7 @@
+ 
+ #define NODE_DEFINE_HIDDEN_CONSTANT(target, constant)                          \
+   do {                                                                         \
+-    v8::Isolate* isolate = target->GetIsolate();                               \
++    v8::Isolate* isolate = v8::Isolate::GetCurrent();                          \
+     v8::Local<v8::Context> context = isolate->GetCurrentContext();             \
+     v8::Local<v8::String> constant_name = v8::String::NewFromUtf8Literal(      \
+         isolate, #constant, v8::NewStringType::kInternalized);                 \
+@@ -1570,24 +1571,14 @@
+                            bool reset_handler = false);
+ #endif  // _WIN32
+ 
+-// Configure the layout of the JavaScript object with a cppgc::GarbageCollected
+-// instance so that when the JavaScript object is reachable, the garbage
+-// collected instance would have its Trace() method invoked per the cppgc
+-// contract. To make it work, the process must have called
+-// cppgc::InitializeProcess() before, which is usually the case for addons
+-// loaded by the stand-alone Node.js executable. Embedders of Node.js can use
+-// either need to call it themselves or make sure that
+-// ProcessInitializationFlags::kNoInitializeCppgc is *not* set for cppgc to
+-// work.
+-// If the CppHeap is owned by Node.js, which is usually the case for addon,
+-// the object must be created with at least two internal fields available,
+-// and the first two internal fields would be configured by Node.js.
+-// This may be superseded by a V8 API in the future, see
+-// https://bugs.chromium.org/p/v8/issues/detail?id=13960. Until then this
+-// serves as a helper for Node.js isolates.
+-NODE_EXTERN void SetCppgcReference(v8::Isolate* isolate,
+-                                   v8::Local<v8::Object> object,
+-                                   void* wrappable);
++// This is kept as a compatibility layer for addons to wrap cppgc-managed
++// objects on Node.js versions without v8::Object::Wrap(). Addons created to
++// work with only Node.js versions with v8::Object::Wrap() should use that
++// instead.
++NODE_DEPRECATED("Use v8::Object::Wrap()",
++                NODE_EXTERN void SetCppgcReference(v8::Isolate* isolate,
++                                                   v8::Local<v8::Object> object,
++                                                   void* wrappable));
+ 
+ }  // namespace node
+ 
+diff --git a/src/node_blob.cc b/src/node_blob.cc
+--- a/src/node_blob.cc
++++ b/src/node_blob.cc
+@@ -551,7 +551,7 @@
+                                   int index,
+                                   InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  HandleScope scope(context->GetIsolate());
++  HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   BlobBindingData* binding = realm->AddBindingData<BlobBindingData>(holder);
+   CHECK_NOT_NULL(binding);
+diff --git a/src/node_buffer.cc b/src/node_buffer.cc
+--- a/src/node_buffer.cc
++++ b/src/node_buffer.cc
+@@ -44,6 +44,14 @@
+ #define THROW_AND_RETURN_UNLESS_BUFFER(env, obj)                            \
+   THROW_AND_RETURN_IF_NOT_BUFFER(env, obj, "argument")                      \
+ 
++#define THROW_AND_RETURN_VAL_UNLESS_BUFFER(isolate, val, prefix, retval)       \
++  do {                                                                         \
++    if (!Buffer::HasInstance(val)) {                                           \
++      node::THROW_ERR_INVALID_ARG_TYPE(isolate, prefix " must be a buffer");   \
++      return retval;                                                           \
++    }                                                                          \
++  } while (0)
++
+ #define THROW_AND_RETURN_IF_OOB(r)                                          \
+   do {                                                                      \
+     Maybe<bool> m = (r);                                                    \
+@@ -60,7 +68,6 @@
+ using v8::BackingStore;
+ using v8::Context;
+ using v8::EscapableHandleScope;
+-using v8::FastApiTypedArray;
+ using v8::FunctionCallbackInfo;
+ using v8::Global;
+ using v8::HandleScope;
+@@ -277,8 +284,9 @@
+                            size_t length) {
+   CHECK(!env->buffer_prototype_object().IsEmpty());
+   Local<Uint8Array> ui = Uint8Array::New(ab, byte_offset, length);
+-  if (ui->SetPrototype(env->context(), env->buffer_prototype_object())
+-          .IsNothing()) {
++  Maybe<bool> mb =
++      ui->SetPrototypeV2(env->context(), env->buffer_prototype_object());
++  if (mb.IsNothing()) {
+     return MaybeLocal<Uint8Array>();
+   }
+   return ui;
+@@ -584,19 +592,24 @@
+ 
+ // Assume caller has properly validated args.
+ uint32_t FastCopy(Local<Value> receiver,
+-                  const v8::FastApiTypedArray<uint8_t>& source,
+-                  const v8::FastApiTypedArray<uint8_t>& target,
++                  Local<Value> source_obj,
++                  Local<Value> target_obj,
+                   uint32_t target_start,
+                   uint32_t source_start,
+-                  uint32_t to_copy) {
+-  uint8_t* source_data;
+-  CHECK(source.getStorageIfAligned(&source_data));
+-
++                  uint32_t to_copy,
++                  v8::FastApiCallbackOptions& options) {
++  FAST_SPREAD_BUFFER_ARG(source_obj, source);
+   uint8_t* target_data;
+-  CHECK(target.getStorageIfAligned(&target_data));
++  FAST_SPREAD_BUFFER_ARG(target_obj, target_buffer);
++  if (target_buffer_length <= kMaxSizeInHeap) {
++    HandleScope handle_scope(options.isolate);
++    SPREAD_BUFFER_ARG(target_obj, target_buffer);
++    target_data = reinterpret_cast<uint8_t*>(target_buffer_data);
++  } else {
++    target_data = target_buffer_data;
++  }
+ 
+   memmove(target_data + target_start, source_data + source_start, to_copy);
+-
+   return to_copy;
+ }
+ 
+@@ -865,19 +878,17 @@
+ }
+ 
+ int32_t FastCompare(v8::Local<v8::Value>,
+-                    const FastApiTypedArray<uint8_t>& a,
+-                    const FastApiTypedArray<uint8_t>& b) {
+-  uint8_t* data_a;
+-  uint8_t* data_b;
+-  CHECK(a.getStorageIfAligned(&data_a));
+-  CHECK(b.getStorageIfAligned(&data_b));
+-
+-  size_t cmp_length = std::min(a.length(), b.length());
++                    v8::Local<v8::Value> a,
++                    v8::Local<v8::Value> b) {
++  FAST_SPREAD_BUFFER_ARG(a, a_buffer);
++  FAST_SPREAD_BUFFER_ARG(b, b_buffer);
++
++  size_t cmp_length = std::min(a_buffer_length, b_buffer_length);
+ 
+   return normalizeCompareVal(
+-      cmp_length > 0 ? memcmp(data_a, data_b, cmp_length) : 0,
+-      a.length(),
+-      b.length());
++      cmp_length > 0 ? memcmp(a_buffer_data, b_buffer_data, cmp_length) : 0,
++      a_buffer_length,
++      b_buffer_length);
+ }
+ 
+ static v8::CFunction fast_compare(v8::CFunction::Make(FastCompare));
+@@ -1149,14 +1160,13 @@
+ }
+ 
+ int32_t FastIndexOfNumber(v8::Local<v8::Value>,
+-                          const FastApiTypedArray<uint8_t>& buffer,
++                          v8::Local<v8::Value> source_obj,
+                           uint32_t needle,
+                           int64_t offset_i64,
+                           bool is_forward) {
+-  uint8_t* buffer_data;
+-  CHECK(buffer.getStorageIfAligned(&buffer_data));
++  FAST_SPREAD_BUFFER_ARG(source_obj, buffer);
+   return IndexOfNumber(
+-      buffer_data, buffer.length(), needle, offset_i64, is_forward);
++      buffer_data, buffer_length, needle, offset_i64, is_forward);
+ }
+ 
+ static v8::CFunction fast_index_of_number(
+@@ -1496,21 +1506,31 @@
+ 
+ template <encoding encoding>
+ uint32_t FastWriteString(Local<Value> receiver,
+-                         const v8::FastApiTypedArray<uint8_t>& dst,
++                         Local<v8::Value> dst,
+                          const v8::FastOneByteString& src,
+                          uint32_t offset,
+-                         uint32_t max_length) {
+-  uint8_t* dst_data;
+-  CHECK(dst.getStorageIfAligned(&dst_data));
+-  CHECK(offset <= dst.length());
+-  CHECK(dst.length() - offset <= std::numeric_limits<uint32_t>::max());
++                         uint32_t max_length,
++                         v8::FastApiCallbackOptions& options) {
++  THROW_AND_RETURN_VAL_UNLESS_BUFFER(options.isolate, dst, "dst", 0);
++  uint8_t* dst_buffer_data;
++  FAST_SPREAD_BUFFER_ARG(dst, dst_fast_buffer);
++  if (dst_fast_buffer_length <= kMaxSizeInHeap) {
++    HandleScope handle_scope(options.isolate);
++    SPREAD_BUFFER_ARG(dst, dst_slow_buffer);
++    dst_buffer_data = reinterpret_cast<uint8_t*>(dst_slow_buffer_data);
++  } else {
++    dst_buffer_data = dst_fast_buffer_data;
++  };
++
++  CHECK(dst_fast_buffer_length <= std::numeric_limits<uint32_t>::max());
++  uint32_t dst_size = static_cast<uint32_t>(dst_fast_buffer_length);
+   TRACK_V8_FAST_API_CALL("buffer.writeString");
+ 
+   return WriteOneByteString<encoding>(
+       src.data,
+       src.length,
+-      reinterpret_cast<char*>(dst_data + offset),
+-      std::min<uint32_t>(dst.length() - offset, max_length));
++      reinterpret_cast<char*>(dst_buffer_data + offset),
++      std::min<uint32_t>(dst_size - offset, max_length));
+ }
+ 
+ static const v8::CFunction fast_write_string_ascii(
+diff --git a/src/node_builtins.cc b/src/node_builtins.cc
+--- a/src/node_builtins.cc
++++ b/src/node_builtins.cc
+@@ -274,7 +274,7 @@
+     const char* id,
+     LocalVector<String>* parameters,
+     Realm* optional_realm) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   EscapableHandleScope scope(isolate);
+ 
+   Local<String> source;
+@@ -396,7 +396,7 @@
+ MaybeLocal<Function> BuiltinLoader::LookupAndCompile(Local<Context> context,
+                                                      const char* id,
+                                                      Realm* optional_realm) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   LocalVector<String> parameters(isolate);
+   // Detects parameters of the scripts based on module ids.
+   // internal/bootstrap/realm: process, getLinkedBinding,
+@@ -450,7 +450,7 @@
+ MaybeLocal<Value> BuiltinLoader::CompileAndCall(Local<Context> context,
+                                                 const char* id,
+                                                 Realm* realm) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   // Detects parameters of the scripts based on module ids.
+   // internal/bootstrap/realm: process, getLinkedBinding,
+   //                           getInternalBinding, primordials
+@@ -506,7 +506,7 @@
+   if (!maybe_fn.ToLocal(&fn)) {
+     return MaybeLocal<Value>();
+   }
+-  Local<Value> undefined = Undefined(context->GetIsolate());
++  Local<Value> undefined = Undefined(Isolate::GetCurrent());
+   return fn->Call(context, undefined, argc, argv);
+ }
+ 
+@@ -545,14 +545,14 @@
+       to_eager_compile_.emplace(id);
+     }
+ 
+-    v8::TryCatch bootstrapCatch(context->GetIsolate());
++    v8::TryCatch bootstrapCatch(Isolate::GetCurrent());
+     auto fn = LookupAndCompile(context, id.data(), nullptr);
+     if (bootstrapCatch.HasCaught()) {
+       per_process::Debug(DebugCategory::CODE_CACHE,
+                          "Failed to compile code cache for %s\n",
+                          id.data());
+       all_succeeded = false;
+-      PrintCaughtException(context->GetIsolate(), context, bootstrapCatch);
++      PrintCaughtException(Isolate::GetCurrent(), context, bootstrapCatch);
+     } else {
+       // This is used by the snapshot builder, so save the code cache
+       // unconditionally.
+diff --git a/src/node_constants.cc b/src/node_constants.cc
+--- a/src/node_constants.cc
++++ b/src/node_constants.cc
+@@ -1280,49 +1280,50 @@
+                                 Local<Value> unused,
+                                 Local<Context> context,
+                                 void* priv) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Environment* env = Environment::GetCurrent(context);
+ 
+-  CHECK(target->SetPrototype(env->context(), Null(env->isolate())).FromJust());
++  CHECK(
++      target->SetPrototypeV2(env->context(), Null(env->isolate())).FromJust());
+ 
+   Local<Object> os_constants = Object::New(isolate);
+-  CHECK(os_constants->SetPrototype(env->context(),
+-                                   Null(env->isolate())).FromJust());
++  CHECK(os_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> err_constants = Object::New(isolate);
+-  CHECK(err_constants->SetPrototype(env->context(),
+-                                    Null(env->isolate())).FromJust());
++  CHECK(err_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> sig_constants = Object::New(isolate);
+-  CHECK(sig_constants->SetPrototype(env->context(),
+-                                    Null(env->isolate())).FromJust());
++  CHECK(sig_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> priority_constants = Object::New(isolate);
+-  CHECK(priority_constants->SetPrototype(env->context(),
+-                                         Null(env->isolate())).FromJust());
++  CHECK(priority_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> fs_constants = Object::New(isolate);
+-  CHECK(fs_constants->SetPrototype(env->context(),
+-                                   Null(env->isolate())).FromJust());
++  CHECK(fs_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> crypto_constants = Object::New(isolate);
+-  CHECK(crypto_constants->SetPrototype(env->context(),
+-                                       Null(env->isolate())).FromJust());
++  CHECK(crypto_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> zlib_constants = Object::New(isolate);
+-  CHECK(zlib_constants->SetPrototype(env->context(),
+-                                     Null(env->isolate())).FromJust());
++  CHECK(zlib_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> dlopen_constants = Object::New(isolate);
+-  CHECK(dlopen_constants->SetPrototype(env->context(),
+-                                       Null(env->isolate())).FromJust());
++  CHECK(dlopen_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> trace_constants = Object::New(isolate);
+-  CHECK(trace_constants->SetPrototype(env->context(),
+-                                      Null(env->isolate())).FromJust());
++  CHECK(trace_constants->SetPrototypeV2(env->context(), Null(env->isolate()))
++            .FromJust());
+ 
+   Local<Object> internal_constants = Object::New(isolate);
+-  CHECK(internal_constants->SetPrototype(env->context(),
++  CHECK(internal_constants->SetPrototypeV2(env->context(),
+                                          Null(env->isolate())).FromJust());
+ 
+   DefineErrnoConstants(err_constants);
+diff --git a/src/node_contextify.cc b/src/node_contextify.cc
+--- a/src/node_contextify.cc
++++ b/src/node_contextify.cc
+@@ -111,7 +111,7 @@
+ 
+ // Convert an int to a V8 Name (String or Symbol).
+ MaybeLocal<String> Uint32ToName(Local<Context> context, uint32_t index) {
+-  return Uint32::New(context->GetIsolate(), index)->ToString(context);
++  return Uint32::New(Isolate::GetCurrent(), index)->ToString(context);
+ }
+ 
+ }  // anonymous namespace
+@@ -682,7 +682,7 @@
+   }
+ 
+   Local<Context> context = ctx->context();
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+ 
+   PropertyAttribute attributes = PropertyAttribute::None;
+   bool is_declared =
+@@ -1657,7 +1657,7 @@
+     bool* cache_rejected,
+     bool is_cjs_scope,
+     ScriptCompiler::CachedData* cached_data) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   EscapableHandleScope scope(isolate);
+ 
+   Local<Symbol> symbol = env->vm_dynamic_import_default_internal();
+diff --git a/src/node_env_var.cc b/src/node_env_var.cc
+--- a/src/node_env_var.cc
++++ b/src/node_env_var.cc
+@@ -295,7 +295,7 @@
+ 
+ Maybe<void> KVStore::AssignFromObject(Local<Context> context,
+                                       Local<Object> entries) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   HandleScope handle_scope(isolate);
+   Local<Array> keys;
+   if (!entries->GetOwnPropertyNames(context).ToLocal(&keys))
+diff --git a/src/node_errors.cc b/src/node_errors.cc
+--- a/src/node_errors.cc
++++ b/src/node_errors.cc
+@@ -633,7 +633,7 @@
+     v8::Local<v8::Context> context,
+     v8::Local<v8::Value> source,
+     bool is_code_like) {
+-  HandleScope scope(context->GetIsolate());
++  HandleScope scope(Isolate::GetCurrent());
+ 
+   if (context->GetNumberOfEmbedderDataFields() <=
+       ContextEmbedderIndex::kAllowCodeGenerationFromStrings) {
+@@ -1016,7 +1016,7 @@
+ }
+ 
+ void PerIsolateMessageListener(Local<Message> message, Local<Value> error) {
+-  Isolate* isolate = message->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   switch (message->ErrorLevel()) {
+     case Isolate::MessageErrorLevel::kMessageWarning: {
+       Environment* env = Environment::GetCurrent(isolate);
+@@ -1177,7 +1177,7 @@
+   SetMethod(
+       context, target, "getErrorSourcePositions", GetErrorSourcePositions);
+ 
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Local<Object> exit_codes = Object::New(isolate);
+   READONLY_PROPERTY(target, "exitCodes", exit_codes);
+ 
+diff --git a/src/node_file.cc b/src/node_file.cc
+--- a/src/node_file.cc
++++ b/src/node_file.cc
+@@ -3738,7 +3738,7 @@
+                               int index,
+                               InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  HandleScope scope(context->GetIsolate());
++  HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   InternalFieldInfo* casted_info = static_cast<InternalFieldInfo*>(info);
+   BindingData* binding =
+diff --git a/src/node_i18n.cc b/src/node_i18n.cc
+--- a/src/node_i18n.cc
++++ b/src/node_i18n.cc
+@@ -104,7 +104,7 @@
+ 
+ template <typename T>
+ MaybeLocal<Object> ToBufferEndian(Environment* env, MaybeStackBuffer<T>* buf) {
+-  MaybeLocal<Object> ret = Buffer::New(env, buf);
++  MaybeLocal<Object> ret = Buffer::Copy(env, reinterpret_cast<char*>(buf->out()), buf->length() * sizeof(T));
+   if (ret.IsEmpty())
+     return ret;
+ 
+@@ -181,7 +181,7 @@
+     return {};
+   }
+ 
+-  return Buffer::New(env, &destbuf);
++  return Buffer::Copy(env, reinterpret_cast<char*>(destbuf.out()), destbuf.length() * sizeof(UChar));
+ }
+ 
+ MaybeLocal<Object> TranscodeFromUcs2(Environment* env,
+@@ -226,7 +226,7 @@
+     return {};
+   }
+ 
+-  return Buffer::New(env, &destbuf);
++  return Buffer::Copy(env, reinterpret_cast<char*>(destbuf.out()), destbuf.length() * sizeof(UChar));
+ }
+ 
+ MaybeLocal<Object> TranscodeUtf8FromUcs2(Environment* env,
+@@ -250,7 +250,7 @@
+     return {};
+   }
+ 
+-  return Buffer::New(env, &destbuf);
++  return Buffer::Copy(env, reinterpret_cast<char*>(destbuf.out()), destbuf.length() * sizeof(char));
+ }
+ 
+ constexpr const char* EncodingName(const enum encoding encoding) {
+diff --git a/src/node_internals.h b/src/node_internals.h
+--- a/src/node_internals.h
++++ b/src/node_internals.h
+@@ -121,7 +121,9 @@
+ 
+ class NodeArrayBufferAllocator : public ArrayBufferAllocator {
+  public:
+-  inline uint32_t* zero_fill_field() { return &zero_fill_field_; }
++  NodeArrayBufferAllocator();
++  ~NodeArrayBufferAllocator() override;
++  inline uint32_t* zero_fill_field() { return zero_fill_field_; }
+ 
+   void* Allocate(size_t size) override;  // Defined in src/node.cc
+   void* AllocateUninitialized(size_t size) override;
+@@ -139,7 +141,7 @@
+   }
+ 
+  private:
+-  uint32_t zero_fill_field_ = 1;  // Boolean but exposed as uint32 to JS land.
++  uint32_t* zero_fill_field_ = nullptr;  // Boolean but exposed as uint32 to JS land.
+   std::atomic<size_t> total_mem_usage_ {0};
+ 
+   // Delegate to V8's allocator for compatibility with the V8 memory cage.
+diff --git a/src/node_main_instance.cc b/src/node_main_instance.cc
+--- a/src/node_main_instance.cc
++++ b/src/node_main_instance.cc
+@@ -44,6 +44,8 @@
+       isolate_params_(std::make_unique<Isolate::CreateParams>()),
+       snapshot_data_(snapshot_data) {
+   isolate_params_->array_buffer_allocator = array_buffer_allocator_.get();
++  isolate_params_->cpp_heap =
++      v8::CppHeap::Create(platform_, v8::CppHeapCreateParams{{}}).release();
+ 
+   isolate_ =
+       NewIsolate(isolate_params_.get(), event_loop, platform, snapshot_data);
+@@ -81,9 +83,9 @@
+     // This should only be done on a main instance that owns its isolate.
+     // IsolateData must be freed before UnregisterIsolate() is called.
+     isolate_data_.reset();
+-    platform_->UnregisterIsolate(isolate_);
+   }
+   isolate_->Dispose();
++  platform_->UnregisterIsolate(isolate_);
+ }
+ 
+ ExitCode NodeMainInstance::Run() {
+diff --git a/src/node_messaging.cc b/src/node_messaging.cc
+--- a/src/node_messaging.cc
++++ b/src/node_messaging.cc
+@@ -253,7 +253,7 @@
+ 
+ MaybeLocal<Function> GetEmitMessageFunction(Local<Context> context,
+                                             IsolateData* isolate_data) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Local<Object> per_context_bindings;
+   Local<Value> emit_message_val;
+   if (!GetPerContextExports(context, isolate_data)
+@@ -268,7 +268,7 @@
+ }
+ 
+ MaybeLocal<Function> GetDOMException(Local<Context> context) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Local<Object> per_context_bindings;
+   Local<Value> domexception_ctor_val;
+   if (!GetPerContextExports(context).ToLocal(&per_context_bindings) ||
+@@ -283,7 +283,7 @@
+ }
+ 
+ void ThrowDataCloneException(Local<Context> context, Local<String> message) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Local<Value> argv[] = {message,
+                          FIXED_ONE_BYTE_STRING(isolate, "DataCloneError")};
+   Local<Value> exception;
+@@ -1464,7 +1464,7 @@
+ 
+ Maybe<bool> JSTransferable::Data::FinalizeTransferWrite(
+     Local<Context> context, ValueSerializer* serializer) {
+-  HandleScope handle_scope(context->GetIsolate());
++  HandleScope handle_scope(Isolate::GetCurrent());
+   auto ret = serializer->WriteValue(context, PersistentToLocal::Strong(data_));
+   data_.Reset();
+   return ret;
+diff --git a/src/node_modules.cc b/src/node_modules.cc
+--- a/src/node_modules.cc
++++ b/src/node_modules.cc
+@@ -63,7 +63,7 @@
+                               int index,
+                               InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  HandleScope scope(context->GetIsolate());
++  HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   BindingData* binding = realm->AddBindingData<BindingData>(holder);
+   CHECK_NOT_NULL(binding);
+@@ -579,7 +579,7 @@
+   Realm* realm = Realm::GetCurrent(context);
+   realm->AddBindingData<BindingData>(target);
+ 
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   LocalVector<Value> compile_cache_status_values(isolate);
+ 
+ #define V(status)                                                              \
+diff --git a/src/node_options.cc b/src/node_options.cc
+--- a/src/node_options.cc
++++ b/src/node_options.cc
+@@ -826,10 +826,6 @@
+   AddOption("--throw-deprecation",
+             "throw an exception on deprecations",
+             &EnvironmentOptions::throw_deprecation,
+-            kAllowedInEnvvar);
+-  AddOption("--trace-atomics-wait",
+-            "(deprecated) trace Atomics.wait() operations",
+-            &EnvironmentOptions::trace_atomics_wait,
+             kAllowedInEnvvar);
+   AddOption("--trace-deprecation",
+             "show stack traces on deprecations",
+@@ -1561,7 +1557,8 @@
+ 
+   Local<Map> options = Map::New(isolate);
+   if (options
+-          ->SetPrototype(context, env->primordials_safe_map_prototype_object())
++          ->SetPrototypeV2(context,
++                           env->primordials_safe_map_prototype_object())
+           .IsNothing()) {
+     return;
+   }
+@@ -1601,7 +1598,8 @@
+   if (!ToV8Value(context, _ppop_instance.aliases_).ToLocal(&aliases)) return;
+ 
+   if (aliases.As<Object>()
+-          ->SetPrototype(context, env->primordials_safe_map_prototype_object())
++          ->SetPrototypeV2(context,
++                           env->primordials_safe_map_prototype_object())
+           .IsNothing()) {
+     return;
+   }
+diff --git a/src/node_options.h b/src/node_options.h
+--- a/src/node_options.h
++++ b/src/node_options.h
+@@ -205,7 +205,6 @@
+   std::vector<std::string> coverage_include_pattern;
+   std::vector<std::string> coverage_exclude_pattern;
+   bool throw_deprecation = false;
+-  bool trace_atomics_wait = false;
+   bool trace_deprecation = false;
+   bool trace_exit = false;
+   bool trace_sync_io = false;
+diff --git a/src/node_platform.cc b/src/node_platform.cc
+--- a/src/node_platform.cc
++++ b/src/node_platform.cc
+@@ -308,11 +308,13 @@
+   platform_data->FlushForegroundTasksInternal();
+ }
+ 
+-void PerIsolatePlatformData::PostIdleTask(std::unique_ptr<v8::IdleTask> task) {
++void PerIsolatePlatformData::PostIdleTaskImpl(std::unique_ptr<v8::IdleTask> task,
++                                              const v8::SourceLocation& location) {
+   UNREACHABLE();
+ }
+ 
+-void PerIsolatePlatformData::PostTask(std::unique_ptr<Task> task) {
++void PerIsolatePlatformData::PostTaskImpl(std::unique_ptr<Task> task,
++                                          const v8::SourceLocation& location) {
+   // The task can be posted from any V8 background worker thread, even when
+   // the foreground task runner is being cleaned up by Shutdown(). In that
+   // case, make sure we wait until the shutdown is completed (which leads
+@@ -331,8 +333,10 @@
+   uv_async_send(flush_tasks_);
+ }
+ 
+-void PerIsolatePlatformData::PostDelayedTask(
+-    std::unique_ptr<Task> task, double delay_in_seconds) {
++void PerIsolatePlatformData::PostDelayedTaskImpl(
++    std::unique_ptr<Task> task,
++    double delay_in_seconds,
++    const v8::SourceLocation& location) {
+   if (debug_log_level_ != PlatformDebugLogLevel::kNone) {
+     fprintf(stderr,
+             "\nPerIsolatePlatformData::PostDelayedTaskImpl %p %f",
+@@ -354,13 +358,15 @@
+   uv_async_send(flush_tasks_);
+ }
+ 
+-void PerIsolatePlatformData::PostNonNestableTask(std::unique_ptr<Task> task) {
++void PerIsolatePlatformData::PostNonNestableTaskImpl(std::unique_ptr<Task> task,
++                                                     const v8::SourceLocation& location) {
+   PostTask(std::move(task));
+ }
+ 
+-void PerIsolatePlatformData::PostNonNestableDelayedTask(
++void PerIsolatePlatformData::PostNonNestableDelayedTaskImpl(
+     std::unique_ptr<Task> task,
+-    double delay_in_seconds) {
++    double delay_in_seconds,
++    const v8::SourceLocation& location) {
+   PostDelayedTask(std::move(task), delay_in_seconds);
+ }
+ 
+@@ -682,8 +688,8 @@
+   return ForIsolate(isolate)->IdleTasksEnabled();
+ }
+ 
+-std::shared_ptr<v8::TaskRunner>
+-NodePlatform::GetForegroundTaskRunner(Isolate* isolate) {
++std::shared_ptr<v8::TaskRunner> NodePlatform::GetForegroundTaskRunner(
++    Isolate* isolate, v8::TaskPriority priority) {
+   return ForIsolate(isolate)->GetForegroundTaskRunner();
+ }
+ 
+diff --git a/src/node_platform.h b/src/node_platform.h
+--- a/src/node_platform.h
++++ b/src/node_platform.h
+@@ -80,18 +80,21 @@
+   ~PerIsolatePlatformData() override;
+ 
+   std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner() override;
+-  void PostTask(std::unique_ptr<v8::Task> task) override;
+-  void PostIdleTask(std::unique_ptr<v8::IdleTask> task) override;
+-  void PostDelayedTask(std::unique_ptr<v8::Task> task,
+-                       double delay_in_seconds) override;
++  void PostTaskImpl(std::unique_ptr<v8::Task> task, const v8::SourceLocation&) override;
++  void PostIdleTaskImpl(std::unique_ptr<v8::IdleTask> task, const v8::SourceLocation&) override;
++  void PostDelayedTaskImpl(std::unique_ptr<v8::Task> task,
++                          double delay_in_seconds,
++                          const v8::SourceLocation&) override;
+   bool IdleTasksEnabled() override { return false; }
+ 
+   // Non-nestable tasks are treated like regular tasks.
+   bool NonNestableTasksEnabled() const override { return true; }
+   bool NonNestableDelayedTasksEnabled() const override { return true; }
+-  void PostNonNestableTask(std::unique_ptr<v8::Task> task) override;
+-  void PostNonNestableDelayedTask(std::unique_ptr<v8::Task> task,
+-                                  double delay_in_seconds) override;
++  void PostNonNestableTaskImpl(std::unique_ptr<v8::Task> task,
++                               const v8::SourceLocation&) override;
++  void PostNonNestableDelayedTaskImpl(std::unique_ptr<v8::Task> task,
++                                      double delay_in_seconds,
++                                      const v8::SourceLocation&) override;
+ 
+   void AddShutdownCallback(void (*callback)(void*), void* data);
+   void Shutdown();
+@@ -210,7 +213,7 @@
+                                   void (*callback)(void*), void* data) override;
+ 
+   std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner(
+-      v8::Isolate* isolate) override;
++      v8::Isolate* isolate, v8::TaskPriority priority) override;
+ 
+   Platform::StackTracePrinter GetStackTracePrinter() override;
+   v8::PageAllocator* GetPageAllocator() override;
+diff --git a/src/node_process_methods.cc b/src/node_process_methods.cc
+--- a/src/node_process_methods.cc
++++ b/src/node_process_methods.cc
+@@ -736,7 +736,7 @@
+                               int index,
+                               InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  v8::HandleScope scope(context->GetIsolate());
++  v8::HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   // Recreate the buffer in the constructor.
+   InternalFieldInfo* casted_info = static_cast<InternalFieldInfo*>(info);
+diff --git a/src/node_process_object.cc b/src/node_process_object.cc
+--- a/src/node_process_object.cc
++++ b/src/node_process_object.cc
+@@ -13,7 +13,6 @@
+ 
+ namespace node {
+ using v8::Context;
+-using v8::DEFAULT;
+ using v8::EscapableHandleScope;
+ using v8::Function;
+ using v8::FunctionCallbackInfo;
+@@ -168,13 +167,12 @@
+ 
+   // process.title
+   CHECK(process
+-            ->SetAccessor(
++            ->SetNativeDataProperty(
+                 context,
+                 FIXED_ONE_BYTE_STRING(isolate, "title"),
+                 ProcessTitleGetter,
+                 env->owns_process_state() ? ProcessTitleSetter : nullptr,
+                 Local<Value>(),
+-                DEFAULT,
+                 None,
+                 SideEffectType::kHasNoSideEffect)
+             .FromJust());
+@@ -193,9 +191,15 @@
+   READONLY_PROPERTY(process, "pid",
+                     Integer::New(isolate, uv_os_getpid()));
+ 
+-  CHECK(process->SetAccessor(context,
+-                             FIXED_ONE_BYTE_STRING(isolate, "ppid"),
+-                             GetParentProcessId).FromJust());
++  CHECK(process
++            ->SetNativeDataProperty(context,
++                                    FIXED_ONE_BYTE_STRING(isolate, "ppid"),
++                                    GetParentProcessId,
++                                    nullptr,
++                                    Local<Value>(),
++                                    None,
++                                    SideEffectType::kHasNoSideEffect)
++            .FromJust());
+ 
+   // --security-revert flags
+ #define V(code, _, __)                                                        \
+@@ -220,12 +224,15 @@
+ 
+   // process.debugPort
+   CHECK(process
+-            ->SetAccessor(context,
+-                          FIXED_ONE_BYTE_STRING(isolate, "debugPort"),
+-                          DebugPortGetter,
+-                          env->owns_process_state() ? DebugPortSetter : nullptr,
+-                          Local<Value>())
+-            .FromJust());
++            ->SetNativeDataProperty(
++                context,
++                FIXED_ONE_BYTE_STRING(isolate, "debugPort"),
++                DebugPortGetter,
++                env->owns_process_state() ? DebugPortSetter : nullptr,
++                Local<Value>(),
++                None,
++                SideEffectType::kHasNoSideEffect)
++             .FromJust());
+ 
+   // process.versions
+   Local<Object> versions = Object::New(isolate);
+diff --git a/src/node_realm.cc b/src/node_realm.cc
+--- a/src/node_realm.cc
++++ b/src/node_realm.cc
+@@ -19,7 +19,7 @@
+ using v8::Value;
+ 
+ Realm::Realm(Environment* env, v8::Local<v8::Context> context, Kind kind)
+-    : env_(env), isolate_(context->GetIsolate()), kind_(kind) {
++    : env_(env), isolate_(v8::Isolate::GetCurrent()), kind_(kind) {
+   context_.Reset(isolate_, context);
+   env->AssignToContext(context, this, ContextInfo(""));
+ }
+diff --git a/src/node_report.cc b/src/node_report.cc
+--- a/src/node_report.cc
++++ b/src/node_report.cc
+@@ -399,7 +399,7 @@
+   if (!error.IsEmpty() && error->IsObject()) {
+     TryCatch try_catch(isolate);
+     Local<Object> error_obj = error.As<Object>();
+-    Local<Context> context = error_obj->GetIsolate()->GetCurrentContext();
++    Local<Context> context = Isolate::GetCurrent()->GetCurrentContext();
+     Local<Array> keys;
+     if (!error_obj->GetOwnPropertyNames(context).ToLocal(&keys)) {
+       return writer->json_objectend();  // the end of 'errorProperties'
+diff --git a/src/node_serdes.cc b/src/node_serdes.cc
+--- a/src/node_serdes.cc
++++ b/src/node_serdes.cc
+@@ -29,6 +29,26 @@
+ 
+ namespace serdes {
+ 
++v8::ArrayBuffer::Allocator* GetAllocator() {
++  static v8::ArrayBuffer::Allocator* allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
++  return allocator;
++}
++
++void* Reallocate(void* data, size_t old_length,
++                 size_t new_length) {
++  if (old_length == new_length) return data;
++  uint8_t* new_data =
++      reinterpret_cast<uint8_t*>(GetAllocator()->AllocateUninitialized(new_length));
++  if (new_data == nullptr) return nullptr;
++  size_t bytes_to_copy = std::min(old_length, new_length);
++  memcpy(new_data, data, bytes_to_copy);
++  if (new_length > bytes_to_copy) {
++    memset(new_data + bytes_to_copy, 0, new_length - bytes_to_copy);
++  }
++  GetAllocator()->Free(data, old_length);
++  return new_data;
++}
++
+ class SerializerContext : public BaseObject,
+                           public ValueSerializer::Delegate {
+  public:
+@@ -37,10 +57,15 @@
+ 
+   ~SerializerContext() override = default;
+ 
++  // v8::ValueSerializer::Delegate
+   void ThrowDataCloneError(Local<String> message) override;
+   Maybe<bool> WriteHostObject(Isolate* isolate, Local<Object> object) override;
+   Maybe<uint32_t> GetSharedArrayBufferId(
+       Isolate* isolate, Local<SharedArrayBuffer> shared_array_buffer) override;
++  void* ReallocateBufferMemory(void* old_buffer,
++                               size_t old_length,
++                               size_t* new_length) override;
++  void FreeBufferMemory(void* buffer) override;
+ 
+   static void SetTreatArrayBufferViewsAsHostObjects(
+       const FunctionCallbackInfo<Value>& args);
+@@ -61,6 +86,7 @@
+ 
+  private:
+   ValueSerializer serializer_;
++  size_t last_length_ = 0;
+ };
+ 
+ class DeserializerContext : public BaseObject,
+@@ -144,6 +170,24 @@
+   return id.ToLocalChecked()->Uint32Value(env()->context());
+ }
+ 
++void* SerializerContext::ReallocateBufferMemory(void* old_buffer,
++                                                size_t requested_size,
++                                                size_t* new_length) {
++  *new_length = std::max(static_cast<size_t>(4096), requested_size);
++  if (old_buffer) {
++    void* ret = Reallocate(old_buffer, last_length_, *new_length);
++    last_length_ = *new_length;
++    return ret;
++  } else {
++    last_length_ = *new_length;
++    return GetAllocator()->Allocate(*new_length);
++  }
++}
++
++void SerializerContext::FreeBufferMemory(void* buffer) {
++  GetAllocator()->Free(buffer, last_length_);
++}
++
+ Maybe<bool> SerializerContext::WriteHostObject(Isolate* isolate,
+                                                Local<Object> input) {
+   MaybeLocal<Value> ret;
+@@ -209,9 +253,14 @@
+   // Note: Both ValueSerializer and this Buffer::New() variant use malloc()
+   // as the underlying allocator.
+   std::pair<uint8_t*, size_t> ret = ctx->serializer_.Release();
+-  auto buf = Buffer::New(ctx->env(),
+-                         reinterpret_cast<char*>(ret.first),
+-                         ret.second);
++  std::unique_ptr<v8::BackingStore> bs =
++      v8::ArrayBuffer::NewBackingStore(reinterpret_cast<char*>(ret.first), ret.second,
++        [](void* data, size_t length, void* deleter_data) {
++          if (data) GetAllocator()->Free(reinterpret_cast<char*>(data), length);
++        }, nullptr);
++  Local<ArrayBuffer> ab = v8::ArrayBuffer::New(ctx->env()->isolate(), std::move(bs));
++
++  auto buf = Buffer::New(ctx->env(), ab, 0, ret.second);
+ 
+   if (!buf.IsEmpty()) {
+     args.GetReturnValue().Set(buf.ToLocalChecked());
+diff --git a/src/node_snapshotable.cc b/src/node_snapshotable.cc
+--- a/src/node_snapshotable.cc
++++ b/src/node_snapshotable.cc
+@@ -1613,7 +1613,7 @@
+                               int index,
+                               InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  v8::HandleScope scope(context->GetIsolate());
++  v8::HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   // Recreate the buffer in the constructor.
+   InternalFieldInfo* casted_info = static_cast<InternalFieldInfo*>(info);
+diff --git a/src/node_sqlite.cc b/src/node_sqlite.cc
+--- a/src/node_sqlite.cc
++++ b/src/node_sqlite.cc
+@@ -1860,7 +1860,7 @@
+ 
+   if (args[0]->IsObject() && !args[0]->IsArrayBufferView()) {
+     Local<Object> obj = args[0].As<Object>();
+-    Local<Context> context = obj->GetIsolate()->GetCurrentContext();
++    Local<Context> context = Isolate::GetCurrent()->GetCurrentContext();
+     Local<Array> keys;
+     if (!obj->GetOwnPropertyNames(context).ToLocal(&keys)) {
+       return false;
+@@ -2110,7 +2110,7 @@
+   if (iter->object()
+           ->GetPrototype()
+           .As<Object>()
+-          ->SetPrototype(context, js_iterator_prototype)
++          ->SetPrototypeV2(context, js_iterator_prototype)
+           .IsNothing()) {
+     return;
+   }
+diff --git a/src/node_task_queue.cc b/src/node_task_queue.cc
+--- a/src/node_task_queue.cc
++++ b/src/node_task_queue.cc
+@@ -48,7 +48,7 @@
+   static std::atomic<uint64_t> rejectionsHandledAfter{0};
+ 
+   Local<Promise> promise = message.GetPromise();
+-  Isolate* isolate = promise->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   PromiseRejectEvent event = message.GetEvent();
+ 
+   Environment* env = Environment::GetCurrent(isolate);
+diff --git a/src/node_trace_events.cc b/src/node_trace_events.cc
+--- a/src/node_trace_events.cc
++++ b/src/node_trace_events.cc
+@@ -132,12 +132,28 @@
+   const uint8_t* enabled_pointer =
+       TRACE_EVENT_API_GET_CATEGORY_GROUP_ENABLED(category_name.out());
+   uint8_t* enabled_pointer_cast = const_cast<uint8_t*>(enabled_pointer);
+-
++  uint8_t size = sizeof(*enabled_pointer_cast);
++
++#if defined(V8_ENABLE_SANDBOX)
++  std::unique_ptr<ArrayBuffer::Allocator> allocator(ArrayBuffer::Allocator::NewDefaultAllocator());
++  void* v8_data = allocator->Allocate(size);
++  CHECK(v8_data);
++  memcpy(v8_data, enabled_pointer_cast, size);
++  std::unique_ptr<BackingStore> bs = ArrayBuffer::NewBackingStore(
++      v8_data,
++      size,
++      [](void* data, size_t length, void*) {
++        std::unique_ptr<ArrayBuffer::Allocator> allocator(ArrayBuffer::Allocator::NewDefaultAllocator());
++        allocator->Free(data, length);
++      }, nullptr);
++#else
+   std::unique_ptr<BackingStore> bs = ArrayBuffer::NewBackingStore(
+       enabled_pointer_cast,
+-      sizeof(*enabled_pointer_cast),
++      size,
+       [](void*, size_t, void*) {},
+       nullptr);
++#endif
++
+   auto ab = ArrayBuffer::New(isolate, std::move(bs));
+   v8::Local<Uint8Array> u8 = v8::Uint8Array::New(ab, 0, 1);
+ 
+diff --git a/src/node_url.cc b/src/node_url.cc
+--- a/src/node_url.cc
++++ b/src/node_url.cc
+@@ -69,7 +69,7 @@
+                               int index,
+                               InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  HandleScope scope(context->GetIsolate());
++  HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   BindingData* binding = realm->AddBindingData<BindingData>(holder);
+   CHECK_NOT_NULL(binding);
+diff --git a/src/node_v8.cc b/src/node_v8.cc
+--- a/src/node_v8.cc
++++ b/src/node_v8.cc
+@@ -157,7 +157,7 @@
+                               int index,
+                               InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  HandleScope scope(context->GetIsolate());
++  HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   // Recreate the buffer in the constructor.
+   InternalFieldInfo* casted_info = static_cast<InternalFieldInfo*>(info);
+diff --git a/src/node_wasi.cc b/src/node_wasi.cc
+--- a/src/node_wasi.cc
++++ b/src/node_wasi.cc
+@@ -49,7 +49,7 @@
+ static MaybeLocal<Value> WASIException(Local<Context> context,
+                                        int errorno,
+                                        const char* syscall) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Environment* env = Environment::GetCurrent(context);
+   CHECK_NOT_NULL(env);
+   const char* err_name = uvwasi_embedder_err_code_to_string(errorno);
+@@ -274,17 +274,19 @@
+     return EinvalError<R>();
+   }
+ 
+-  if (options.wasm_memory == nullptr || wasi->memory_.IsEmpty()) [[unlikely]] {
+-    // fallback to slow path which to throw an error about missing memory.
+-    options.fallback = true;
++  v8::Isolate* isolate = options.isolate;
++  v8::HandleScope handle_scope(isolate);
++  if (wasi->memory_.IsEmpty()) {
++    THROW_ERR_WASI_NOT_STARTED(isolate);
+     return EinvalError<R>();
+   }
+-  uint8_t* memory = nullptr;
+-  CHECK(options.wasm_memory->getStorageIfAligned(&memory));
+-
+-  return F(*wasi,
+-           {reinterpret_cast<char*>(memory), options.wasm_memory->length()},
+-           args...);
++
++  Local<ArrayBuffer> ab = wasi->memory_.Get(isolate)->Buffer();
++  size_t mem_size = ab->ByteLength();
++  char* mem_data = static_cast<char*>(ab->Data());
++  CHECK_NOT_NULL(mem_data);
++
++  return F(*wasi, {mem_data, mem_size}, args...);
+ }
+ 
+ namespace {
+diff --git a/src/node_webstorage.cc b/src/node_webstorage.cc
+--- a/src/node_webstorage.cc
++++ b/src/node_webstorage.cc
+@@ -58,7 +58,7 @@
+   } while (0)
+ 
+ static void ThrowQuotaExceededException(Local<Context> context) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   auto dom_exception_str = FIXED_ONE_BYTE_STRING(isolate, "DOMException");
+   auto err_name = FIXED_ONE_BYTE_STRING(isolate, "QuotaExceededError");
+   auto err_message =
+@@ -434,7 +434,7 @@
+ }
+ 
+ static MaybeLocal<String> Uint32ToName(Local<Context> context, uint32_t index) {
+-  return Uint32::New(context->GetIsolate(), index)->ToString(context);
++  return Uint32::New(Isolate::GetCurrent(), index)->ToString(context);
+ }
+ 
+ static void Clear(const FunctionCallbackInfo<Value>& info) {
+@@ -532,7 +532,7 @@
+ static bool ShouldIntercept(Local<Name> property,
+                             const PropertyCallbackInfo<T>& info) {
+   Environment* env = Environment::GetCurrent(info);
+-  Local<Value> proto = info.This()->GetPrototype();
++  Local<Value> proto = info.This()->GetPrototypeV2();
+ 
+   if (proto->IsObject()) {
+     bool has_prop;
+@@ -574,8 +574,8 @@
+   Storage* storage;
+   ASSIGN_OR_RETURN_UNWRAP(&storage, info.This(), Intercepted::kNo);
+ 
+-  if (storage->Store(property, value).IsJust()) {
+-    info.GetReturnValue().Set(value);
++  if (storage->Store(property, value).IsNothing()) {
++    info.GetReturnValue().SetFalse();
+   }
+ 
+   return Intercepted::kYes;
+diff --git a/src/node_worker.cc b/src/node_worker.cc
+--- a/src/node_worker.cc
++++ b/src/node_worker.cc
+@@ -177,6 +177,9 @@
+     SetIsolateCreateParamsForNode(&params);
+     w->UpdateResourceConstraints(&params.constraints);
+     params.array_buffer_allocator_shared = allocator;
++    params.cpp_heap =
++        v8::CppHeap::Create(w->platform_, v8::CppHeapCreateParams{{}})
++            .release();
+     Isolate* isolate =
+         NewIsolate(&params, &loop_, w->platform_, w->snapshot_data());
+     if (isolate == nullptr) {
+@@ -245,13 +248,8 @@
+         *static_cast<bool*>(data) = true;
+       }, &platform_finished);
+ 
+-      // The order of these calls is important; if the Isolate is first disposed
+-      // and then unregistered, there is a race condition window in which no
+-      // new Isolate at the same address can successfully be registered with
+-      // the platform.
+-      // (Refs: https://github.com/nodejs/node/issues/30846)
++      isolate->Dispose();
+       w_->platform_->UnregisterIsolate(isolate);
+-      isolate->Dispose();
+ 
+       // Wait until the platform has cleaned up all relevant resources.
+       while (!platform_finished) {
+@@ -1291,8 +1289,6 @@
+   Local<Object> port = env->message_port();
+   CHECK_IMPLIES(!env->is_main_thread(), !port.IsEmpty());
+   if (!port.IsEmpty()) {
+-    CHECK_EQ(port->GetCreationContextChecked()->GetIsolate(),
+-             args.GetIsolate());
+     args.GetReturnValue().Set(port);
+   }
+ }
+diff --git a/src/timers.cc b/src/timers.cc
+--- a/src/timers.cc
++++ b/src/timers.cc
+@@ -114,7 +114,7 @@
+                               int index,
+                               InternalFieldInfoBase* info) {
+   DCHECK_IS_SNAPSHOT_SLOT(index);
+-  v8::HandleScope scope(context->GetIsolate());
++  v8::HandleScope scope(Isolate::GetCurrent());
+   Realm* realm = Realm::GetCurrent(context);
+   // Recreate the buffer in the constructor.
+   BindingData* binding = realm->AddBindingData<BindingData>(holder);
+diff --git a/src/util-inl.h b/src/util-inl.h
+--- a/src/util-inl.h
++++ b/src/util-inl.h
+@@ -335,14 +335,14 @@
+                             std::vector<v8::Global<v8::Value>>* out) {
+   uint32_t count = js_array->Length();
+   out->reserve(count);
+-  ArrayIterationData data{out, context->GetIsolate()};
++  ArrayIterationData data{out, v8::Isolate::GetCurrent()};
+   return js_array->Iterate(context, PushItemToVector, &data);
+ }
+ 
+ v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
+                                     std::string_view str,
+                                     v8::Isolate* isolate) {
+-  if (isolate == nullptr) isolate = context->GetIsolate();
++  if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
+   if (str.size() >= static_cast<size_t>(v8::String::kMaxLength)) [[unlikely]] {
+     // V8 only has a TODO comment about adding an exception when the maximum
+     // string size is exceeded.
+@@ -358,7 +358,7 @@
+ v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
+                                     v8_inspector::StringView str,
+                                     v8::Isolate* isolate) {
+-  if (isolate == nullptr) isolate = context->GetIsolate();
++  if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
+   if (str.length() >= static_cast<size_t>(v8::String::kMaxLength))
+       [[unlikely]] {
+     // V8 only has a TODO comment about adding an exception when the maximum
+@@ -385,7 +385,7 @@
+ v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
+                                     const std::vector<T>& vec,
+                                     v8::Isolate* isolate) {
+-  if (isolate == nullptr) isolate = context->GetIsolate();
++  if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
+   v8::EscapableHandleScope handle_scope(isolate);
+ 
+   MaybeStackBuffer<v8::Local<v8::Value>, 128> arr(vec.size());
+@@ -402,7 +402,7 @@
+ v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
+                                     const std::set<T>& set,
+                                     v8::Isolate* isolate) {
+-  if (isolate == nullptr) isolate = context->GetIsolate();
++  if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
+   v8::Local<v8::Set> set_js = v8::Set::New(isolate);
+   v8::HandleScope handle_scope(isolate);
+ 
+@@ -421,7 +421,7 @@
+ v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
+                                     const std::unordered_map<T, U>& map,
+                                     v8::Isolate* isolate) {
+-  if (isolate == nullptr) isolate = context->GetIsolate();
++  if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
+   v8::EscapableHandleScope handle_scope(isolate);
+ 
+   v8::Local<v8::Map> ret = v8::Map::New(isolate);
+@@ -464,7 +464,7 @@
+ v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
+                                     const T& number,
+                                     v8::Isolate* isolate) {
+-  if (isolate == nullptr) isolate = context->GetIsolate();
++  if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
+   return ConvertNumberToV8Value(isolate, number);
+ }
+ 
+@@ -477,7 +477,7 @@
+           std::is_floating_point_v<T>,
+       "Only primitive types (bool, integral, floating-point) are supported.");
+ 
+-  if (isolate == nullptr) isolate = context->GetIsolate();
++  if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
+   v8::EscapableHandleScope handle_scope(isolate);
+ 
+   v8::LocalVector<v8::Value> elements(isolate);
+diff --git a/src/util.cc b/src/util.cc
+--- a/src/util.cc
++++ b/src/util.cc
+@@ -393,7 +393,7 @@
+                Local<v8::Object> that,
+                const std::string_view name,
+                v8::FunctionCallback callback) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Local<v8::Function> function =
+       NewFunctionTemplate(isolate,
+                           callback,
+@@ -454,7 +454,7 @@
+                    const std::string_view name,
+                    v8::FunctionCallback slow_callback,
+                    const v8::CFunction* c_function) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Local<v8::Function> function =
+       NewFunctionTemplate(isolate,
+                           slow_callback,
+@@ -476,7 +476,7 @@
+                                const std::string_view name,
+                                v8::FunctionCallback slow_callback,
+                                const v8::CFunction* c_function) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Local<v8::Function> function =
+       NewFunctionTemplate(isolate,
+                           slow_callback,
+@@ -564,7 +564,7 @@
+                            Local<v8::Object> that,
+                            const std::string_view name,
+                            v8::FunctionCallback callback) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   Local<v8::Function> function =
+       NewFunctionTemplate(isolate,
+                           callback,
+@@ -665,7 +665,7 @@
+                             const char* name,
+                             Local<v8::FunctionTemplate> tmpl,
+                             SetConstructorFunctionFlag flag) {
+-  Isolate* isolate = context->GetIsolate();
++  Isolate* isolate = Isolate::GetCurrent();
+   SetConstructorFunction(
+       context, that, OneByteString(isolate, name), tmpl, flag);
+ }
+@@ -726,8 +726,8 @@
+ }
+ 
+ RAIIIsolateWithoutEntering::~RAIIIsolateWithoutEntering() {
++  isolate_->Dispose();
+   per_process::v8_platform.Platform()->UnregisterIsolate(isolate_);
+-  isolate_->Dispose();
+ }
+ 
+ RAIIIsolate::RAIIIsolate(const SnapshotData* data)
+diff --git a/src/util.h b/src/util.h
+--- a/src/util.h
++++ b/src/util.h
+@@ -62,6 +62,7 @@
+ namespace node {
+ 
+ constexpr char kPathSeparator = std::filesystem::path::preferred_separator;
++static constexpr size_t kMaxSizeInHeap = 64;
+ 
+ #ifdef _WIN32
+ /* MAX_PATH is in characters, not bytes. Make sure we have enough headroom. */
+@@ -582,6 +583,16 @@
+       static_cast<char*>(name->Buffer()->Data()) + name##_offset;              \
+   if (name##_length > 0) CHECK_NE(name##_data, nullptr);
+ 
++#define FAST_SPREAD_BUFFER_ARG(val, name)                                      \
++  CHECK((val)->IsArrayBufferView());                                           \
++  v8::Local<v8::ArrayBufferView> name = (val).As<v8::ArrayBufferView>();       \
++  uint8_t name##_buffer[kMaxSizeInHeap];                                       \
++  v8::MemorySpan<uint8_t> name##_storage(name##_buffer);                       \
++  name##_storage = name->GetContents(name##_storage);                          \
++  const size_t name##_length = name##_storage.size();                          \
++  uint8_t* name##_data = name##_storage.data();                                \
++  if (name##_length > 0) CHECK_NE(name##_data, nullptr);
++
+ // Use this when a variable or parameter is unused in order to explicitly
+ // silence a compiler warning about that.
+ template <typename T> inline void USE(T&&) {}
+@@ -734,7 +745,7 @@
+ // Variation on NODE_DEFINE_CONSTANT that sets a String value.
+ #define NODE_DEFINE_STRING_CONSTANT(target, name, constant)                    \
+   do {                                                                         \
+-    v8::Isolate* isolate = target->GetIsolate();                               \
++    v8::Isolate* isolate = v8::Isolate::GetCurrent();                              \
+     v8::Local<v8::String> constant_name =                                      \
+         v8::String::NewFromUtf8(isolate, name).ToLocalChecked();               \
+     v8::Local<v8::String> constant_value =                                     \
+diff --git a/tools/generate_config_gypi.py b/tools/generate_config_gypi.py
+--- a/tools/generate_config_gypi.py
++++ b/tools/generate_config_gypi.py
+@@ -30,7 +30,8 @@
+ def get_gn_config(out_dir):
+   # Read args from GN configurations.
+   gn_args = subprocess.check_output(
+-      [GN, 'args', '--list', '--short', '-C', out_dir])
++      [GN, 'args', out_dir, '--list', '--short', '--root=../..',
++       '--dotfile=' + os.getenv('QUOTA_GN_DOTFILE', '../../.quota-node.gn'), '--root-target=' + os.getenv('QUOTA_GN_TARGET', '//node:node')])
+   config = dict(re.findall(GN_RE, gn_args.decode()))
+   # Get napi_build_version from Node, which is not part of GN args.
+   config['napi_build_version'] = getnapibuildversion.get_napi_version()
+@@ -66,7 +67,7 @@
+       'node_use_node_snapshot': config['node_use_node_snapshot'],
+       'v8_enable_inspector':  # this is actually a node misnomer
+           bool_string_to_number(config['node_enable_inspector']),
+-      'shlib_suffix': 'dylib' if sys.platform == 'darwin' else 'so',
++      'shlib_suffix': 'dylib' if config['target_os'] == '"mac"' else 'so',
+       'tsan': bool_string_to_number(config['is_tsan']),
+       # TODO(zcbenz): Shared components are not supported in GN config yet.
+       'node_shared': 'false',
+diff --git a/unofficial.gni b/unofficial.gni
+--- a/unofficial.gni
++++ b/unofficial.gni
+@@ -152,7 +152,7 @@
+       "deps/ada",
+       "deps/uv",
+       "deps/simdjson",
+-      "$node_v8_path",
++      "$node_v8_path:v8",
+     ]
+     deps = [
+       ":run_node_js2c",
+@@ -226,7 +226,7 @@
+   executable(target_name) {
+     forward_variables_from(invoker, "*")
+ 
+-    sources = [ "src/node_main.cc" ]
++    sources = [ "src/quota_node_main.cc" ]
+     deps = [
+       ":libnode",
+       "//build/win:default_exe_manifest",
+@@ -297,6 +297,10 @@
+   }
+ 
+   executable("node_js2c") {
++    # The host tool owns its octal lookup table until process exit.
++    if (is_clang) {
++      cflags_cc = [ "-Wno-exit-time-destructors" ]
++    }
+     deps = [
+       "deps/uv",
+       "$node_simdutf_path",
+diff --git a/deps/openssl/unofficial.gni b/deps/openssl/unofficial.gni
+--- a/deps/openssl/unofficial.gni
++++ b/deps/openssl/unofficial.gni
+@@ -85,7 +85,10 @@
+   static_library(target_name) {
+     forward_variables_from(invoker, "*")
+ 
+-    configs += [ ":openssl_internal_config" ]
++    # Prefer OpenSSL internal headers over Chromium headers such as crypto/evp.h.
++    inherited_configs = configs
++    configs = []
++    configs = [ ":openssl_internal_config" ] + inherited_configs
+     public_configs = [ ":openssl_external_config" ]
+ 
+     if (is_posix) {
+
+Node Perfetto compatibility adapted from Shelley Vohr, Electron v39.2.0, patches/node/build_enable_perfetto.patch (MIT).
+diff --git a/lib/internal/constants.js b/lib/internal/constants.js
+--- a/lib/internal/constants.js
++++ b/lib/internal/constants.js
+@@ -5,12 +5,15 @@
+ module.exports = {
+   // Alphabet chars.
+   CHAR_UPPERCASE_A: 65, /* A */
++  CHAR_UPPERCASE_B: 66, /* B */
+   CHAR_LOWERCASE_A: 97, /* a */
+   CHAR_UPPERCASE_Z: 90, /* Z */
+   CHAR_LOWERCASE_Z: 122, /* z */
+   CHAR_UPPERCASE_C: 67, /* C */
+   CHAR_LOWERCASE_B: 98, /* b */
++  CHAR_UPPERCASE_E: 69, /* E */
+   CHAR_LOWERCASE_E: 101, /* e */
++
+   CHAR_LOWERCASE_N: 110, /* n */
+ 
+   // Non-alphabetic chars.
+diff --git a/lib/internal/http.js b/lib/internal/http.js
+--- a/lib/internal/http.js
++++ b/lib/internal/http.js
+@@ -10,8 +10,8 @@
+ const { setUnrefTimeout } = require('internal/timers');
+ const { getCategoryEnabledBuffer, trace } = internalBinding('trace_events');
+ const {
+-  CHAR_LOWERCASE_B,
+-  CHAR_LOWERCASE_E,
++  CHAR_UPPERCASE_B,
++  CHAR_UPPERCASE_E,
+ } = require('internal/constants');
+ 
+ const { URL } = require('internal/url');
+@@ -50,11 +50,13 @@
+ const traceEventCategory = 'node,node.http';
+ 
+ function traceBegin(...args) {
+-  trace(CHAR_LOWERCASE_B, traceEventCategory, ...args);
++  // See v8/src/builtins/builtins-trace.cc - must be uppercase for perfetto
++  trace(CHAR_UPPERCASE_B, traceEventCategory, ...args);
+ }
+ 
+ function traceEnd(...args) {
+-  trace(CHAR_LOWERCASE_E, traceEventCategory, ...args);
++  // See v8/src/builtins/builtins-trace.cc - must be uppercase for perfetto
++  trace(CHAR_UPPERCASE_E, traceEventCategory, ...args);
+ }
+ 
+ function ipToInt(ip) {
+diff --git a/src/inspector/tracing_agent.cc b/src/inspector/tracing_agent.cc
+--- a/src/inspector/tracing_agent.cc
++++ b/src/inspector/tracing_agent.cc
+@@ -92,14 +92,14 @@
+   explicit InspectorTraceWriter(int frontend_object_id,
+                                 std::shared_ptr<MainThreadHandle> main_thread)
+       : frontend_object_id_(frontend_object_id), main_thread_(main_thread) {}
+-
++#ifndef V8_USE_PERFETTO
+   void AppendTraceEvent(
+       v8::platform::tracing::TraceObject* trace_event) override {
+     if (!json_writer_)
+       json_writer_.reset(TraceWriter::CreateJSONTraceWriter(stream_, "value"));
+     json_writer_->AppendTraceEvent(trace_event);
+   }
+-
++#endif
+   void Flush(bool) override {
+     if (!json_writer_)
+       return;
+diff --git a/src/tracing/agent.cc b/src/tracing/agent.cc
+--- a/src/tracing/agent.cc
++++ b/src/tracing/agent.cc
+@@ -2,7 +2,9 @@
+ 
+ #include <string>
+ #include "trace_event.h"
++#ifndef V8_USE_PERFETTO
+ #include "tracing/node_trace_buffer.h"
++#endif
+ #include "debug_utils-inl.h"
+ #include "env-inl.h"
+ 
+@@ -50,7 +52,9 @@
+ using std::string;
+ 
+ Agent::Agent() : tracing_controller_(new TracingController()) {
++#ifndef V8_USE_PERFETTO
+   tracing_controller_->Initialize(nullptr);
++#endif
+ 
+   CHECK_EQ(uv_loop_init(&tracing_loop_), 0);
+   CHECK_EQ(uv_async_init(&tracing_loop_,
+@@ -86,10 +90,14 @@
+ void Agent::Start() {
+   if (started_)
+     return;
+-
++#ifdef V8_USE_PERFETTO
++  std::ostringstream perfetto_output;
++  tracing_controller_->InitializeForPerfetto(&perfetto_output);
++#else
+   NodeTraceBuffer* trace_buffer_ = new NodeTraceBuffer(
+       NodeTraceBuffer::kBufferChunks, this, &tracing_loop_);
+   tracing_controller_->Initialize(trace_buffer_);
++#endif
+ 
+   // This thread should be created *after* async handles are created
+   // (within NodeTraceWriter and NodeTraceBuffer constructors).
+@@ -148,8 +156,10 @@
+     return;
+   // Perform final Flush on TraceBuffer. We don't want the tracing controller
+   // to flush the buffer again on destruction of the V8::Platform.
++#ifndef V8_USE_PERFETTO
++  tracing_controller_->Initialize(nullptr);
++#endif
+   tracing_controller_->StopTracing();
+-  tracing_controller_->Initialize(nullptr);
+   started_ = false;
+ 
+   // Thread should finish when the tracing loop is stopped.
+@@ -207,6 +217,7 @@
+   return categories;
+ }
+ 
++#ifndef V8_USE_PERFETTO
+ void Agent::AppendTraceEvent(TraceObject* trace_event) {
+   for (const auto& id_writer : writers_)
+     id_writer.second->AppendTraceEvent(trace_event);
+@@ -216,18 +227,21 @@
+   Mutex::ScopedLock lock(metadata_events_mutex_);
+   metadata_events_.push_back(std::move(event));
+ }
++#endif
+ 
+ void Agent::Flush(bool blocking) {
++#ifndef V8_USE_PERFETTO
+   {
+     Mutex::ScopedLock lock(metadata_events_mutex_);
+     for (const auto& event : metadata_events_)
+       AppendTraceEvent(event.get());
+   }
+-
++#endif
+   for (const auto& id_writer : writers_)
+     id_writer.second->Flush(blocking);
+ }
+ 
++#ifndef V8_USE_PERFETTO
+ void TracingController::AddMetadataEvent(
+     const unsigned char* category_group_enabled,
+     const char* name,
+@@ -251,6 +265,6 @@
+   if (node_agent != nullptr)
+     node_agent->AddMetadataEvent(std::move(trace_event));
+ }
+-
++#endif
+ }  // namespace tracing
+ }  // namespace node
+diff --git a/src/tracing/agent.h b/src/tracing/agent.h
+--- a/src/tracing/agent.h
++++ b/src/tracing/agent.h
+@@ -27,7 +27,9 @@
+ class AsyncTraceWriter {
+  public:
+   virtual ~AsyncTraceWriter() = default;
++#ifndef V8_USE_PERFETTO
+   virtual void AppendTraceEvent(TraceObject* trace_event) = 0;
++#endif
+   virtual void Flush(bool blocking) = 0;
+   virtual void InitializeOnThread(uv_loop_t* loop) {}
+ };
+@@ -36,6 +38,7 @@
+  public:
+   TracingController() : v8::platform::tracing::TracingController() {}
+ 
++#ifndef V8_USE_PERFETTO
+   int64_t CurrentTimestampMicroseconds() override {
+     return uv_hrtime() / 1000;
+   }
+@@ -48,6 +51,7 @@
+       const uint64_t* arg_values,
+       std::unique_ptr<v8::ConvertableToTraceFormat>* convertable_values,
+       unsigned int flags);
++#endif
+ };
+ 
+ class AgentWriterHandle {
+@@ -108,11 +112,12 @@
+ 
+   // Returns a comma-separated list of enabled categories.
+   std::string GetEnabledCategories() const;
+-
++#ifndef V8_USE_PERFETTO
+   // Writes to all writers registered through AddClient().
+   void AppendTraceEvent(TraceObject* trace_event);
+ 
+   void AddMetadataEvent(std::unique_ptr<TraceObject> event);
++#endif
+   // Flushes all writers registered through AddClient().
+   void Flush(bool blocking);
+ 
+@@ -152,7 +157,9 @@
+   std::set<AsyncTraceWriter*> to_be_initialized_;
+ 
+   Mutex metadata_events_mutex_;
++#ifndef V8_USE_PERFETTO
+   std::list<std::unique_ptr<TraceObject>> metadata_events_;
++#endif
+ };
+ 
+ void AgentWriterHandle::reset() {
+diff --git a/src/tracing/node_trace_buffer.h b/src/tracing/node_trace_buffer.h
+--- a/src/tracing/node_trace_buffer.h
++++ b/src/tracing/node_trace_buffer.h
+@@ -42,7 +42,9 @@
+   bool flushing_;
+   size_t max_chunks_;
+   Agent* agent_;
++#ifndef V8_USE_PERFETTO
+   std::vector<std::unique_ptr<TraceBufferChunk>> chunks_;
++#endif
+   size_t total_chunks_ = 0;
+   uint32_t current_chunk_seq_ = 1;
+   uint32_t id_;
+diff --git a/src/tracing/node_trace_writer.cc b/src/tracing/node_trace_writer.cc
+--- a/src/tracing/node_trace_writer.cc
++++ b/src/tracing/node_trace_writer.cc
+@@ -96,6 +96,7 @@
+   }
+ }
+ 
++#ifndef V8_USE_PERFETTO
+ void NodeTraceWriter::AppendTraceEvent(TraceObject* trace_event) {
+   Mutex::ScopedLock scoped_lock(stream_mutex_);
+   // If this is the first trace event, open a new file for streaming.
+@@ -112,6 +113,7 @@
+   ++total_traces_;
+   json_trace_writer_->AppendTraceEvent(trace_event);
+ }
++#endif
+ 
+ void NodeTraceWriter::FlushPrivate() {
+   std::string str;
+diff --git a/src/tracing/node_trace_writer.h b/src/tracing/node_trace_writer.h
+--- a/src/tracing/node_trace_writer.h
++++ b/src/tracing/node_trace_writer.h
+@@ -20,7 +20,9 @@
+   ~NodeTraceWriter() override;
+ 
+   void InitializeOnThread(uv_loop_t* loop) override;
++#ifndef V8_USE_PERFETTO
+   void AppendTraceEvent(TraceObject* trace_event) override;
++#endif
+   void Flush(bool blocking) override;
+ 
+   static const int kTracesPerFile = 1 << 19;
+diff --git a/src/tracing/trace_event.h b/src/tracing/trace_event.h
+--- a/src/tracing/trace_event.h
++++ b/src/tracing/trace_event.h
+@@ -69,8 +69,16 @@
+ // for best performance when tracing is disabled.
+ // const uint8_t*
+ //     TRACE_EVENT_API_GET_CATEGORY_GROUP_ENABLED(const char* category_group)
++#ifndef V8_USE_PERFETTO
+ #define TRACE_EVENT_API_GET_CATEGORY_GROUP_ENABLED              \
+   node::tracing::TraceEventHelper::GetCategoryGroupEnabled
++#else
++#define TRACE_EVENT_API_GET_CATEGORY_GROUP_ENABLED(category_group) \
++  ([](const char*) -> const uint8_t* { \
++    static uint8_t no = 0; \
++    return &no; \
++  })(category_group)
++#endif
+ 
+ // Get the number of times traces have been recorded. This is used to implement
+ // the TRACE_EVENT_IS_NEW_TRACE facility.
+@@ -114,10 +122,15 @@
+ //     const uint8_t* category_group_enabled,
+ //     const char* name,
+ //     uint64_t id)
++#ifndef V8_USE_PERFETTO
+ #define TRACE_EVENT_API_UPDATE_TRACE_EVENT_DURATION                           \
+   if (auto controller =                                                       \
+          node::tracing::TraceEventHelper::GetTracingController())             \
+       controller->UpdateTraceEventDuration
++#else
++#define TRACE_EVENT_API_UPDATE_TRACE_EVENT_DURATION(category_group_enabled, name, event_handle) \
++  (void)(category_group_enabled), (void)(name), (void)(event_handle)
++#endif
+ 
+ // Adds a metadata event to the trace log. The |AppendValueAsTraceFormat| method
+ // on the convertable value will be called at flush time.
+@@ -319,12 +332,17 @@
+   static void SetAgent(Agent* agent);
+ 
+   static inline const uint8_t* GetCategoryGroupEnabled(const char* group) {
++#ifndef V8_USE_PERFETTO
+     v8::TracingController* controller = GetTracingController();
+     static const uint8_t disabled = 0;
+     if (controller == nullptr) [[unlikely]] {
+       return &disabled;
+     }
+     return controller->GetCategoryGroupEnabled(group);
++#else
++    static const uint8_t disabled = 0;
++    return &disabled;
++#endif
+   }
+ };
+ 
+@@ -462,6 +480,7 @@
+     const char* scope, uint64_t id, uint64_t bind_id, int32_t num_args,
+     const char** arg_names, const uint8_t* arg_types,
+     const uint64_t* arg_values, unsigned int flags) {
++#ifndef V8_USE_PERFETTO
+   std::unique_ptr<v8::ConvertableToTraceFormat> arg_convertibles[2];
+   if (num_args > 0 && arg_types[0] == TRACE_VALUE_TYPE_CONVERTABLE) {
+     arg_convertibles[0].reset(reinterpret_cast<v8::ConvertableToTraceFormat*>(
+@@ -478,6 +497,8 @@
+   return controller->AddTraceEvent(phase, category_group_enabled, name, scope, id,
+                                    bind_id, num_args, arg_names, arg_types,
+                                    arg_values, arg_convertibles, flags);
++#endif
++  return 0;
+ }
+ 
+ static V8_INLINE uint64_t AddTraceEventWithTimestampImpl(
+@@ -485,6 +506,7 @@
+     const char* scope, uint64_t id, uint64_t bind_id, int32_t num_args,
+     const char** arg_names, const uint8_t* arg_types,
+     const uint64_t* arg_values, unsigned int flags, int64_t timestamp) {
++#ifndef V8_USE_PERFETTO
+   std::unique_ptr<v8::ConvertableToTraceFormat> arg_convertibles[2];
+   if (num_args > 0 && arg_types[0] == TRACE_VALUE_TYPE_CONVERTABLE) {
+     arg_convertibles[0].reset(reinterpret_cast<v8::ConvertableToTraceFormat*>(
+@@ -501,12 +523,15 @@
+   return controller->AddTraceEventWithTimestamp(
+       phase, category_group_enabled, name, scope, id, bind_id, num_args,
+       arg_names, arg_types, arg_values, arg_convertibles, flags, timestamp);
++#endif
++  return 0;
+ }
+ 
+ static V8_INLINE void AddMetadataEventImpl(
+     const uint8_t* category_group_enabled, const char* name, int32_t num_args,
+     const char** arg_names, const uint8_t* arg_types,
+     const uint64_t* arg_values, unsigned int flags) {
++#ifndef V8_USE_PERFETTO
+   std::unique_ptr<v8::ConvertableToTraceFormat> arg_convertibles[2];
+   if (num_args > 0 && arg_types[0] == TRACE_VALUE_TYPE_CONVERTABLE) {
+     arg_convertibles[0].reset(reinterpret_cast<v8::ConvertableToTraceFormat*>(
+@@ -522,6 +547,7 @@
+   return agent->GetTracingController()->AddMetadataEvent(
+       category_group_enabled, name, num_args, arg_names, arg_types, arg_values,
+       arg_convertibles, flags);
++#endif
+ }
+ 
+ // Define SetTraceValue for each allowed type. It stores the type and
+diff --git a/unofficial.gni b/unofficial.gni
+--- a/unofficial.gni
++++ b/unofficial.gni
+@@ -144,6 +144,9 @@
+ 
+   source_set("libnode") {
+     configs += [ ":node_internal_config" ]
++    if (is_clang) {
++      cflags_cc = [ "-Wno-exit-time-destructors" ]
++    }
+     public_configs = [
+       ":node_external_config",
+       "deps/googletest:googletest_config",
+@@ -174,6 +177,9 @@
+     sources = [
+       "$target_gen_dir/node_javascript.cc",
+     ] + gypi_values.node_sources
++    if (v8_use_perfetto) {
++      sources -= [ "src/tracing/node_trace_buffer.cc" ]
++    }
+ 
+     if (is_win) {
+       libs = [ "psapi.lib" ]
+diff --git a/deps/ada/unofficial.gni b/deps/ada/unofficial.gni
+--- a/deps/ada/unofficial.gni
++++ b/deps/ada/unofficial.gni
+@@ -20,6 +20,9 @@
+   source_set(target_name) {
+     forward_variables_from(invoker, "*")
+     public_configs = [ ":ada_config" ]
++    if (is_clang) {
++      cflags_cc = [ "-Wno-exit-time-destructors" ]
++    }
+     sources = gypi_values.ada_sources
+   }
+ }

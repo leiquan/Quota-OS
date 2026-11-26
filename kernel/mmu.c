@@ -25,7 +25,12 @@ static uint64_t l2_lo[512] __attribute__((aligned(4096)));
 static uint64_t l2_ram[512] __attribute__((aligned(4096)));
 /* Two reserve-tail blocks and at most one additional test-page block. */
 static uint64_t l3_storage[3][512] __attribute__((aligned(4096)));
-static uint64_t *l3_for[64];
+#ifdef QUOTA_WAP_FULL_RUNTIME
+#define RAM_BLOCKS 512
+#else
+#define RAM_BLOCKS 64
+#endif
+static uint64_t *l3_for[RAM_BLOCKS];
 static int mmu_on;
 static volatile int expect_fault;
 static volatile int fault_hit;
@@ -75,14 +80,14 @@ int mmu_protect(uint64_t addr, uint64_t len, int prot)
     if (addr < 0x40000000ull || len == 0)
         return -1;
     uint64_t end = addr + len;
-    if (end > 0x48000000ull)
+    if (end > 0x40000000ull + (uint64_t)RAM_BLOCKS * 0x200000)
         return -1;
     int ro = (prot & 2) == 0;
     int present = prot != 0;
     for (uint64_t va = addr & ~4095ull; va < end; va += 4096) {
         uint64_t blk = (va - 0x40000000ull) >> 21;
         uint64_t l3i = (va >> 12) & 511ull;
-        if (blk >= 64 || !l3_for[blk])
+        if (blk >= RAM_BLOCKS || !l3_for[blk])
             return -1;
         uint64_t *pte = &l3_for[blk][l3i];
         *pte = (va & ~4095ull) | ram_pte(ro, present);
@@ -111,7 +116,7 @@ void mmu_init(void)
     }
     l1[0] = (uint64_t)l2_lo | PTE_VALID | PTE_TABLE;
     int tables = 0;
-    for (int blk = 0; blk < 64; blk++) {
+    for (int blk = 0; blk < RAM_BLOCKS; blk++) {
         uint64_t va = 0x40000000ull + ((uint64_t)blk << 21);
         uint64_t l2i = (va >> 21) & 511ull;
         /* Reserve tail and permission-test page. */
@@ -150,7 +155,8 @@ void mmu_init(void)
     sctlr |= (1ull << 0) | (1ull << 2) | (1ull << 12);
     asm volatile("msr sctlr_el1, %0; isb" :: "r"(sctlr) : "memory");
     mmu_on = 1;
-    printf("[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000\n");
+    printf("[mmu] identity map on, EL1. RAM window 0x40000000-0x%lx, devices 0x08000000-0x0c000000\n",
+           0x40000000ul + (unsigned long)RAM_BLOCKS * 0x200000ul);
     printf("[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.\n");
 
     /* One aligned page inside RAM, not the last byte. Prove the PTE bits, then restore RW. */

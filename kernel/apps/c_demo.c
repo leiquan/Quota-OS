@@ -25,7 +25,7 @@ int c_demo_compile(const char *s)
         !take(&s,"void") || !take(&s,")") || !take(&s,"{") ||
         !take(&s,"puts") || !take(&s,"(") || !take(&s,"\""))
         return -1;
-    char *literal = program.bytes + 24;
+    char *literal = program.bytes + 28;
     unsigned n = 0;
     while (*s && *s != '"') {
         if (n >= 126 || *s < ' ' || *s > '~' || *s == '\\') return -1;
@@ -36,13 +36,14 @@ int c_demo_compile(const char *s)
         !take(&s,"") || *s)
         return -1;
     literal[n++] = '\n';
-    program.instructions[0] = 0xd2800300; /* mov x0, #24 */
+    program.instructions[0] = 0xd2800380; /* mov x0, #28 */
     program.instructions[1] = 0xd2800001 | (n << 5);
     program.instructions[2] = 0xd2800068; /* mov x8, #3: console */
     program.instructions[3] = 0xd4000001;
-    program.instructions[4] = 0xd2800028; /* mov x8, #1: exit */
-    program.instructions[5] = 0xd4000001;
-    program_size = 24 + n;
+    program.instructions[4] = 0xd2800000; /* exit status 0 */
+    program.instructions[5] = 0xd2800028; /* mov x8, #1: exit */
+    program.instructions[6] = 0xd4000001;
+    program_size = 28 + n;
     return 0;
 }
 
@@ -51,3 +52,5 @@ int64_t c_demo_run(void)
     if (!program_size) return -1;
     return proc_spawn_console(program.bytes, program_size);
 }
+
+int c_demo_compiled(void) { return program_size != 0; }

@@ -1,3 +1,24 @@
+Web Node edition
+
+The LVGL desktop owns the file picker, windows and input. Files passes an open
+request to wap_open_saved() in port/quotaos/wap/app.c. That module validates the
+ZIP and manifest, restores an existing app or asks the process service to start
+its tier-3 processes. The desktop displays the published surface. The Demo
+application lives in examples/demo; its HTML and scripts are ordinary app files.
+
+port/quotaos/blink implements the Blink embedder, input and software paint.
+port/quotaos/node provides the Node adapter. Both ends use port/quotaos/wap/rpc.js
+for local RPC. The kernel owns admission, process identity, memory protection,
+file access and IPC. The Linux ABI and ELF loader currently live in kernel/proc.c.
+
+tools/build-node-web-runtime.py builds the two ARM64 executables with Chromium's
+V8. tools/build-lvgl-guest.sh builds the common image. With QUOTA_NODE_WEB_OUT
+set, tools/wap-runtime.sh embeds the executables and calls stage-wap-libraries.py
+to collect their transitive dependencies, font, ICU data and V8 snapshot.
+The packer checks that both executables resolve to the same libv8.so.
+
+Historical WebCore and JSC prototype
+
 Quota OS layers. Dependencies point downward.
 
 1. Kernel (kernel/, boot/)

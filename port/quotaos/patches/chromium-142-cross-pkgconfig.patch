@@ -1,0 +1,29 @@
+diff --git a/build/config/linux/pkg-config.py b/build/config/linux/pkg-config.py
+index f4d31de676..ad34464824 100755
+--- a/build/config/linux/pkg-config.py
++++ b/build/config/linux/pkg-config.py
+@@ -108,7 +108,7 @@ def main():
+   # If this is run on non-Linux platforms, just return nothing and indicate
+   # success. This allows us to "kind of emulate" a Linux build from other
+   # platforms.
+-  if "linux" not in sys.platform:
++  if "linux" not in sys.platform and "-s" not in sys.argv:
+     print("[[],[],[],[],[]]")
+     return 0
+ 
+diff --git a/build/config/linux/pkg_config.gni b/build/config/linux/pkg_config.gni
+index f8a4bbe72f..6199ebb800 100644
+--- a/build/config/linux/pkg_config.gni
++++ b/build/config/linux/pkg_config.gni
+@@ -184,7 +184,10 @@ template("pkg_config") {
+ 
+       # We want the system include paths to use -isystem instead of -I to
+       # suppress warnings in those headers.
+-      cflags += [ "-isystem$_path" ]
++      # Clang supplies the sysroot C headers after libc++.
++      if (sysroot == "" || _path != rebase_path("$sysroot/usr/include", root_build_dir)) {
++        cflags += [ "-isystem$_path" ]
++      }
+     }
+ 
+     if (!defined(invoker.ignore_libs) || !invoker.ignore_libs) {

@@ -106,6 +106,9 @@ static struct task *slot_owner[MAX_SLOTS];
 
 /* 上一段内核停留 */
 static uint64_t prev_entry;
+#ifdef QUOTA_WAP_FULL_RUNTIME
+static uint64_t caller_work_ticks;
+#endif
 static int prev_guard;          /* 上一段停留以等待槽起点结束 */
 static uint64_t prev_release;
 
@@ -518,11 +521,14 @@ void task_ready(struct task *t)
     rebuild_lists();
 }
 
-/* 死循环型立刻就绪；周期作业等下一次释放。 */
+/* New Tier-2 CPU reservations begin at the next full period. */
 void task_start(struct task *t)
 {
     uint64_t irq_flags = irq_save();
-    task_ready(t);
+    if (t->tier == TIER2 && t->kind == KIND_SPIN && t->state == TASK_BLOCKED)
+        t->start_next_period = 1;
+    else
+        task_ready(t);
     irq_restore(irq_flags);
 }
 
@@ -826,7 +832,7 @@ static void end_period(uint64_t now, int skipped)
                 t->w.used_min = t->used_t;
             if (t->used_t > t->w.used_max)
                 t->w.used_max = t->used_t;
-            if (t->tier == TIER2 && t->kind == KIND_SPIN && t->used_t < t->min_t)
+            if (short_cpu)
                 t->w.short_periods++;
         }
         if (rec) {
@@ -928,6 +934,13 @@ static void ipc_release_held(void);
 static void begin_period(void)
 {
     t3_reset_period();
+    for (int i = 0; i < MAX_TASKS; i++) {
+        struct task *t = &tasks[i];
+        if (t->start_next_period && t->state == TASK_BLOCKED) {
+            t->start_next_period = 0;
+            task_ready(t);
+        }
+    }
     dev_period();
     ipc_release_held();
     if (bench_state == 1) {
@@ -1335,8 +1348,13 @@ static uint64_t schedule(uint64_t sp, int timer)
     obs_entry = entry;
     obs_now = entry;
 
-    if (prev_stint_sc && !prev_guard && eret > prev_entry) {
-        uint64_t d = eret - prev_entry;
+    uint64_t system_entry = prev_entry;
+#ifdef QUOTA_WAP_FULL_RUNTIME
+    system_entry += caller_work_ticks;
+    caller_work_ticks = 0;
+#endif
+    if (prev_stint_sc && !prev_guard && eret > system_entry) {
+        uint64_t d = eret - system_entry;
         pend_b = pend_spin = 0;     /* 这段算调用者的，不算内核每周期 */
         struct task *x = prev_stint_sc;
         /* 全部记在调用者头上。Tier 2 超出预算上限的部分（调用者预算在内核路径里用完）
@@ -1372,7 +1390,7 @@ static uint64_t schedule(uint64_t sp, int timer)
             x->p_kent += c;
         }
     } else {
-        kernel_stint(prev_entry, eret, prev_guard);
+        kernel_stint(system_entry, eret, prev_guard);
     }
     prev_stint_sc = 0;
     prev_stint_srv = 0;
@@ -1536,8 +1554,27 @@ uint64_t handle_sync(uint64_t frame_sp)
     uint32_t ec = (uint32_t)((esr >> 26) & 0x3f);
     if ((f->spsr & 0xfu) == 0) {
         k_ipc_op = 0;
-        if (ec == 0x15)
+        if (ec == 0x15) {
+#ifdef QUOTA_WAP_FULL_RUNTIME
+            /* Exec image construction is synchronous work owned by the caller.
+             * Charge the measured handler interval before dispatch so this
+             * period's remaining Tier 3 pool includes it. */
+            int exec_work = cur->tier == TIER3 && f->r[8] == 221;
+            uint64_t start = exec_work ? ticks_now() : 0;
+#endif
             proc_el0_svc(f);
+#ifdef QUOTA_WAP_FULL_RUNTIME
+            if (exec_work) {
+                uint64_t elapsed = ticks_now() - start;
+                tier_charge(cur, elapsed);
+                cur->used_t += elapsed;
+                cur->used_total += elapsed;
+                uint64_t next_sp = schedule(frame_sp, 0);
+                caller_work_ticks = elapsed;
+                return next_sp;
+            }
+#endif
+        }
         else
             proc_el0_abort(f, esr);
         return schedule(frame_sp, 0);

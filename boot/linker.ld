@@ -27,6 +27,10 @@ SECTIONS
         . = gate_page_start + 4096;
     } :text
 
+    .hello_cap : ALIGN(4) {
+        hello_cap_start = .; KEEP(*(.hello_cap)) hello_cap_end = .;
+    } :text
+
     .text : {
         *(.text .text.*)
     } :text
@@ -69,6 +73,7 @@ SECTIONS
         __bss_end = .;
     } :data
     __image_end = .;
+    __boot_image_size = __image_end - __image_start;
 
     /DISCARD/ : {
         *(.eh_frame)

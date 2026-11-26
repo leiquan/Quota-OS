@@ -6,6 +6,16 @@
 #include "quotaos.h"
 
 static uint64_t cntfrq;
+static uint64_t rtc_base, rtc_epoch, rtc_ticks;
+
+int timer_realtime(uint64_t ts[2])
+{
+    if (!rtc_base) return -1;
+    uint64_t elapsed = ticks_now() - rtc_ticks;
+    ts[0] = rtc_epoch + elapsed / cntfrq;
+    ts[1] = ((elapsed % cntfrq) * 1000000000ull) / cntfrq;
+    return 0;
+}
 
 static inline uint64_t rd_cntfrq(void)
 {
@@ -26,6 +36,10 @@ void timer_init(void)
     cntfrq = rd_cntfrq();
     if (cntfrq == 0)
         cntfrq = 62500000;
+    if (dtb_find_bases("arm,pl031", &rtc_base, 1) == 1) {
+        rtc_epoch = mmio_rd(rtc_base);
+        rtc_ticks = ticks_now();
+    }
     uint64_t far = ~0ull;
     asm volatile("msr cntv_cval_el0, %0" :: "r"(far));
     uint64_t ctl = 1; /* ENABLE, IMASK=0 */

@@ -1,3 +1,6 @@
+#include "wap_app.h"
+#include "shell.h"
+#include "guest_page_services.h"
 /*
  * LVGL adaptation and the demo screen. Calls the kernel framebuffer and
  * the input queue. Does not program fw_cfg, virtio, or the page tables.
@@ -16,15 +19,24 @@ static uint8_t draw_buf[LVGL_DRAW_BYTES] __attribute__((aligned(64)));
 static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *field;
+static lv_obj_t *power_menu, *power_status, *power_backdrop;
+enum power_action { POWER_NONE, POWER_OFF, POWER_RESET };
+static enum power_action requested_power;
 static lv_obj_t *menu_list;
 static lv_obj_t *detail;
 static lv_obj_t *page_home, *page_test;
 static lv_obj_t *page_input;
 static lv_obj_t *page_cover, *page_apps, *page_files, *page_shell;
+static unsigned displayed_frame;
+static lv_obj_t *demo_window, *demo_image, *demo_status, *demo_output;
+static int64_t demo_handle;
+static lv_image_dsc_t demo_frame;
+static lv_obj_t *page_zip, *zip_status, *package_entry;
+static lv_obj_t *package_icon, *selected_package_view;
 static lv_obj_t *shell_input, *shell_output, *source_entry, *source_icon, *source_caption, *note_icon;
 static lv_obj_t *shell_history, *shell_prompt, *source_dialog, *source_name, *source_error;
 static char shell_transcript[2048];
-static lv_obj_t *note_status, *file_entry, *file_empty, *file_metadata, *source_title, *source_metadata;
+static lv_obj_t *note_status, *file_entry, *file_empty, *source_title;
 static uint64_t save_since;
 static struct app_display_stats save_before;
 static lv_obj_t *task_body;
@@ -34,7 +46,7 @@ static lv_obj_t *clock_label;
 static uint64_t rtc_base;
 enum monitor_page { SYSTEM_TASK, SYSTEM_INFO, SYSTEM_EVENTS };
 static enum monitor_page monitor_tab;
-enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST, APP_COUNT };
+enum app_key { APP_SYSTEM, APP_LAUNCHER, APP_NOTES, APP_FILES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST, APP_ZIP, APP_DEMO, APP_COUNT };
 static lv_obj_t *dock, *icons[APP_COUNT], *dots[APP_COUNT];
 enum window_state { CLOSED, OPEN, MINIMIZED };
 static enum window_state states[APP_COUNT];
@@ -56,7 +68,7 @@ static void dock_state(enum app_key key, enum window_state state)
     }
     if (dock) sync_dock();
 }
-static const enum app_key page_keys[] = {APP_SYSTEM, APP_NOTES, APP_COUNT, APP_LAUNCHER, APP_FILES, APP_SHELL, APP_TEST};
+static const enum app_key page_keys[] = {APP_SYSTEM, APP_NOTES, APP_COUNT, APP_LAUNCHER, APP_FILES, APP_SHELL, APP_TEST, APP_ZIP};
 
 static lv_obj_t *task_lists[3];
 static lv_obj_t *task_items[MAX_TASKS];
@@ -90,7 +102,7 @@ static void sync_dock(void)
 
 static void show_page(int which)
 {
-    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : which == 4 ? page_files : which == 5 ? page_shell : page_test;
+    lv_obj_t *win = which == 0 ? page_home : which == 1 ? page_input : which == 2 ? page_cover : which == 3 ? page_apps : which == 4 ? page_files : which == 5 ? page_shell : which == 6 ? page_test : page_zip;
     lv_obj_remove_flag(win, LV_OBJ_FLAG_HIDDEN);
     dock_state(page_keys[which], OPEN);
     lv_obj_move_foreground(win);
@@ -338,6 +350,29 @@ static void keypad_read(lv_indev_t *indev, lv_indev_data_t *data)
             data->continue_reading = true;
         break;
     }
+}
+
+static void demo_input_event(lv_event_t *e)
+{
+    if (!demo_handle || !lv_obj_is_visible(demo_image)) return;
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_KEY) {
+        uint32_t key = lv_event_get_key(e);
+        if (key == LV_KEY_BACKSPACE) key = 8;
+        else if (key == LV_KEY_ENTER) key = 13;
+        proc_page_input(demo_handle, 3, key, 0);
+        return;
+    }
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev || lv_indev_get_type(indev) != LV_INDEV_TYPE_POINTER) return;
+    lv_point_t point;
+    lv_area_t bounds;
+    lv_indev_get_point(indev, &point);
+    lv_obj_get_coords(demo_image, &bounds);
+    if (code == LV_EVENT_PRESSED) lv_group_focus_obj(demo_image);
+    proc_page_input(demo_handle, code == LV_EVENT_PRESSED ? 1 : 2,
+                    LV_CLAMP(0, point.x - bounds.x1, GUEST_PREVIEW_WIDTH - 1),
+                    LV_CLAMP(0, point.y - bounds.y1, GUEST_PREVIEW_HEIGHT - 1));
 }
 
 static void on_click(lv_event_t *e)
@@ -595,17 +630,62 @@ static void shell_append(const char *line)
     shell_refresh();
 }
 
-static void shell_help(char *out, unsigned capacity)
+static void power_dismiss(lv_event_t *e)
 {
-    const char *name = note_disk_source_name();
-    if (name)
-        lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
-                    "cc %s -o hello   Compile your source\n"
-                    "./hello   Run in Tier 3", name);
-    else
-        lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
-                    "In Notes, choose C Example, then Save As... to save a .c file.\n"
-                    "Return here to compile and run it.");
+    (void)e;
+    monitor_visible(power_menu, 0);
+    monitor_visible(power_backdrop, 0);
+}
+
+static void power_click(lv_event_t *e)
+{
+    if (requested_power != POWER_NONE) return;
+    enum power_action action = (uintptr_t)lv_event_get_user_data(e);
+    if (action != POWER_NONE) {
+        requested_power = action;
+        lv_obj_set_height(power_menu, 124);
+        lv_label_set_text(power_status, "Waiting for disk...");
+        return;
+    }
+    lv_obj_set_height(power_menu, 86);
+    lv_label_set_text(power_status, "");
+    monitor_visible(power_backdrop, 1);
+    monitor_visible(power_menu, 1);
+    lv_obj_move_foreground(power_backdrop);
+    lv_obj_move_foreground(power_menu);
+}
+
+static void power_poll(void)
+{
+    if (requested_power == POWER_NONE) return;
+    int ready = note_disk_power_ready();
+    if (!ready) return;
+    enum power_action action = requested_power;
+    requested_power = POWER_NONE;
+    if (ready < 0) {
+        lv_label_set_text(power_status, "Disk error. Power action canceled.");
+        return;
+    }
+    printf("[power] %s after disk ready\n", action == POWER_RESET ? "reset" : "off");
+    register uint64_t function asm("x0") = action == POWER_RESET ? 0x84000009u : 0x84000008u;
+    asm volatile("dsb sy; hvc #0" : "+r"(function) :: "memory");
+    lv_label_set_text(power_status, "Power action unavailable.");
+}
+
+static void show_demo_window(void)
+{
+    lv_obj_remove_flag(demo_window, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(demo_window);
+    dock_state(APP_DEMO, OPEN);
+}
+
+static void select_package_view(lv_obj_t *view)
+{
+    if (selected_package_view)
+        lv_obj_remove_state(selected_package_view, LV_STATE_CHECKED);
+    selected_package_view = view;
+    if (view)
+        lv_obj_add_state(view, LV_STATE_CHECKED);
 }
 
 static void on_group(lv_event_t *e)
@@ -630,7 +710,7 @@ static void on_group(lv_event_t *e)
         show_page(5);
         if (!shell_transcript[0]) {
             char help[200];
-            shell_help(help, sizeof help);
+            shell_execute("help", help, sizeof help);
             shell_append("Quota OS Shell  |  /Desktop");
             shell_append(help);
         }
@@ -641,47 +721,23 @@ static void on_group(lv_event_t *e)
     if (id == 231) {
         const char *command = lv_textarea_get_text(shell_input);
         if (!command[0]) return;
-        char output[200], compile[96];
-        const char *name = note_disk_source_name();
-        const char *result = "Unknown command. Type help.";
-        lv_snprintf(compile, sizeof compile, "cc %s -o hello", name ? name : "hello.c");
-        if (!strcmp(command, "help")) {
-            shell_help(output, sizeof output);
-            result = output;
-        }
-        else if (!strcmp(command, "pwd"))
-            result = "/Desktop";
-        else if (!strcmp(command, "ls")) {
-            lv_snprintf(output, sizeof output, "%s%s%s",
-                        note_disk_text() ? "Note.txt" : "",
-                        note_disk_text() && name ? "  " : "",
-                        name ? name : "");
-            result = output[0] ? output : "Desktop is empty";
-        }
-        else if (!strcmp(command, "clear")) {
+        char output[1024];
+        const char *result = output;
+        enum shell_action action = shell_execute(command, output, sizeof output);
+        if (action == SHELL_CLEAR) {
             shell_transcript[0] = 0;
             shell_refresh();
             lv_textarea_set_text(shell_input, "");
             return;
-        } else if (name && !strcmp(command, compile)) {
-            if (c_demo_compile(note_disk_source()))
-                result = "Compile error: check the saved C source.";
-            else {
-                lv_snprintf(output, sizeof output, "Compiled %s to hello", name);
-                result = output;
-            }
         }
-        else if (command[0] == 'c' && command[1] == 'c' &&
-                 (command[2] == 0 || command[2] == ' ')) {
-            if (name) lv_snprintf(output, sizeof output, "Usage: %s", compile);
-            else shell_help(output, sizeof output);
-            result = output;
+        if (action == SHELL_REBOOT || action == SHELL_OFF) {
+            requested_power = action == SHELL_REBOOT ? POWER_RESET : POWER_OFF;
+            result = "Waiting for disk...";
         }
-        else if (!strcmp(command, "./hello"))
-            result = c_demo_run() < 0 ? "Run failed: compile first or wait for a free process slot." : "Running hello (Tier 3)";
         char entry[256];
-        lv_snprintf(entry, sizeof entry, "quota> %s\n%s", command, result);
+        lv_snprintf(entry, sizeof entry, "quota> %s", command);
         shell_append(entry);
+        shell_append(result);
         printf("[shell] %s: %s\n", command, result);
         lv_textarea_set_text(shell_input, "");
         return;
@@ -695,7 +751,52 @@ static void on_group(lv_event_t *e)
         }
         return;
     }
+    if (id == 241) {
+        show_demo_window();
+        return;
+    }
+    if (id == 238) {
+        show_page(7);
+        return;
+    }
+    if (id == 239) {
+        int ok = wap_export_demo();
+        lv_label_set_text(zip_status, ok ? "Export queued. Open Files to see the saved package."
+                                        : "Export unavailable. Check the Notes disk.");
+        return;
+    }
+    if (id == 240) {
+        lv_obj_t *view = lv_event_get_current_target(e);
+        if (selected_package_view != view) {
+            select_package_view(view);
+            return;
+        }
+        select_package_view(NULL);
+        enum wap_open_result result = wap_open_saved(&demo_handle);
+        if (result == WAP_INVALID) {
+            lv_label_set_text(zip_status, "Invalid application package.");
+            show_page(7);
+            return;
+        }
+        if (result == WAP_RESTORED) {
+            show_demo_window();
+            printf("[wap] restored page handle=%ld\n", (long)demo_handle);
+            return;
+        }
+        lv_obj_add_flag(demo_image, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(demo_status, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(demo_output, "");
+        displayed_frame = 0;
+        demo_frame.data = NULL;
+        lv_label_set_text(demo_status, demo_handle > 0 ? "Loading app.html..."
+            : result == WAP_LOAD_FAILED ? "Quota OS could not load the page process."
+                    : "The page runtime is missing from this system image.");
+        show_demo_window();
+        printf("[wap] page process handle=%ld\n", (long)demo_handle);
+        return;
+    }
     if (id == 212) {
+        select_package_view(NULL);
         show_page(4);
         printf("[files] directory opened\n");
         return;
@@ -903,7 +1004,8 @@ static lv_obj_t *desktop_file(lv_obj_t *screen, int x, int y, const char *name,
     lv_obj_remove_flag(lines, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(extension, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *label = desk_label(button, 0, 0, name, 0xf5f8ff);
+    lv_obj_t *label = desk_label(button, 0, 0, name, screen == page_files ? 0x243650 : 0xf5f8ff);
+    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_width(label, 72);
     lv_obj_set_height(label, 20);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
@@ -918,7 +1020,7 @@ static void hide_window(lv_event_t *e, int minimized)
     lv_obj_t *win = lv_event_get_user_data(e);
     lv_obj_add_flag(win, LV_OBJ_FLAG_HIDDEN);
     enum app_key key = win == page_home ? APP_SYSTEM : win == page_input ? APP_NOTES :
-                       win == page_apps ? APP_LAUNCHER : win == page_files ? APP_FILES : win == page_shell ? APP_SHELL : win == page_test ? APP_TEST : APP_COUNT;
+                       win == page_apps ? APP_LAUNCHER : win == page_files ? APP_FILES : win == page_shell ? APP_SHELL : win == page_test ? APP_TEST : win == page_zip ? APP_ZIP : win == demo_window ? APP_DEMO : APP_COUNT;
     dock_state(key, minimized ? MINIMIZED : CLOSED);
     printf("[desktop] window hidden\n");
 }
@@ -1009,6 +1111,8 @@ static const struct app_entry {
     uint32_t color;
     int action;
 } app_entries[] = {
+    [APP_DEMO] = {"Demo", LV_SYMBOL_FILE, 0x326e91, 241},
+    [APP_ZIP] = {"ZIP", LV_SYMBOL_SAVE, 0x45698b, 238},
     [APP_TEST] = {"Test", LV_SYMBOL_OK, 0x426b8f, 204},
     [APP_SYSTEM] = {app_monitor, LV_SYMBOL_SETTINGS, 0x5368af, 202},
     [APP_LAUNCHER] = {"Apps", LV_SYMBOL_LIST, 0x31798b, 210},
@@ -1462,18 +1566,34 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_bg_color(top, lv_color_hex(0x152641), 0);
     lv_obj_set_style_bg_opa(top, LV_OPA_70, 0);
     lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *power_button = lv_button_create(top);
+    lv_obj_set_pos(power_button, 10, 0);
+    lv_obj_set_size(power_button, 44, 40);
+    lv_obj_set_style_bg_opa(power_button, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(power_button, LV_OPA_20, LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(power_button, 0, 0);
+    lv_obj_center(desk_label(power_button, 0, 0, LV_SYMBOL_POWER, 0xffffff));
     lv_obj_t *about_button = lv_button_create(top);
-    lv_obj_set_pos(about_button, 10, 0);
     lv_obj_set_size(about_button, 108, 40);
+    lv_obj_center(about_button);
     lv_obj_set_style_bg_opa(about_button, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_opa(about_button, LV_OPA_20, LV_STATE_PRESSED);
     lv_obj_set_style_shadow_width(about_button, 0, 0);
-    lv_obj_t *brand = lv_label_create(about_button);
-    lv_label_set_text(brand, "Quota OS");
-    lv_obj_set_style_text_color(brand, lv_color_hex(0xffffff), 0);
-    lv_obj_center(brand);
+    lv_obj_center(desk_label(about_button, 0, 0, "Quota OS", 0xffffff));
     lv_obj_add_event_cb(about_button, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)201);
+    lv_obj_add_event_cb(power_button, power_click, LV_EVENT_CLICKED, NULL);
 
+    lv_obj_t *network_icon = desk_label(top, 0, 0, LV_SYMBOL_WIFI, 0x94a3b8);
+    lv_obj_t *volume_icon = desk_label(top, 0, 0, LV_SYMBOL_VOLUME_MAX, 0x94a3b8);
+    lv_obj_align(network_icon, LV_ALIGN_LEFT_MID, 60, 0);
+    lv_obj_align(volume_icon, LV_ALIGN_LEFT_MID, 98, 0);
+    static const lv_point_precise_t outer_wave[] = {
+        {0, 0}, {2, 3}, {3, 7}, {3, 11}, {2, 15}, {0, 18}
+    };
+    lv_obj_t *volume_wave = lv_line_create(top);
+    lv_line_set_points(volume_wave, outer_wave, sizeof outer_wave / sizeof outer_wave[0]);
+    lv_obj_set_style_line_width(volume_wave, 1, 0);
+    lv_obj_set_style_line_color(volume_wave, lv_color_hex(0x94a3b8), 0);
+    lv_obj_align(volume_wave, LV_ALIGN_LEFT_MID, 114, 0);
     if (dtb_find_bases("arm,pl031", &rtc_base, 1) > 0) {
         clock_label = desk_label(top, 0, 0, "", 0xdce8ff);
         lv_obj_align(clock_label, LV_ALIGN_RIGHT_MID, -26, 0);
@@ -1692,16 +1812,48 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_text_line_space(events_text, 10, 0);
     select_monitor_tab(SYSTEM_TASK);
 
-    page_files = desktop_window(screen, 180, 156, 500, 286, "Files");
+    demo_window = desktop_window(screen, 150, 130, GUEST_PREVIEW_WIDTH + 24,
+                                 GUEST_PREVIEW_HEIGHT + 96, "Demo");
+    demo_output = desk_label(demo_window, 12, GUEST_PREVIEW_HEIGHT + 52, "", 0x243650);
+    demo_status = desk_label(demo_window, 12, 48, "", 0x536782);
+    demo_image = lv_image_create(demo_window);
+    lv_obj_add_flag(demo_image, LV_OBJ_FLAG_CLICKABLE);
+    lv_group_add_obj(group, demo_image);
+    lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_KEY, NULL);
+    lv_obj_set_pos(demo_image, 10, 46);
+    demo_frame.header.magic = LV_IMAGE_HEADER_MAGIC;
+    demo_frame.header.cf = LV_COLOR_FORMAT_XRGB8888;
+    demo_frame.header.w = GUEST_PREVIEW_WIDTH;
+    demo_frame.header.h = GUEST_PREVIEW_HEIGHT;
+    demo_frame.header.stride = GUEST_PREVIEW_WIDTH * 4;
+    demo_frame.data_size = GUEST_PREVIEW_HEIGHT * GUEST_PREVIEW_WIDTH * 4;
+    monitor_visible(demo_window, 0);
+    page_zip = desktop_window(screen, 216, 170, 560, 220, "ZIP");
+    desk_label(page_zip, 24, 68, "Export the Demo application package", 0x536782);
+    zip_status = desk_label(page_zip, 24, 160, "", 0x64748b);
+    lv_obj_t *zip_title, *zip_meta;
+    lv_obj_t *export_row = files_row(page_zip, "Export demo.wap", 239, &zip_title, &zip_meta);
+    lv_label_set_text(zip_meta, "Stored ZIP application package");
+    monitor_visible(page_zip, 0);
+    page_files = desktop_window(screen, 180, 156, 500, 336, "Files");
     desk_label(page_files, 24, 68, "Desktop", 0x536782);
-    lv_obj_t *note_title;
-    file_entry = files_row(page_files, "Note.txt", 213, &note_title, &file_metadata);
-    source_entry = files_row(page_files, "", 233, &source_title, &source_metadata);
+    file_entry = desktop_file(page_files, 20, 94, "Note.txt", "TXT", 213, NULL);
+    source_entry = desktop_file(page_files, 116, 94, "", ".c", 233, &source_title);
+    package_entry = desktop_file(page_files, 212, 94, "demo.wap", "WAP", 240, NULL);
+    lv_obj_set_style_bg_color(package_entry, lv_color_hex(0xd6e8fb), LV_STATE_CHECKED);
+    lv_obj_set_style_bg_opa(package_entry, LV_OPA_COVER, LV_STATE_CHECKED);
+    monitor_visible(package_entry, 0);
     file_empty = desk_label(page_files, 28, 116, "", 0x64748b);
     lv_obj_add_flag(file_entry, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
     source_icon = desktop_file(screen, 12, 66, "", ".c", 233, &source_caption);
     note_icon = desktop_file(screen, 12, 164, "Note.txt", "TXT", 213, NULL);
+    package_icon = desktop_file(screen, 12, 66, "demo.wap", "WAP", 240, NULL);
+    lv_obj_set_style_bg_color(package_icon, lv_color_hex(0x324a68), LV_STATE_CHECKED);
+    lv_obj_set_style_bg_opa(package_icon, LV_OPA_COVER, LV_STATE_CHECKED);
+    monitor_visible(package_icon, 0);
     monitor_visible(source_entry, 0);
     monitor_visible(source_icon, 0);
     monitor_visible(note_icon, 0);
@@ -1735,7 +1887,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     monitor_visible(page_shell, 0);
     page_apps = desktop_window(screen, 136, 132, 540, 416, "Apps");
     lv_obj_t *test_entry = NULL;
-    static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST};
+    static const enum app_key catalog[] = {APP_SYSTEM, APP_FILES, APP_NOTES, APP_SPEED, APP_VIDEO, APP_MUSIC, APP_SHELL, APP_TEST, APP_ZIP};
     for (unsigned i = 0; i < sizeof catalog / sizeof catalog[0]; i++) {
         enum app_key key = catalog[i];
         lv_obj_t *entry = app_icon(page_apps, key, 34 + (int)(i % 3) * 174,
@@ -1802,6 +1954,49 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
     }
     printf("[menu] serial 6 10 13 14 15 16 18 stay on the coverage page\n");
+    power_backdrop = lv_obj_create(screen);
+    lv_obj_remove_style_all(power_backdrop);
+    lv_obj_set_size(power_backdrop, lv_pct(100), lv_pct(100));
+    lv_obj_remove_flag(power_backdrop, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(power_backdrop, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(power_backdrop, power_dismiss, LV_EVENT_CLICKED, NULL);
+    monitor_visible(power_backdrop, 0);
+    power_menu = lv_obj_create(screen);
+    lv_obj_set_pos(power_menu, 10, 43);
+    lv_obj_set_size(power_menu, 196, 86);
+    lv_obj_set_style_pad_all(power_menu, 8, 0);
+    lv_obj_set_style_radius(power_menu, 11, 0);
+    lv_obj_set_style_border_width(power_menu, 1, 0);
+    lv_obj_set_style_shadow_width(power_menu, 18, 0);
+    lv_obj_set_style_shadow_ofs_y(power_menu, 5, 0);
+    lv_obj_set_style_shadow_opa(power_menu, LV_OPA_40, 0);
+    lv_obj_set_style_bg_color(power_menu, lv_color_hex(0x152641), 0);
+    lv_obj_set_style_border_color(power_menu, lv_color_hex(0x415674), 0);
+    lv_obj_remove_flag(power_menu, LV_OBJ_FLAG_SCROLLABLE);
+    for (unsigned i = 0; i < 2; i++) {
+        lv_obj_t *button = lv_button_create(power_menu);
+        lv_obj_set_pos(button, 0, i * 35);
+        lv_obj_set_size(button, lv_pct(100), 32);
+        lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_HOVERED);
+        lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_PRESSED);
+        lv_obj_set_style_bg_color(button, lv_color_hex(0x293f5c), LV_STATE_HOVERED);
+        lv_obj_set_style_bg_color(button, lv_color_hex(0x355375), LV_STATE_PRESSED);
+        lv_obj_set_style_shadow_width(button, 0, 0);
+        lv_obj_t *icon = desk_label(button, 0, 0, i ? LV_SYMBOL_REFRESH : LV_SYMBOL_POWER,
+                                   i ? 0xaecaf1 : 0xf4b6bd);
+        lv_obj_t *label = desk_label(button, 0, 0, i ? "Restart" : "Shut Down", 0xf5f8ff);
+        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 10, 0);
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, 36, 0);
+        lv_obj_add_event_cb(button, power_click, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)(i ? POWER_RESET : POWER_OFF));
+    }
+    power_status = lv_label_create(power_menu);
+    lv_obj_set_pos(power_status, 0, 73);
+    lv_obj_set_width(power_status, lv_pct(100));
+    lv_obj_set_style_text_color(power_status, lv_color_hex(0xdce8ff), 0);
+    lv_label_set_text(power_status, "");
+    monitor_visible(power_menu, 0);
     printf("[lvgl] ready\n");
 
     /* The shell stack is 8 KB. These stay off that stack. */
@@ -1814,6 +2009,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
      * and the scheduler still charges all rendering/input to Tier 3. */
     for (;;) {
         note_disk_poll();
+        power_poll();
         const char *console = proc_console_text();
         if (console) {
             shell_append(console);
@@ -1825,21 +2021,23 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             previous_disk_status = disk_status;
             lv_label_set_text(note_status, disk_status);
             bool has_note = note_disk_text() != NULL;
-            if (has_note)
-                lv_label_set_text_fmt(file_metadata, "Plain text  /  %u bytes", note_disk_bytes());
             monitor_visible(file_entry, has_note);
             monitor_visible(note_icon, has_note);
             const char *name = note_disk_source_name();
             if (name) {
-                lv_obj_set_y(source_entry, has_note ? 168 : 96);
+                lv_obj_set_x(source_entry, 20 + has_note * 96);
                 lv_label_set_text(source_title, name);
-                lv_label_set_text_fmt(source_metadata, "C source  /  %u bytes",
-                                      (unsigned)lv_strlen(note_disk_source()));
                 lv_label_set_text(source_caption, name);
             }
             monitor_visible(source_entry, name != NULL);
             monitor_visible(source_icon, note_disk_source() != NULL);
-            monitor_visible(file_empty, !has_note && !name);
+            unsigned package_size;
+            int has_package = note_disk_package(&package_size) != NULL;
+            monitor_visible(package_entry, has_package);
+            lv_obj_set_y(package_icon, name ? (has_note ? 262 : 164) : 66);
+            monitor_visible(package_icon, has_package);
+            lv_obj_set_x(package_entry, 20 + (has_note + (name != NULL)) * 96);
+            monitor_visible(file_empty, !has_note && !name && !has_package);
             lv_label_set_text(file_empty, !strcmp(disk_status, "Ready") ? "No saved files" : disk_status);
             if (save_since && strcmp(disk_status, "Saving...")) {
                 struct app_display_stats after;
@@ -1848,6 +2046,26 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                        disk_status, now_us()-save_since, after.frames[0]-save_before.frames[0],
                        after.speed_misses-save_before.speed_misses, after.max_gap_us);
                 save_since = 0;
+            }
+        }
+        proc_finish_pending();
+        if (demo_handle > 0) {
+            char line[129];
+            if (proc_backend_output(demo_handle, line, sizeof line))
+                lv_label_set_text(demo_output, line);
+            unsigned frame_number;
+            const uint32_t *surface = proc_page_surface(demo_handle, &frame_number);
+            if (surface && displayed_frame != frame_number) {
+                displayed_frame = frame_number;
+                demo_frame.data = (const uint8_t *)surface;
+                lv_image_set_src(demo_image, &demo_frame);
+                monitor_visible(demo_status, 0);
+                monitor_visible(demo_image, 1);
+                lv_obj_invalidate(demo_image);
+                printf("[wap] page frame complete handle=%ld generation=%u\n", (long)demo_handle, displayed_frame);
+            } else if (!surface && proc_pid(demo_handle) < 0) {
+                lv_label_set_text(demo_status, "The page process exited before drawing the window.");
+                demo_handle = 0;
             }
         }
         take_inputs();

@@ -1,0 +1,51 @@
+source_set("window") {
+  sources = [
+    "package_document.cc",
+    "package_document.h",
+    "page_frame_client.cc",
+    "page_frame_client.h",
+    "page_widget.cc",
+    "page_widget.h",
+    "page_paint.cc",
+    "page_paint.h",
+    "window_input.cc",
+    "window_input.h",
+    "window_surface.cc",
+    "window_surface.h",
+  ]
+  defines = [ "INSIDE_BLINK" ]
+  include_dirs = [ ".." ]
+  deps = [
+    "//base",
+    "//skia",
+    "//cc/paint",
+    "//third_party/blink/renderer/core",
+    "//third_party/blink/public:blink_headers",
+    "//third_party/blink/public/common",
+    "//ui/latency",
+  ]
+}
+
+executable("quota-blink") {
+  configs += [ "//v8:external_startup_data" ]
+  sources = [ "main.cc" ]
+  defines = [ "INSIDE_BLINK" ]
+  include_dirs = [ ".." ]
+  deps = [
+    ":window",
+    "//base:i18n",
+    "//components/viz/common",
+    "//gin",
+    "//ui/base",
+    "//third_party/blink/public:resources",
+    "//mojo/core/embedder",
+    "//third_party/blink/public:blink",
+  ]
+}
+
+group("runtime") {
+  deps = [
+    ":quota-blink",
+    "//node:node",
+  ]
+}

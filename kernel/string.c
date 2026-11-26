@@ -1,7 +1,9 @@
 #include "quotaos.h"
 
 /* 对齐部分按 8 字节写：内核在周期边界清演示统计，逐字节写太慢。 */
+#if defined(__GNUC__) && !defined(__clang__)
 __attribute__((optimize("no-tree-loop-distribute-patterns")))
+#endif
 void *memset(void *dst, int c, size_t n)
 {
     uint8_t *p = dst;
@@ -35,7 +37,9 @@ void str_copy(char *dst, const char *src, int cap)
     dst[i] = 0;
 }
 
+#if defined(__GNUC__) && !defined(__clang__)
 __attribute__((optimize("no-tree-loop-distribute-patterns")))
+#endif
 void *memcpy(void *dst, const void *src, size_t n)
 {
     uint8_t *d = dst;
