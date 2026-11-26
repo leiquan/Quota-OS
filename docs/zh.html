@@ -57,7 +57,7 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <ol>
 <li><strong>声明应用。</strong>在包根目录放置 <code>app.json</code>，声明三级。</li>
 <li><strong>编写界面。</strong>在 <code>app.html</code> 中编写页面、样式和浏览器端 JavaScript。</li>
-<li><strong>按需添加后台。</strong>在 <code>app.js</code> 中编写本地处理逻辑。示例通过 <code>rpc.save()</code> 和 <code>rpc.load()</code> 在页面与 Node.js 之间传递保存和读取请求。</li>
+<li><strong>按需添加后台。</strong>在 <code>app.js</code> 中编写本地处理逻辑。示例通过 <code>rpc.get('save', text)</code> 和 <code>rpc.get('load')</code> 在页面与 Node.js 之间传递保存和读取请求。</li>
 </ol>
 <p>在 Files 中打开 <code>demo.wap</code>，保存笔记。保留同一数据盘重启后，再打开应用即可读回原文。已验证的 QEMU 配置为单核 Cortex-A35 和 1 GiB RAM。</p>
 <p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">构建与启动</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo">示例源码</a> · <a href="screenshots/web-node-cold.png">冷启动读回</a> · <a href="tests/frame-intervals/web.json">帧间隔结果</a></p>
