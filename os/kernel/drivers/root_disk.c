@@ -182,7 +182,7 @@ int root_disk_mount(struct ext4_volume *volume)
             if (device) return EXT4_UNSUPPORTED;
             device = node;
         }
-        if (!device) return EXT4_NOT_FOUND;
+        if (!device) return EXT4_NO_VOLUME;
         base = device;
         cached = UINT64_MAX;
         mmio_wr(base + 0x70, 0);

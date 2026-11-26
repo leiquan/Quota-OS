@@ -37,6 +37,7 @@ const char *ext4_result_text(int result)
     case EXT4_NO_SPACE: return "no room in the supported root layout";
     case EXT4_READ_ONLY: return "read-only root disk";
     case EXT4_NOT_FOUND: return "not found";
+    case EXT4_NO_VOLUME: return "no ext4 root disk attached";
     default: return "unknown error";
     }
 }
