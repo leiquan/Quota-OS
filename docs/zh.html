@@ -41,6 +41,17 @@
 <h3>启动、开发与验证</h3><div class="grid editions-grid"><article><h4>CLI</h4><p><strong>启动</strong> · 通过单核 Cortex-A35 QEMU 进入串口命令行。</p><p><strong>开发</strong> · 用 C 编译独立 Test，以二级或三级 EL0 应用运行。</p><p><strong>验证</strong> · 检查配额，并验证笔记在冷启动后能读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/CLI">启动指南</a> · <a href="tests/cli-4m/disk-boot-2.log">验收证据</a></p></article><article><h4>C UI</h4><p><strong>启动</strong> · 启动 1280 × 800 的 LVGL 原生桌面。</p><p><strong>开发</strong> · 用 C 和 LVGL 编写原生界面和应用。</p><p><strong>验证</strong> · 在 Apps → Test 检查准入、配额和仪表帧间隔。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/C-UI">启动指南</a> · <a href="tests/frame-intervals/base.json">验收证据</a></p></article><article><h4>Web UI</h4><p><strong>启动</strong> · 启动带三级 WAP 运行时的 LVGL 桌面。</p><p><strong>开发</strong> · 用 HTML、CSS、JavaScript 和可选的 Node.js 后台编写 WAP 应用。</p><p><strong>验证</strong> · 在 Files 打开示例，保存笔记并在冷启动后读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">启动指南</a> · <a href="screenshots/web-node-cold.png">验收证据</a></p></article></div>
 <h3>桌面示例</h3><div class="edition-pair"><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="C UI · 二级任务准入"></a><figcaption>C UI · 二级任务准入</figcaption></figure></div><div><figure><a class="capture" href="screenshots/web-node-cold.png"><img loading="lazy" src="screenshots/web-node-cold.png" width="1280" height="800" alt="Web Node Demo · 冷启动读回原文后再次保存"></a><figcaption>Web Node Demo · 冷启动读回原文后再次保存</figcaption></figure></div></div>
 </section>
+<section class="wrap section" id="web-ui">
+<h2>在 Web UI 上开发应用</h2>
+<p>Web UI 保留原生桌面，WAP 应用在三级共享池内运行。Blink 渲染 HTML 和 CSS，V8 执行页面 JavaScript，可选的 Node.js 进程处理后台逻辑。页面与后台使用同一套系统 V8 构建。</p>
+<ol>
+<li><strong>声明应用。</strong>在包根目录放置 <code>app.json</code>，声明三级。</li>
+<li><strong>编写界面。</strong>在 <code>app.html</code> 中编写页面、样式和浏览器端 JavaScript。</li>
+<li><strong>按需添加后台。</strong>在 <code>app.js</code> 中编写本地处理逻辑。示例通过 <code>rpc.save()</code> 和 <code>rpc.load()</code> 在页面与 Node.js 之间传递保存和读取请求。</li>
+</ol>
+<p>在 Files 中打开 <code>demo.wap</code>，保存笔记。保留同一数据盘重启后，再打开应用即可读回原文。已验证的 QEMU 配置为单核 Cortex-A35 和 1 GiB RAM。</p>
+<p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">构建与启动</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo">示例源码</a> · <a href="screenshots/web-node-cold.png">冷启动读回</a> · <a href="tests/frame-intervals/web.json">帧间隔结果</a></p>
+</section>
 <section class="wrap section" id="compare">
 <h2>系统对比</h2><p>同样是预留 CPU 时间，给一组线程分配最低份额、给单个线程设置周期预算、为整个分区排定时间窗，解决的是不同的问题。下表从分配对象和运行规则比较五种做法。</p>
 <div class="compare-scroll" tabindex="0" aria-label="系统对比"><table class="compare-table"><thead><tr><th scope="col">系统与机制</th><th scope="col">CPU 时间分给谁</th><th scope="col">预算怎样生效</th></tr></thead><tbody>

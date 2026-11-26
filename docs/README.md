@@ -21,6 +21,16 @@ The three editions share this directory. Each branch's top-level README describe
 | [C UI](https://github.com/leiquan/Quota-OS/tree/C-UI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Frame timing](tests/frame-intervals/base.json) |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 1 GiB | [Frame timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
 
+## Web UI development · Web UI 开发
+
+Web UI adds a Tier 3 WAP runtime to the native desktop. The package root contains `app.json` (the Tier 3 manifest), `app.html` (HTML, CSS and browser JavaScript) and optional `app.js` (Node.js background logic). Blink renders the page and the demo uses `rpc.save()` and `rpc.load()` to communicate with the Node.js process.
+
+Web UI 在原生桌面上增加三级 WAP 运行时。包根目录的 `app.json` 声明三级，`app.html` 提供页面、样式和浏览器端 JS，可选的 `app.js` 提供 Node.js 后台逻辑。Blink 渲染界面，示例通过本地消息接口保存和读回笔记。
+
+The 1 GiB QEMU profile has separate evidence for WAP cold readback and guest framebuffer timing. / 1 GiB QEMU 配置下，WAP 冷启动读回和虚拟机帧缓冲提交分别有验收记录。
+
+[Build and boot · 构建与启动](https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建) · [Demo source · 示例源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo) · [Cold readback · 冷启动读回](screenshots/web-node-cold.png) · [Frame timing · 帧间隔](tests/frame-intervals/web.json)
+
 ## CLI validation · CLI 验收
 
 The CLI boot image is 72.25 KiB (73,984 bytes). The QEMU default is 4 MiB. Serial interaction and the standalone C Test passed in both quota modes at 3 and 16 MiB in short runs. Saving a note and reading it back after a cold boot passed at 4 and 16 MiB.
