@@ -13,6 +13,10 @@ The three editions share this directory. Each branch's top-level README describe
 | Historical notes · 历史技术记录 | [Technical notes](../TECHNICAL-NOTES.md) · [Older acceptance runs](accept-v008/) · [v016 records](v016/) |
 | Earlier WebKit experiments · 早期 WebKit 原型 | [Page experiment](tests/webkit-page/) · [Runtime experiment](tests/webkit-stack/) |
 
-CLI 的镜像、启动说明与验收证据随 CLI 发布补充。
+## CLI validation · CLI 验收
 
-CLI image, launch instructions, and validation evidence will be added with its release.
+The released CLI image is 75,240 bytes. The QEMU default is 32 MiB. At 17 MiB, the serial console and both quota modes of the separately loaded EL0 Test passed in a short run. At 16 MiB, the console responds and Test is refused. The 17 MiB result is for QEMU and the bundled Test workload.
+
+CLI 镜像为 75,240 字节，QEMU 默认 32 MiB。17 MiB 下串口和独立 EL0 Test 的二三级模式均通过短程验证。16 MiB 下串口可用，Test 被准入拒绝。17 MiB 结果适用于 QEMU 和本次 Test 负载。
+
+[CLI build and launch · 构建与启动](https://github.com/leiquan/Quota-OS/tree/CLI) · [17 MiB](tests/cli/17M.log) · [16 MiB](tests/cli/16M.log) · [Save](tests/cli/disk-boot-1.log) · [Cold readback](tests/cli/disk-boot-2.log)

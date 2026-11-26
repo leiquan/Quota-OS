@@ -1,0 +1,65 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM 0x40000000-0x48000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 2 pool 16 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x400aa000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (8ee6bb0)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x40800000 physical RAM span 16 MB (probed)
+[boot] DTB at 0x40800000
+[boot] DTB snapshot 7820 bytes (header said 1048576)
+[boot] DTB memory 16777216 bytes
+[boot] system reserve 350 us/period, 2048 KB;
+       tier-1 1500 us/period, 13312 KB; guard 80 us/period
+[boot] system reserve grew from 0 KB to 2048 KB to cover the system footprint; tier-1 declarations unchanged
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 23 own colors, padding 1088 KB
+[boot] kernel image+bss 804 KB of the 2048 KB system reserve
+[boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
+[boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
+[boot] clock: icount (counter driven by instruction count)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 396/400 us, stop 7/20 us (measured/declared)
+[dev] sim-blk: job 1991/2000 us, stop 1770/2000 us (measured/declared)
+[dev] sim-cam: job 291/300 us, stop 8/30 us (measured/declared)
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 display-vsync and timer-server bound to their slots
+[boot] slot table from tick 3750000, period 625000 ticks, guard 1250 ticks
+quota> mem
+RAM 16384 KiB system 2048 KiB tier1 13312 KiB app_available 0 KiB
+quota> tasks
+display-vsync tier=1 jobs=1 misses=0
+timer-server tier=1 jobs=0 misses=0
+idle tier=0 jobs=0 misses=0
+shell tier=3 jobs=0 misses=0
+quota> run Test
+REFUSED: device does not meet minimum requirements
+  minimum memory 16 KB > 0 KB for apps
+  (RAM 16384 KB - system reserve - tier-1 - color padding)
+No app can be closed to make room: this device is too small.
+Test admission refused
+quota> run Test t2
+REFUSED: device does not meet minimum requirements
+  minimum memory 16 KB > 0 KB for apps
+  (RAM 16384 KB - system reserve - tier-1 - color padding)
+No app can be closed to make room: this device is too small.
+Test admission refused
+quota> tasks
+display-vsync tier=1 jobs=1 misses=0
+timer-server tier=1 jobs=1 misses=0
+idle tier=0 jobs=0 misses=0
+shell tier=3 jobs=0 misses=0
+quota> events
+period=0 tier1_misses=0 tier2_short=0 tier3_over=0
+quota> 

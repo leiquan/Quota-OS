@@ -23,13 +23,13 @@ CLI, C UI and Web UI share the ARM64 quota kernel. CLI provides the serial conso
 
 | Edition · 发行版 | QEMU RAM · 内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
-| CLI · In development / 开发中 | Minimum under test / 下限实测中 | Pending release / 待发布 |
+| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 17 MiB short validation / 短程通过 · 32 MiB default / 默认 | 75,240 B |
 | [C UI](https://github.com/leiquan/Quota-OS/tree/C-UI) | 64 MiB | 701,852 B |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 1 GiB | 374,867,224 B |
 
-The two desktop figures are verified QEMU launch configurations. The CLI minimum will be published after the serial console and standalone Test are verified on the same image. Graphical builds include their respective UI and runtime components.
+The two desktop figures are verified QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 17 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
-图形版内存值是已验证的 QEMU 启动配置。CLI 下限将在同一镜像完成串口交互和独立 Test 验证后公布。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `demo.wap` 为 **1,705 字节**。
+图形版内存值是已验证的 QEMU 启动配置。CLI 在 17 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `demo.wap` 为 **1,705 字节**。
 
 ### 开发与验证
 
