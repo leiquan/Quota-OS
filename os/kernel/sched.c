@@ -1900,7 +1900,7 @@ void sched_init(void)
 void services_start(void)
 {
     const char *args = dtb_bootargs();
-    int dashboard = !strcmp(args, "apps") || !strcmp(args, "apps-video") || !strcmp(args, TOUCH_EXT4_BOOTARGS) ||
+    int dashboard = !strcmp(args, "apps") || !strcmp(args, "apps-video") || (!strcmp(args, TOUCH_EXT4_BOOTARGS) || !strcmp(args, TOUCH_EXT4_PRODUCT_BOOTARGS)) ||
                     !strcmp(args, "apps-desktop-stall") || !strcmp(args, "apps-lifecycle");
     struct task *t = task_create(dashboard ? "dashboard" : "display-vsync", TIER1, KIND_JOB);
     if (dashboard)

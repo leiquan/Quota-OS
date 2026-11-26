@@ -23,9 +23,20 @@ static const struct {
 };
 
 static unsigned step, started, running, pending;
-static int shell_pending;
+static int shell_pending, files_pending;
 static enum root_operation shell_op;
 static char shell_data[ROOT_SERVICE_BYTES + 1];
+static enum root_operation files_op;
+
+int touch_ext4_enabled(void)
+{
+#ifdef QUOTA_GUI_EXT4
+    const char *args = dtb_bootargs();
+    return !strcmp(args, TOUCH_EXT4_PRODUCT_BOOTARGS) || !strcmp(args, TOUCH_EXT4_BOOTARGS);
+#else
+    return 0;
+#endif
+}
 static uint64_t begin;
 static struct sched_system_info before;
 static struct app_display_stats first_display;
@@ -47,7 +58,7 @@ static int starts_with_word(const char *text, const char *word)
 
 int touch_ext4_shell_command(const char *command, char *reply, size_t capacity)
 {
-    if (auth_state() != AUTH_OPEN || strcmp(dtb_bootargs(), TOUCH_EXT4_BOOTARGS))
+    if (auth_state() != AUTH_OPEN || !touch_ext4_enabled())
         return 0;
     enum root_operation op;
     const char *arg;
@@ -95,23 +106,52 @@ int touch_ext4_shell_command(const char *command, char *reply, size_t capacity)
     return 1;
 }
 
-const char *touch_ext4_shell_poll(void)
+static const char *take_result(enum root_operation op, int *result)
 {
-    if (!shell_pending) return NULL;
     size_t bytes;
-    int result;
-    if (root_service_take(shell_data, ROOT_SERVICE_BYTES, &bytes, &result) != 1)
+    if (root_service_take(shell_data, ROOT_SERVICE_BYTES, &bytes, result) != 1)
         return NULL;
-    shell_pending = 0;
-    printf("[touch-ext4-shell] op=%u result=%d bytes=%lu\n", shell_op, result, (unsigned long)bytes);
-    if (result) return ext4_result_text(result);
-    if (shell_op == ROOT_SAVE) return "ext4 saved";
-    if (shell_op == ROOT_REMOVE) return "ext4 removed";
-    if (!bytes) return shell_op == ROOT_LIST ? "No files." : "Empty file.";
+    printf("[touch-ext4-user] op=%u result=%d bytes=%lu\n", (unsigned)op, *result, (unsigned long)bytes);
+    if (*result) return ext4_result_text(*result);
+    if (op == ROOT_SAVE) return "ext4 saved";
+    if (op == ROOT_REMOVE) return "ext4 removed";
+    if (!bytes) return op == ROOT_LIST ? "No files." : "Empty file.";
     for (size_t i = 0; i < bytes; ++i)
         if (!shell_data[i]) shell_data[i] = '?';
     shell_data[bytes] = 0;
     return shell_data;
+}
+
+const char *touch_ext4_shell_poll(void)
+{
+    if (!shell_pending) return NULL;
+    int result;
+    const char *reply = take_result(shell_op, &result);
+    if (reply) shell_pending = 0;
+    return reply;
+}
+
+int touch_ext4_files_submit(enum root_operation op, const char *name, const char *text, size_t bytes)
+{
+    if (auth_state() != AUTH_OPEN || !touch_ext4_enabled()) return -1;
+    if (touch_ext4_busy()) return 1;
+    int rc = root_service_submit(op, name, text, bytes);
+    if (!rc) {
+        files_pending = 1;
+        files_op = op;
+    }
+    return rc;
+}
+
+const char *touch_ext4_files_poll(enum root_operation *op, int *result)
+{
+    if (!files_pending) return NULL;
+    const char *reply = take_result(files_op, result);
+    if (reply) {
+        *op = files_op;
+        files_pending = 0;
+    }
+    return reply;
 }
 
 static int matches(const char *expected, const char *actual, size_t size)
@@ -150,7 +190,7 @@ void touch_ext4_scroll_step(void)
 {
     if (auth_state() != AUTH_OPEN || strcmp(dtb_bootargs(), TOUCH_EXT4_BOOTARGS))
         return;
-    if (shell_pending) return;
+    if (shell_pending || files_pending) return;
     if (!started) {
         started = running = 1;
         begin = ticks_now();
@@ -166,7 +206,7 @@ void touch_ext4_scroll_step(void)
 
 int touch_ext4_busy(void)
 {
-    return running || shell_pending;
+    return running || shell_pending || files_pending;
 }
 
 void touch_ext4_poll(void)

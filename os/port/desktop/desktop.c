@@ -24,6 +24,7 @@ static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *field;
 static lv_obj_t *notification_label;
+static lv_obj_t *root_name, *root_content, *root_hint, *root_keyboard;
 enum power_action { POWER_NONE, POWER_OFF, POWER_RESET, POWER_LOGOUT };
 static enum power_action requested_power;
 static lv_obj_t *menu_list;
@@ -137,6 +138,8 @@ static void switch_page(struct desktop_page page)
             focus = shell_input;
         else if (page.key == APP_DEMO)
             focus = demo_image;
+        else if (page.key == APP_FILES && root_name)
+            focus = root_name;
     } else {
         lv_obj_remove_flag(dock, LV_OBJ_FLAG_HIDDEN);
     }
@@ -921,6 +924,12 @@ static void end_session(void)
     monitor_visible(source_dialog, 0);
     shell_transcript[0] = 0;
     lv_label_set_text(shell_output, "");
+    if (root_name) {
+        lv_textarea_set_text(root_name, "");
+        lv_textarea_set_text(root_content, "");
+        lv_label_set_text(root_hint, "");
+        monitor_visible(root_keyboard, 0);
+    }
     for (unsigned i = 0; i < APP_COUNT; ++i)
         if (i != APP_SPEED && i != APP_VIDEO && i != APP_MUSIC) states[i] = CLOSED;
     recent_count = 0;
@@ -947,6 +956,38 @@ static void power_poll(void)
     register uint64_t function asm("x0") = action == POWER_RESET ? 0x84000009u : 0x84000008u;
     asm volatile("dsb sy; hvc #0" : "+r"(function) :: "memory");
     lv_label_set_text(notification_label, "Power action unavailable.");
+}
+
+static void root_files_action(lv_event_t *event)
+{
+    enum root_operation op = (uintptr_t)lv_event_get_user_data(event);
+    const char *name = op == ROOT_LIST ? NULL : lv_textarea_get_text(root_name);
+    const char *text = op == ROOT_SAVE ? lv_textarea_get_text(root_content) : NULL;
+    int result = touch_ext4_files_submit(op, name, text, text ? lv_strlen(text) : 0);
+    lv_label_set_text(root_hint, result == 1 ? "Disk busy" : result < 0 ? "Check the file name and content" : "Working...");
+    monitor_visible(root_keyboard, 0);
+}
+
+static void root_keyboard_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
+        lv_keyboard_set_textarea(root_keyboard, lv_event_get_target_obj(event));
+        monitor_visible(root_keyboard, 1);
+        lv_obj_move_foreground(root_keyboard);
+    } else {
+        monitor_visible(root_keyboard, 0);
+    }
+}
+
+static void root_files_poll(void)
+{
+    enum root_operation op;
+    int result;
+    const char *reply = touch_ext4_files_poll(&op, &result);
+    if (!reply) return;
+    if (!result && (op == ROOT_LIST || op == ROOT_READ))
+        lv_textarea_set_text(root_content, reply);
+    lv_label_set_text(root_hint, result || op == ROOT_SAVE || op == ROOT_REMOVE ? reply : "");
 }
 
 static void on_group(lv_event_t *e)
@@ -991,7 +1032,7 @@ static void on_group(lv_event_t *e)
         char output[1024];
         const char *result = output;
         enum shell_action action = touch_ext4_shell_command(command, output, sizeof output)
-                                 ? SHELL_NONE : shell_execute(command, output, sizeof output);
+                                 ? SHELL_PRINT : shell_execute(command, output, sizeof output);
         if (action == SHELL_CLEAR) {
             shell_transcript[0] = 0;
             shell_refresh();
@@ -1217,6 +1258,40 @@ lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, uint32_t 
     lv_label_set_text(o, text);
     lv_obj_set_style_text_color(o, lv_color_hex(color), 0);
     return o;
+}
+
+static void root_files_create(lv_obj_t *page, lv_group_t *group)
+{
+    desk_label(page, 28, 254, "ext4 Root", 0x263552);
+    root_name = lv_textarea_create(page);
+    lv_textarea_set_one_line(root_name, true);
+    lv_textarea_set_max_length(root_name, 80);
+    lv_textarea_set_placeholder_text(root_name, "File name");
+    lv_obj_set_pos(root_name, 28, 288);
+    lv_obj_set_size(root_name, DISPLAY_WIDTH - 56, 56);
+    root_content = lv_textarea_create(page);
+    lv_textarea_set_max_length(root_content, 4096);
+    lv_textarea_set_placeholder_text(root_content, "File content");
+    lv_obj_set_pos(root_content, 28, 414);
+    lv_obj_set_size(root_content, DISPLAY_WIDTH - 56, 570);
+    lv_group_add_obj(group, root_name);
+    lv_group_add_obj(group, root_content);
+    static const char *const names[] = {"List", "Read", "Save", "Delete"};
+    for (unsigned i = 0; i < sizeof names / sizeof names[0]; ++i) {
+        lv_obj_t *button = lv_button_create(page);
+        lv_obj_set_pos(button, 28 + (int)i * 210, 356);
+        lv_obj_set_size(button, 202, 48);
+        lv_obj_center(desk_label(button, 0, 0, names[i], 0xffffff));
+        lv_obj_add_event_cb(button, root_files_action, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+    }
+    root_hint = desk_label(page, 28, 995, "", 0x465e72);
+    root_keyboard = lv_keyboard_create(page);
+    lv_obj_set_size(root_keyboard, lv_pct(100), 410);
+    lv_obj_add_event_cb(root_name, root_keyboard_event, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(root_content, root_keyboard_event, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(root_keyboard, root_keyboard_event, LV_EVENT_CANCEL, NULL);
+    lv_obj_add_event_cb(root_keyboard, root_keyboard_event, LV_EVENT_READY, NULL);
+    monitor_visible(root_keyboard, 0);
 }
 
 static lv_obj_t *files_row(lv_obj_t *parent, const char *name, uintptr_t action,
@@ -2038,6 +2113,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_t *export_row = files_row(page_zip, "Export " WAP_TODO_FILENAME, 239, &zip_title, &zip_meta);
     lv_label_set_text(zip_meta, "Stored ZIP application package");
     page_files = desktop_page_create(screen, "Files");
+    if (touch_ext4_enabled()) root_files_create(page_files, group);
     desk_label(page_files, 24, 68, "Desktop", 0x536782);
     file_entry = desktop_file(page_files, 20, 94, "Note.txt", "TXT", 213, NULL);
     source_entry = desktop_file(page_files, 116, 94, "", ".c", 233, &source_title);
@@ -2200,6 +2276,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         touch_ext4_poll();
         const char *ext4_reply = touch_ext4_shell_poll();
         if (ext4_reply) shell_append(ext4_reply);
+        if (root_content) root_files_poll();
         touch_pressure_memory();
         power_poll();
         const char *console = proc_console_text();

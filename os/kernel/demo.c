@@ -1189,7 +1189,7 @@ void shell_main(void)
     }
 #endif
     int stall = !strcmp(args, "apps-desktop-stall");
-    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || !strcmp(args, TOUCH_EXT4_BOOTARGS) || stall || !strcmp(args, "apps-lifecycle")) {
+    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || (!strcmp(args, TOUCH_EXT4_BOOTARGS) || !strcmp(args, TOUCH_EXT4_PRODUCT_BOOTARGS)) || stall || !strcmp(args, "apps-lifecycle")) {
         app_demo_run(strcmp(args, "apps") != 0, stall);
         for (;;) asm volatile("wfi");
     }
