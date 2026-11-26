@@ -5,7 +5,7 @@
 	<key>CFBundleIdentifier</key>
 	<string>org.quotaos.qemu.ui</string>
 	<key>CFBundleName</key>
-	<string>Quota OS UI</string>
+	<string>Quota OS GUI</string>
 	<key>CFBundleExecutable</key>
 	<string>qemu-system-aarch64</string>
 	<key>CFBundleIconFile</key>

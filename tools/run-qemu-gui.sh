@@ -13,7 +13,7 @@ for arg in "$@"; do
     esac
 done
 if [[ $vm_name_set == 0 ]]; then
-    set -- -name 'Quota OS UI' "$@"
+    set -- -name 'Quota OS GUI' "$@"
 fi
 
 if [[ $(uname -s) != Darwin ]]; then
