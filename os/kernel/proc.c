@@ -381,7 +381,7 @@ struct proc {
 #endif
     struct {
         uint64_t va;
-        unsigned checked, next, needed, reserved;
+        unsigned checked, next, needed, reserved, search_page, free_run;
     } mapping;
     uint64_t dso_used[(ELF_DSO_PAGES + 63) / 64];
     uint64_t dso_anonymous[(ELF_DSO_PAGES + 63) / 64];
