@@ -536,6 +536,15 @@ uint32_t input_drop_count(void);
 void rng_init(void);
 int rng_read(void *dst, unsigned bytes);
 void note_disk_init(void);
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+int proc_runtime_cache_alloc(uint8_t **page);
+void proc_runtime_cache_free(int frame);
+void runtime_volume_init(void);
+int runtime_volume_trim(void);
+void runtime_volume_poll(void);
+int runtime_volume_find(const char *name, uint64_t *offset, uint64_t *size);
+#endif
+
 void note_disk_poll(void);
 int note_disk_power_ready(void);
 int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_t *generation);

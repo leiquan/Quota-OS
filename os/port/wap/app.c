@@ -17,6 +17,31 @@ static int same_package(const unsigned char *data, unsigned size)
     return 1;
 }
 
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+static const char *const runtime_components[] = {"quota-blink", "libv8.so", "node"};
+static unsigned next_component;
+static int volume_pending;
+
+int wap_volume_prepare_poll(void)
+{
+    if (!volume_pending)
+        return 0;
+
+    uint64_t offset, size;
+    int result = runtime_volume_find(runtime_components[next_component], &offset, &size);
+    if (!result)
+        return 0;
+    if (result > 0) {
+        printf("[wap-volume] found %s bytes=%lu\n", runtime_components[next_component], size);
+        if (++next_component < sizeof runtime_components / sizeof runtime_components[0])
+            return 0;
+    }
+    volume_pending = 0;
+    runtime_volume_trim();
+    return result;
+}
+#endif
+
 enum wap_open_result wap_open_saved(int64_t *handle)
 {
     unsigned size;
@@ -32,6 +57,16 @@ enum wap_open_result wap_open_saved(int64_t *handle)
     uintptr_t start = (uintptr_t)wap_worker_start, end = (uintptr_t)wap_worker_end;
     running_size = 0;
     *handle = -1;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    if (!start) {
+        if (!volume_pending) {
+            next_component = 0;
+            runtime_volume_init();
+            volume_pending = 1;
+        }
+        return WAP_VOLUME_PENDING;
+    }
+#endif
     if (!start) return WAP_MISSING_RUNTIME;
     if (end <= start || end - start > UINT32_MAX) return WAP_LOAD_FAILED;
     *handle = proc_spawn_wap_elf(wap_worker_start, end - start, ui->data, ui->size,

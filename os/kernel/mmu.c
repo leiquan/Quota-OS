@@ -25,7 +25,7 @@ static uint64_t l2_lo[512] __attribute__((aligned(4096)));
 static uint64_t l2_ram[512] __attribute__((aligned(4096)));
 /* Two reserve-tail blocks and at most one additional test-page block. */
 static uint64_t l3_storage[3][512] __attribute__((aligned(4096)));
-#ifdef QUOTA_WAP_FULL_RUNTIME
+#if defined(QUOTA_WAP_FULL_RUNTIME) || defined(QUOTA_RUNTIME_VOLUME_BOOT)
 #define RAM_BLOCKS 512
 #else
 #define RAM_BLOCKS 64

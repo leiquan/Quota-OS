@@ -46,7 +46,7 @@
 #define ELF_BRK_PAGES 512u
 #define ELF_WINDOW (ELF_STACK_TOP + ELF_BRK_PAGES * 4096u)
 #else
-#ifdef QUOTA_WAP_INTERPRETER
+#if defined(QUOTA_WAP_INTERPRETER) || defined(QUOTA_RUNTIME_VOLUME_BOOT)
 #define EL0_POOL 128
 #else
 #define EL0_POOL 16
@@ -1613,6 +1613,22 @@ static void free_idx(int idx)
     ++free_frames;
     irq_restore(flags);
 }
+
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+int proc_runtime_cache_alloc(uint8_t **page)
+{
+    uint64_t pa;
+    int frame = alloc_page(&pa);
+    if (frame >= 0)
+        *page = (uint8_t *)(uintptr_t)pa;
+    return frame;
+}
+
+void proc_runtime_cache_free(int frame)
+{
+    free_idx(frame);
+}
+#endif
 
 static uint64_t data_pte(uint64_t pa)
 {

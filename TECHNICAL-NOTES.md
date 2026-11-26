@@ -11,6 +11,15 @@ License: [Apache-2.0](LICENSE)
 初次阅读建议从 [内核入门](docs/kernel-guide.md) 开始。
 
 
+
+## Web UI 按需运行时卷候选
+
+基于 Web-UI `a69ce98`。使用 `QUOTA_RUNTIME_VOLUME_BOOT=1 bash tools/build-lvgl-guest.sh` 构建精简候选，并用 `tools/run-web-node-volume.sh` 挂载只读运行时卷和独立的可写 Todo 数据盘。运行时卷由 `tools/pack-runtime-volume.py` 从已准备的运行时构建目录生成。
+
+单核 512 MiB QEMU 验证中，750,896 字节镜像启动桌面，系统预留 16 MiB。打开 WAP 前无运行时卷初始化记录。打开后三级存储准入 80 KiB，从卷索引定位 Blink、V8 和 Node.js，然后归还缓存。三个组件均未执行。后续还需把 ELF 映射、缺页恢复和私有页准入接到正式启动路径。
+
+同一精简镜像通过独立的三级组合压力测试，GPS Speed 和 Flight Camera 最大间隔为 10 ms 和 40 ms，一级遗漏和二级欠配额为 0。测试期间未运行磁盘加载的 Todo。
+
 ## Music Player 的三级帧率
 
 GPS Speed 和 Flight Camera 的目标提交间隔分别为 10 ms 和 40 ms。Music Player 使用三级剩余 CPU，移除了该示例每 10 ms 最多提交两帧的限制。仍通过有界绘制队列提交并逐帧让出 CPU，其余 EL0 画面客户端继续使用通用限额。柱状历史按实际样本调整量程。
