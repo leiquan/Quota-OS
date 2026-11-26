@@ -38,7 +38,9 @@ The two desktop figures are verified QEMU launch configurations. CLI passed seri
 - **CLI**：在串口运行基础命令，用 C 编译独立 EL0 Test，并在默认 4 MiB 下验证二三级运行与磁盘读回。[启动指南](https://github.com/leiquan/Quota-OS/tree/CLI) · [验收日志](docs/tests/cli-4m/)
 - **C UI**：在 `kernel/` 开发内核与驱动，在 `port/desktop/` 用 C 和 LVGL 实现界面。用 ARM64 工具链执行 `bash tools/build-lvgl-guest.sh`，再用 `QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh` 启动新镜像。在 Apps → Test 检查准入、CPU 配额和仪表提交。
 - **Web UI 系统**：在准备好的 Chromium 142 与 Node 22.21.1 源码上应用分支内的兼容补丁，用 `tools/build-node-web-runtime.py` 联合构建 Blink 和 Node，使二者依赖相同的 `libv8.so`。将 `QUOTA_NODE_WEB_OUT` 指向联合输出，并指定 ARM64 动态加载器、库目录和字体，再执行 `bash tools/build-lvgl-guest.sh`。产物是 `build/quotaos-node-web.bin`。[构建入口](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/build-node-web-runtime.py) · [镜像配置](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/wap-runtime.sh)
-- **Web UI 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 Web Node Demo。在 Files 双击后，页面通过 `rpc.save(text)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Web Node Demo 即可检查原文。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo)
+- **Web UI 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 Web Node Demo。在 Files 双击后，页面通过 `rpc.get('save', text)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Web Node Demo 即可检查原文。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo)
+
+页面与后台均可用 `await rpc.set(name, handler)` 注册方法，用 `await rpc.get(name, ...args)` 调用对端并接收返回值。每个运行中的 WAP 实例有一张方法名表。注册成功后方法名归注册端所有，直到该实例结束。同端重复、跨端重名以及注册 `set`、`get` 都会拒绝 Promise。并发争用同一名称只有一次注册成功。参数和返回值用 JSON 表示，每个消息最多 1024 个 UTF-8 字节。
 
 ![C UI 的二级任务准入检查](docs/screenshots/c-lvgl-admission.png)
 

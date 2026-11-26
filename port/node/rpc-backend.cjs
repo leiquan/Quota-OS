@@ -23,5 +23,5 @@
     }
   }
 
-  installQuotaRpc(writePacket, readPacket);
+  installQuotaRpc(writePacket, readPacket, true);
 })();

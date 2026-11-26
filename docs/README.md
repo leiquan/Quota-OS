@@ -23,7 +23,7 @@ The three editions share this directory. Each branch's top-level README describe
 
 ## Web UI development · Web UI 开发
 
-Web UI adds a Tier 3 WAP runtime to the native desktop. The package root contains `app.json` (the Tier 3 manifest), `app.html` (HTML, CSS and browser JavaScript) and optional `app.js` (Node.js background logic). Blink renders the page and the demo uses `rpc.save()` and `rpc.load()` to communicate with the Node.js process.
+Web UI adds a Tier 3 WAP runtime to the native desktop. The package root contains `app.json` (the Tier 3 manifest), `app.html` (HTML, CSS and browser JavaScript) and optional `app.js` (Node.js background logic). Blink renders the page and the demo uses `rpc.get('save', text)` and `rpc.get('load')` to communicate with the Node.js process.
 
 Web UI 在原生桌面上增加三级 WAP 运行时。包根目录的 `app.json` 声明三级，`app.html` 提供页面、样式和浏览器端 JS，可选的 `app.js` 提供 Node.js 后台逻辑。Blink 渲染界面，示例通过本地消息接口保存和读回笔记。
 
