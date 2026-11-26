@@ -12,6 +12,7 @@ kernel/mmu.c
 kernel/sched.c
 kernel/demo.c
 kernel/apps/vehicle.c
+kernel/apps/system_status.c
 kernel/apps/c_demo.c
 kernel/decl.c
 kernel/ipc.c
