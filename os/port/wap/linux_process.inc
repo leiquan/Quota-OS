@@ -362,18 +362,35 @@ static uint64_t runtime_pte(uint64_t pa, unsigned prot)
     return data_pte(pa) | ((prot & 2) ? 0 : AP_RO);
 }
 
-/* Return the first occupied page in a proposed range, or its end. */
-static unsigned first_mapped_page(struct proc *p, unsigned first, unsigned end)
+/* Scan the bitmap in address order. Persist progress at the SVC boundary
+ * so a fragmented address space cannot hold IRQs off for an entire search. */
+static int find_mapping_slice(struct proc *p, unsigned pages, unsigned *first)
 {
-    while (first < end) {
-        uint64_t bits = p->dso_used[first / 64] & (~0ull << (first % 64));
-        if (bits) {
-            unsigned page = (first & ~63u) + __builtin_ctzll(bits);
-            return page < end ? page : end;
+    uint64_t stop = ticks_now() + us_to_ticks(8);
+    unsigned cursor = p->mapping.search_page, run = p->mapping.free_run;
+    while (cursor < ELF_DSO_PAGES) {
+        unsigned offset = cursor % 64;
+        uint64_t used = p->dso_used[cursor / 64] >> offset;
+        if (used & 1) {
+            unsigned occupied = used == UINT64_MAX ? 64 : __builtin_ctzll(~used);
+            cursor += occupied;
+            run = 0;
+        } else {
+            unsigned free = used ? __builtin_ctzll(used) : 64 - offset;
+            cursor += free;
+            run += free;
+            if (run >= pages) {
+                *first = cursor - run;
+                return 1;
+            }
         }
-        first = (first & ~63u) + 64;
+        if (ticks_now() >= stop) {
+            p->mapping.search_page = cursor;
+            p->mapping.free_run = run;
+            return 0;
+        }
     }
-    return end;
+    return -12;
 }
 
 static void reserve_empty_pages(struct proc *p, unsigned first, unsigned pages)
@@ -625,6 +642,13 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
 {
     uint64_t va = f->r[0], len = f->r[1], prot = f->r[2], flags = f->r[3], off = f->r[5];
     int op = f->r[8], map = op == 222;
+    /* Every mapping slice returns through the scheduler before continuing.
+     * Leave time before the next protected slot for a page and exception exit. */
+    uint64_t now = ticks_now();
+    if (sched_next_guard(now) <= now + us_to_ticks(80)) {
+        f->elr -= 4;
+        return f->r[0];
+    }
 #ifdef QUOTA_WAP_FULL_RUNTIME
     /* glibc reserves an aligned DSO span with MAP_DENYWRITE before replacing
      * it with file-backed PT_LOAD segments. Keep that span in the DSO window. */
@@ -652,26 +676,33 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
 #endif
     if (p->mapping.va) va = p->mapping.va;
     else if (map && !(flags & 16)) {
-        unsigned first = 0;
-        while (first + pages <= ELF_DSO_PAGES) {
-            unsigned occupied = first_mapped_page(p, first, first + pages);
-            if (occupied == first + pages) break;
-            first = occupied;
-            while (first < ELF_DSO_PAGES) {
-                uint64_t available = ~p->dso_used[first / 64] & (~0ull << (first % 64));
-                if (available) {
-                    first = (first & ~63u) + __builtin_ctzll(available);
-                    break;
-                }
-                first = (first & ~63u) + 64;
+        unsigned first;
+#ifdef QUOTA_WEB_COLD_TRACE
+        sched_cold_mmap_stage(1);
+#endif
+        int result = find_mapping_slice(p, pages, &first);
+        if (result <= 0) {
+            if (result < 0) {
+                memset(&p->mapping, 0, sizeof p->mapping);
+                return result;
             }
+            f->elr -= 4;
+            return f->r[0];
         }
-        if (first + pages > ELF_DSO_PAGES) return -12;
         va = ELF_DSO_BASE + first * 4096;
-        if ((flags & 32) && !prot) {
-            reserve_empty_pages(p, first, pages);
-            return va;
+    }
+    if (map && !(flags & 16) && (flags & 32) && !prot) {
+        p->mapping.va = va;
+        unsigned left = pages - p->mapping.next;
+        unsigned count = left < 512 ? left : 512;
+        reserve_empty_pages(p, (va - ELF_DSO_BASE) / 4096 + p->mapping.next, count);
+        p->mapping.next += count;
+        if (p->mapping.next < pages) {
+            f->elr -= 4;
+            return f->r[0];
         }
+        memset(&p->mapping, 0, sizeof p->mapping);
+        return va;
     }
     /* glibc seals the executable and interpreter RELRO after relocation. */
     if (op == 226 && (prot == 1 || prot == 3) && !(va & 4095) && va >= ELF_BASE &&
