@@ -134,23 +134,29 @@ static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
                                    unsigned height, unsigned y, uint64_t target,
                                    uint64_t *copy_start)
 {
-    /* Use the virtual timer for the final microsecond. Preserve the scheduler
-     * compare value and never postpone an earlier scheduled interrupt. */
-    uint64_t lead = us_to_ticks(1);
-    while (ticks_now() + lead < target)
-        asm volatile("" ::: "memory");
-    uint64_t flags = irq_save(), compare;
-    asm volatile("mrs %0, cntv_cval_el0" : "=r"(compare));
-    if (compare > target && ticks_now() < target) {
-        asm volatile("msr cntv_cval_el0, %0; isb" :: "r"(target) : "memory");
-        do {
-            asm volatile("wfi" ::: "memory");
-        } while (ticks_now() < target);
-        asm volatile("msr cntv_cval_el0, %0; isb" :: "r"(compare) : "memory");
+    if (clock_is_icount()) {
+        /* The boot calibration verified one counter tick per instruction.
+         * This poll samples every three ticks. Spend the unused part of the
+         * last poll on the actual publication path, keeping the copy phase
+         * independent of the instruction at which rendering finished. */
+        uint64_t late, tail;
+        asm volatile(
+            "1: mrs %0, cntvct_el0\n"
+            "subs %0, %0, %2\n"
+            "b.lo 1b\n"
+            "cmp %0, #2\n"
+            "b.hi 3f\n"
+            "adr %1, 2f\n"
+            "add %1, %1, %0, lsl #2\n"
+            "br %1\n"
+            "2: nop\n"
+            "nop\n"
+            "3:"
+            : "=&r"(late), "=&r"(tail) : "r"(target) : "cc", "memory");
+    } else {
+        while (ticks_now() < target)
+            asm volatile("" ::: "memory");
     }
-    irq_restore(flags);
-    while (ticks_now() < target)
-        asm volatile("" ::: "memory");
     *copy_start = ticks_now();
     typedef uint64_t pixel_pair __attribute__((may_alias));
     for (unsigned row = 0; row < height; row++) {
