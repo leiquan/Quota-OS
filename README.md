@@ -19,9 +19,9 @@ CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the seri
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 512 MiB | 874.2 KiB + runtime volume · 另附运行时卷 |
 | [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 512 MiB | 825.0 KiB (LVGL) |
 
-The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
+Graphical launchers default to two vCPUs. CLI uses one vCPU. The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
-UI 默认分配 64 MiB，Web UI 和 Touch UI 默认分配 512 MiB 虚拟机内存。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 从独立只读卷加载运行时、动态库和字体，示例 `todo.wap` 为 **2,021 字节**。
+三个图形版默认配置两个虚拟 CPU。UI 默认分配 64 MiB，Web UI 和 Touch UI 默认分配 512 MiB 虚拟机内存。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 从独立只读卷加载运行时、动态库和字体，示例 `todo.wap` 为 **2,021 字节**。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
