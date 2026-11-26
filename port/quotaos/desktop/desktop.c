@@ -694,48 +694,6 @@ static void shell_append(const char *line)
     shell_refresh();
 }
 
-static void power_dismiss(lv_event_t *e)
-{
-    (void)e;
-    monitor_visible(power_menu, 0);
-    monitor_visible(power_backdrop, 0);
-}
-
-static void power_click(lv_event_t *e)
-{
-    if (requested_power != POWER_NONE) return;
-    enum power_action action = (uintptr_t)lv_event_get_user_data(e);
-    if (action != POWER_NONE) {
-        requested_power = action;
-        lv_obj_set_height(power_menu, 124);
-        lv_label_set_text(power_status, "Waiting for disk...");
-        return;
-    }
-    lv_obj_set_height(power_menu, 86);
-    lv_label_set_text(power_status, "");
-    monitor_visible(power_backdrop, 1);
-    monitor_visible(power_menu, 1);
-    lv_obj_move_foreground(power_backdrop);
-    lv_obj_move_foreground(power_menu);
-}
-
-static void power_poll(void)
-{
-    if (requested_power == POWER_NONE) return;
-    int ready = note_disk_power_ready();
-    if (!ready) return;
-    enum power_action action = requested_power;
-    requested_power = POWER_NONE;
-    if (ready < 0) {
-        lv_label_set_text(power_status, "Disk error. Power action canceled.");
-        return;
-    }
-    printf("[power] %s after disk ready\n", action == POWER_RESET ? "reset" : "off");
-    register uint64_t function asm("x0") = action == POWER_RESET ? 0x84000009u : 0x84000008u;
-    asm volatile("dsb sy; hvc #0" : "+r"(function) :: "memory");
-    lv_label_set_text(power_status, "Power action unavailable.");
-}
-
 static void show_demo_window(void)
 {
     lv_obj_remove_flag(demo_window, LV_OBJ_FLAG_HIDDEN);
