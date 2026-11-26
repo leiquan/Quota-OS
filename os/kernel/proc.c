@@ -131,6 +131,24 @@ int proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y)
 #endif
 }
 
+int proc_page_drag(int64_t handle, unsigned x, unsigned start_y, unsigned end_y)
+{
+#ifdef QUOTA_LINUX_APP_RUNTIME
+    uint64_t flags = irq_save();
+    int queued = handle > 0 && handle == page_owner && input_count <= 62;
+    if (queued) {
+        window_input[(input_head + input_count) % 64] = (typeof(window_input[0])){1, x, start_y};
+        window_input[(input_head + input_count + 1) % 64] = (typeof(window_input[0])){2, x, end_y};
+        input_count += 2;
+    }
+    irq_restore(flags);
+    return queued;
+#else
+    (void)handle; (void)x; (void)start_y; (void)end_y;
+    return 0;
+#endif
+}
+
 int proc_backend_output(int64_t handle, char *out, unsigned size)
 {
 #ifdef QUOTA_LINUX_APP_RUNTIME

@@ -306,6 +306,12 @@ void touch_ext4_poll(void)
         finish(1, 0);
     } else {
         /* Continue exercising the disk across multiple visible swipe frames. */
-        next_request = ticks_now() + us_to_ticks(350000);
+        next_request = ticks_now() + us_to_ticks(
+#ifdef QUOTA_TOUCH_SMP
+            1400000
+#else
+            350000
+#endif
+        );
     }
 }

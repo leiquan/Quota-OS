@@ -441,9 +441,10 @@ static void demo_input_event(lv_event_t *e)
         int delta = scroll_y - y;
         if (delta >= 20 || delta <= -20) {
             scrolling = true;
-            scroll_y = y;
-            if (proc_page_input(demo_handle, 3, delta > 0 ? 0xe000 : 0xe001, 0))
+            if (proc_page_drag(demo_handle, x, scroll_y, y)) {
+                scroll_y = y;
                 touch_ext4_scroll_step();
+            }
         }
     } else if (touching && code == LV_EVENT_RELEASED) {
         touching = false;

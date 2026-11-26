@@ -81,11 +81,16 @@ int app_desktop_mode(void)
     return app_display_enabled ? (video_configured ? 2 : 1) : 0;
 }
 
-/* The 10 s test produces about 1,250 records. Never log from the drawing path. */
+/* Keep complete frame records in memory and print after the probe. */
 static struct frame_trace {
     uint64_t release, start, copy, commit;
     unsigned stream;
-} frame_trace[1536];
+}
+#ifdef QUOTA_TOUCH_SMP
+frame_trace[4096];
+#else
+frame_trace[1536];
+#endif
 static unsigned trace_count, trace_dropped;
 static volatile int trace_active;
 #ifdef SYSTEM_STATUS_ENABLED
