@@ -1,4 +1,5 @@
 #include "quotaos.h"
+#include "auth.h"
 
 /* Dedicated framebuffer demo mode. The desktop never draws on these regions. */
 static uint32_t *volatile app_surface;
@@ -130,11 +131,19 @@ void app_frame_trace_dump(void)
  * release-relative phase. Commit timestamps are taken after the real stores. */
 static uint32_t speed_pixels[APP_DASH_H][APP_DASH_W] __attribute__((aligned(8)));
 static uint32_t camera_pixels[APP_METER_H][APP_METER_W] __attribute__((aligned(8)));
+_Static_assert(APP_DASH_H <= APP_METER_H && APP_DASH_W <= APP_METER_W,
+               "locked surface must fit both instruments");
+static uint32_t locked_pixels[APP_METER_H][APP_METER_W] __attribute__((aligned(8)));
 
 static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
                                    unsigned height, unsigned y, uint64_t target,
                                    uint64_t *copy_start)
 {
+    /* Keep fixed-phase instrument work alive while the login screen owns scanout. */
+    int visible = auth_state() == AUTH_OPEN;
+    uint32_t *surface = visible ? app_surface + y * app_stride + APP_DRAW_X
+                               : &locked_pixels[0][0];
+    unsigned stride = visible ? app_stride : APP_METER_W;
     if (clock_is_icount()) {
         /* The boot calibration verified one counter tick per instruction.
          * This poll samples every three ticks. Spend the unused part of the
@@ -161,7 +170,7 @@ static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
     *copy_start = ticks_now();
     typedef uint64_t pixel_pair __attribute__((may_alias));
     for (unsigned row = 0; row < height; row++) {
-        uint32_t *line = app_surface + (y + row) * app_stride + APP_DRAW_X;
+        uint32_t *line = surface + row * stride;
         const uint32_t *source = pixels + row * width;
         if ((uintptr_t)line & 7) {
             for (unsigned col = 0; col < width; col++) line[col] = source[col];
