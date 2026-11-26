@@ -1,3 +1,4 @@
+#include "auth.h"
 /*
  * EL0 processes. Each live app has its own TTBR0. EL0 can touch only its
  * code, stack, and draw page. Kernel RAM, devices, the global framebuffer,
@@ -45,6 +46,7 @@ extern char user_blob_end[];
 static char console_text[129];
 static int console_updated;
 struct proc {
+    unsigned session_owned;
     int console;
     int slot;
     int alive;
@@ -496,7 +498,8 @@ int disp_drain(int max)
          * Kill may cancel queued work, but cannot free a pinned draw page. */
         p->active_draws++;
         irq_off_end(span);
-        blit(work.pa, work.x, work.y, work.w, work.h);
+        if (auth_state() == AUTH_OPEN)
+            blit(work.pa, work.x, work.y, work.w, work.h);
         irq_off_begin(&span);
         p->active_draws--;
         p->hold--;
@@ -997,6 +1000,7 @@ static int64_t spawn_image(const char *code, unsigned bytes, int console, const 
         struct irq_span off0;
         uint64_t published;
         irq_off_begin(&off0);
+        p->session_owned = auth_state() == AUTH_OPEN;
         p->alive = 1;
         task_ready(p->task);
         published = make_handle(p);
@@ -1085,4 +1089,10 @@ void proc_init(void)
 uint64_t proc_irq_off_max_us(void)
 {
     return ticks_to_us(irq_off_max);
+}
+
+void proc_stop_session(void)
+{
+    for (unsigned i = 0; i < EL0_SLOTS; ++i)
+        if (procs[i].alive && procs[i].session_owned) proc_kill(make_handle(&procs[i]));
 }

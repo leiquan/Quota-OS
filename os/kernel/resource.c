@@ -18,6 +18,9 @@ static const struct tier1_decl tier1_table[] = {
     {"gic-server", "中断路由，只保留槽（空槽）", 300, 6000, 2048},
     {"blk-driver", "存储驱动的槽（失控演示借它）", 400, 8000, 4096},
     {"net-driver", "网络驱动，只占内存", 0, 0, 4096},
+#ifdef SYSTEM_STATUS_ENABLED
+    {SYSTEM_STATUS_TASK, "System status sample", 50, 9000, 4},
+#endif
 };
 
 static const struct app_manifest catalog[] = {
@@ -106,7 +109,7 @@ uint32_t system_reserve_kb(void)
     extern char __image_start[], __image_end[];
     uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
     /* Image plus the configured display surface. Stay at 16 MB when that already fits. */
-    uint64_t need = ((uint64_t)__image_end - base) + (uint64_t)LVGL_FB_BYTES;
+    uint64_t need = ((uint64_t)__image_end - base) + (uint64_t)LVGL_FB_BYTES + 2 * (8192 + 4096); /* keyboard and tablet rings and event pages */
     uint32_t kb = (uint32_t)((need + 1023ull) / 1024ull);
     if (kb < KERNEL_RESERVE_KB)
         kb = KERNEL_RESERVE_KB;
