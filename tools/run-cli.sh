@@ -21,6 +21,17 @@ if [[ ${CLI_TEST:-1} == 1 ]]; then
            -device "loader,file=$image,addr=$addr,force-raw=on"
            -device "loader,addr=$((addr+4096)),data=$((size)),data-len=4")
 fi
+if [[ -z ${CLI_ROOT_DISK+x} && ${CLI_ROOT_RW:-0} != 1 ]]; then
+    CLI_ROOT_DISK=build/cli/todo-root.ext4
+    if [[ ! -e $CLI_ROOT_DISK ]]; then
+        temp=$(mktemp build/cli/todo-root.XXXXXX)
+        trap 'rm -f "$temp"' EXIT
+        gzip -dc examples/todo/cli-root.ext4.gz > "$temp"
+        ln "$temp" "$CLI_ROOT_DISK" || [[ -f $CLI_ROOT_DISK ]]
+        rm -f "$temp"
+        trap - EXIT
+    fi
+fi
 if [[ ${CLI_ROOT_RW:-0} == 1 ]]; then
     if [[ -z ${CLI_ROOT_DISK:-} || ( -n ${CLI_DISK:-} && "$CLI_ROOT_DISK" -ef "$CLI_DISK" ) ]]; then
         echo "CLI_ROOT_RW=1 requires a dedicated CLI_ROOT_DISK" >&2
@@ -36,7 +47,13 @@ elif [[ -n ${CLI_ROOT_DISK:-} ]]; then
            -drive "if=none,id=root,format=raw,readonly=on,file=$CLI_ROOT_DISK"
            -device virtio-blk-device,drive=root,serial=QUOTA-ROOT)
 fi
-if [[ -n ${CLI_DISK:-} ]]; then
+if [[ -z ${CLI_DISK+x} ]]; then
+    CLI_DISK=build/cli/admin.raw
+    if [[ ! -e $CLI_DISK ]]; then
+        python3 tools/init-admin-disk.py "$CLI_DISK"
+    fi
+fi
+if [[ -n $CLI_DISK ]]; then
     args+=(-global virtio-mmio.force-legacy=false -drive "if=none,id=notes,format=raw,file=$CLI_DISK" -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES)
 fi
 if [[ -t 1 ]]; then printf '\033[2J\033[H'; fi

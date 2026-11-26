@@ -1,3 +1,4 @@
+#include "auth.h"
 #include "commit.h"
 #include "quotaos.h"
 #include "root_disk.h"
@@ -158,7 +159,8 @@ static void show_commands(void)
            "         run /FILE      Load an ARM64 console ELF from the root disk\n"
            "Console  echo TEXT      Print text\n"
            "         clear          Clear the terminal screen\n"
-           "         help           Show this command guide\n");
+           "         help           Show this command guide\n"
+           "         logout         Lock the console and return to admin login\n");
 }
 
 static void show_welcome(void)
@@ -194,6 +196,7 @@ void shell_main(void)
     klog_flush();
     note_disk_init();
     wait_for_notes();
+    auth_serial_login();
     show_welcome();
     for (;;) {
         printf("quota> ");
@@ -253,7 +256,12 @@ void shell_main(void)
             printf("Unexpected arguments. Type help for usage.\n");
         else if (!strcmp(command, "help"))
             show_commands();
-        else if (!strcmp(command, "clear"))
+        else if (!strcmp(command, "logout")) {
+            auth_logout();
+            printf("\033[2J\033[H");
+            auth_serial_login();
+            show_welcome();
+        } else if (!strcmp(command, "clear"))
             printf("\033[2J\033[H");
         else if (!strcmp(command, "uname"))
             printf("Quota OS CLI %s (%s) aarch64\n", QUOTAOS_VERSION, QUOTAOS_COMMIT);
