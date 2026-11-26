@@ -1,25 +1,33 @@
 ![Quota OS desktop with the Apps directory and three vehicle demo applications](docs/screenshots/apps.png)
 
-# Quota OS
+# Quota OS · C LVGL 版
 
 Quota OS is an experimental single-core ARM64 operating system built around resource quotas. Its 1280 × 800 LVGL desktop runs on QEMU with one Cortex-A35 core and 64 MiB of RAM by default. A speedometer uses a fixed Tier 1 CPU slot, a dashcam demo requests a Tier 2 reservation, and music and desktop interaction share the Tier 3 pool. CPU deadlines are measured against the guest clock. The demos use simulated speed, video frames and playback activity.
 
 Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
 
-## Desktop editions / 桌面发行版
+## 两个发行版怎么选
 
-The default LVGL build runs the lightweight desktop. Quota OS LVGL+WebKit adds an optional in-guest runtime with WebKit for the interface and Node.js for the backend. The runtime is under development.
+| | [C LVGL 版](https://github.com/leiquan/Quota-OS/tree/C-LVGL) | [Web Node 版](https://github.com/leiquan/Quota-OS/tree/Web-Node) |
+|---|---|---|
+| 镜像大小 | 701,836 B · 685.4 KiB | 375,547,160 B · 358.1 MiB |
+| QEMU 验证内存 | 64 MiB | 1 GiB |
+| 系统实现 | C · AArch64 ASM · LVGL | C · AArch64 ASM · LVGL + C++ (Blink, V8, Node.js) |
+| 应用开发 | C + LVGL | C + LVGL / HTML + CSS + JS / Node.js |
 
-默认构建为轻量 LVGL 桌面。Quota OS LVGL+WebKit 在此基础上增加可选的来宾运行时，由 WebKit 提供界面、Node.js 提供后台。该运行时仍在开发中。
+镜像大小取自 2026-11-26 构建的未压缩 ARM64 启动文件。内存一行是 QEMU 实测配置。Web Node 镜像包含系统共享运行时、ICU 数据、V8 快照、字体及动态依赖；本次导出的 Demo 应用包为 **1,644 字节**。
 
-| Edition / 发行版 | Tier 1 / 一级 | Tier 2 / 二级 | Tier 3 / 三级 |
-|---|---|---|---|
-| Quota OS LVGL | LVGL | LVGL | LVGL |
-| Quota OS LVGL+WebKit | LVGL | LVGL | LVGL or WebKit + Node.js |
+两个版本都使用同一套三级配额机制。一级仪表有固定 CPU 时间槽，二级任务通过准入后获得预算，三级应用共享封顶的剩余时间。C LVGL 适合原生仪表和资源紧张的设备；需要网页布局、页面脚本和 Node 文件 API 时选 Web Node。
 
-The acceptance test for Quota OS LVGL+WebKit puts three workloads on one desktop. GPS Speed must submit a frame every 10 ms. Once admitted, the Flight Camera must receive its reserved CPU time and submit a frame every 40 ms. A Tier 3 web page triggers JavaScript garbage collection while both instruments run. Verification of all three together on the same image is pending.
+### 开发与验证
 
-Quota OS LVGL+WebKit 的验收场景是在同一桌面上运行三个应用：一级速度表每 10 ms 提交一帧；二级行车记录仪获准后拿足预留 CPU 时间，每 40 ms 提交一帧；三级网页同时触发 JavaScript 垃圾回收。三者在同一镜像中运行时的配额和帧间隔仍待验证。
+- **C LVGL**：在 `kernel/` 开发内核与驱动，在 `port/quotaos/desktop/` 用 C 和 LVGL 实现界面。用 ARM64 工具链执行 `bash tools/build-lvgl-guest.sh`，再用 `QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh` 启动新镜像。在 Apps → Test 检查准入、CPU 配额和仪表提交。
+- **Web Node 系统**：在准备好的 Chromium 142 与 Node 22.21.1 源码上应用分支内的兼容补丁，用 `tools/build-node-web-runtime.py` 联合构建 Blink 和 Node，使二者依赖相同的 `libv8.so`。将 `QUOTA_NODE_WEB_OUT` 指向联合输出，并指定 ARM64 动态加载器、库目录和字体，再执行 `bash tools/build-lvgl-guest.sh`。产物是 `build/quotaos-node-web.bin`。[构建入口](https://github.com/leiquan/Quota-OS/blob/Web-Node/tools/build-node-web-runtime.py) · [镜像配置](https://github.com/leiquan/Quota-OS/blob/Web-Node/tools/wap-runtime.sh)
+- **Web Node 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 Demo。在 Files 双击后，页面通过 `rpc.save(text)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Demo 即可检查原文。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-Node/examples/demo)
+
+![C LVGL 的二级任务准入检查](docs/screenshots/c-lvgl-admission.png)
+
+![Web Node 冷启动后恢复便笺并再次保存](docs/screenshots/web-node-cold.png)
 
 ## Run the desktop
 
