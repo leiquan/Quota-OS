@@ -1,5 +1,4 @@
 #include "quotaos.h"
-#include "system_status.h"
 #include "auth.h"
 
 /* Dedicated framebuffer demo mode. The desktop never draws on these regions. */
@@ -233,8 +232,6 @@ void app_display_core_frame(uint64_t release)
     display_commit_tick = now;
     dashboard_frames++;
     trace_frame(0, release, trace_start, copy_start, now);
-    if (dashboard_frames % 100 == 0)
-        system_status_publish(app_surface, app_stride, APP_STATUS_X, APP_STATUS_Y);
 }
 
 static void observe_desktop_stall(uint64_t period)
