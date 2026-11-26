@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="An ARM64 operating system built around CPU quotas.">
 <title>Quota OS — A resource-partitioned operating system</title>
-<link rel="stylesheet" href="site.css?v=quota-polish">
+<link rel="stylesheet" href="site.css?v=readability-3">
 <script src="site.js?v=quota-brand" defer></script>
 <link rel="icon" href="favicon.png?v=quota-brand" type="image/png" sizes="32x32">
 <link rel="icon" href="quota-mark.svg" type="image/svg+xml" sizes="any">
@@ -70,7 +70,10 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <h2>Tier 1 and Tier 2 apps keep updating during a desktop busy loop</h2>
 <p>Each edition booted independently 100 times in single-core ARM64 QEMU. In each run, a Tier 3 task ran a ten-second busy loop under memory and disk pressure. The guest timestamped each completed framebuffer submission from GPS Speed and Flight Camera.</p>
 <div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">Edition</th><th scope="col">Runs passed</th><th scope="col">GPS Speed frames / maximum gap</th><th scope="col">Flight Camera frames / maximum gap</th></tr></thead><tbody><tr><th scope="row">UI · 64 MiB</th><td>100 / 100</td><td>100,359 / 10.000 ms</td><td>25,091 / 40.000 ms</td></tr><tr><th scope="row">Web UI · 1 GiB</th><td>100 / 100</td><td>100,755 / 10.000 ms</td><td>25,184 / 40.000 ms</td></tr></tbody></table></div>
-<p>Across all 200 runs, no interval between consecutive submissions exceeded its 10 ms or 40 ms limit in raw QEMU icount ticks. Neither edition recorded a missed submission deadline, a Tier 2 budget shortfall or a Tier 3 pool overrun. Timing ends at the guest framebuffer write. Host presentation and physical display latency remain unmeasured.</p>
+<div class="table-note">
+<p>Across all 200 runs, no interval between consecutive submissions exceeded its <span class="keep-together">10 ms</span> or <span class="keep-together">40 ms</span> limit in raw QEMU icount ticks. Neither edition recorded a missed submission deadline, a Tier 2 budget shortfall or a Tier 3 pool overrun.</p>
+<p>Timing ends at the guest framebuffer write. Host presentation and physical display latency remain unmeasured.</p>
+</div>
 <div class="evidence-grid"><figure><a class="capture" href="screenshots/base-frame-pass.png"><img loading="lazy" width="1280" height="800" src="screenshots/base-frame-pass.png" alt="UI, run 1: strict frame timing passed"></a><figcaption>UI, run 1: strict frame timing passed. <a href="tests/frame-intervals/base-001.log">Run log</a> · <a href="tests/frame-intervals/base.json">All 100 verdicts</a></figcaption></figure><figure><a class="capture" href="screenshots/web-frame-pass.png"><img loading="lazy" width="1280" height="800" src="screenshots/web-frame-pass.png" alt="Web UI, run 1: strict frame timing passed"></a><figcaption>Web UI, run 1: strict frame timing passed. <a href="tests/frame-intervals/web-001.log">Run log</a> · <a href="tests/frame-intervals/web.json">All 100 verdicts</a></figcaption></figure></div>
 <h3 id="music-pressure">Music Player under Tier 3 pressure</h3>
 <p>Music Player submits as fast as the Tier 3 pool allows. With competing CPU, memory and disk load, it averaged 204.5 FPS in UI and 198.9 FPS in Web UI. Both runs recorded zero Tier 1 misses and Tier 2 shortfalls. GPS Speed and Flight Camera stayed within 10 ms and 40 ms between commits.</p>
