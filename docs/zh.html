@@ -32,12 +32,25 @@
 </section>
 <section class="wrap section" id="editions">
 <h2>三个发行版，共用一个内核</h2><p>CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。C UI 增加 LVGL 原生桌面，Web UI 在此基础上增加由 Blink、V8 和 Node.js 组成的三级 WAP 运行时。</p>
-<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">发行版</th><th scope="col">QEMU 内存</th><th scope="col">ARM64 启动镜像</th></tr></thead><tbody>
-<tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/CLI">CLI</a></th><td>3 MiB 短程通过 · 默认 16 MiB</td><td>72.3 KiB</td></tr>
+<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">发行版</th><th scope="col">QEMU 默认内存</th><th scope="col">ARM64 启动镜像</th></tr></thead><tbody>
+<tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/CLI">CLI</a></th><td>4 MiB</td><td>72.3 KiB</td></tr>
 <tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/C-UI">C UI</a></th><td>64 MiB</td><td>685.4 KiB</td></tr>
 <tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">Web UI</a></th><td>1 GiB</td><td>357.5 MiB</td></tr>
 </tbody></table></div>
-<p>CLI 在 QEMU 3 MiB 配置下通过串口交互和独立 EL0 Test 的二三级短程验证。<a href="tests/cli-16m/3M.log">查看串口日志</a>。</p><p>表中为未压缩的桌面启动镜像大小。Web UI 示例应用包 demo.wap 为 1,705 字节。</p><h3>开发流程</h3><div class="edition-pair"><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="C UI · 二级任务准入"></a><figcaption>C UI · 二级任务准入</figcaption></figure><p>在 C UI 版中，用 C 编写驱动或 LVGL 界面，执行 <code>bash tools/build-lvgl-guest.sh</code>，在 QEMU 的 Apps → Test 检查配额。</p></div><div><figure><a class="capture" href="screenshots/web-node-cold.png"><img loading="lazy" src="screenshots/web-node-cold.png" width="1280" height="800" alt="Web Node Demo · 冷启动读回原文后再次保存"></a><figcaption>Web Node Demo · 冷启动读回原文后再次保存</figcaption></figure><p>Web UI 的系统开发先联合构建 Blink、Node 和共享 V8，再嵌入镜像。应用开发只需将清单、HTML 和可选的后台 JS 打成 WAP，在 Files 双击，保存后用同一磁盘冷启动验证。</p></div></div>
+<p>表中为未压缩的 ARM64 启动镜像大小。Web Node Demo 示例应用包为 1,705 字节。</p>
+<h3>启动、开发与验证</h3><div class="grid editions-grid"><article><h4>CLI</h4><p><strong>启动</strong> · 通过单核 Cortex-A35 QEMU 进入串口命令行。</p><p><strong>开发</strong> · 用 C 编译独立 Test，以二级或三级 EL0 应用运行。</p><p><strong>验证</strong> · 检查配额，并验证笔记在冷启动后能读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/CLI">启动指南</a> · <a href="tests/cli-4m/disk-boot-2.log">验收证据</a></p></article><article><h4>C UI</h4><p><strong>启动</strong> · 启动 1280 × 800 的 LVGL 原生桌面。</p><p><strong>开发</strong> · 用 C 和 LVGL 编写原生界面和应用。</p><p><strong>验证</strong> · 在 Apps → Test 检查准入、配额和仪表帧间隔。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/C-UI">启动指南</a> · <a href="tests/frame-intervals/base.json">验收证据</a></p></article><article><h4>Web UI</h4><p><strong>启动</strong> · 启动带三级 WAP 运行时的 LVGL 桌面。</p><p><strong>开发</strong> · 用 HTML、CSS、JavaScript 和可选的 Node.js 后台编写 WAP 应用。</p><p><strong>验证</strong> · 在 Files 打开示例，保存笔记并在冷启动后读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">启动指南</a> · <a href="screenshots/web-node-cold.png">验收证据</a></p></article></div>
+<h3>桌面示例</h3><div class="edition-pair"><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="C UI · 二级任务准入"></a><figcaption>C UI · 二级任务准入</figcaption></figure></div><div><figure><a class="capture" href="screenshots/web-node-cold.png"><img loading="lazy" src="screenshots/web-node-cold.png" width="1280" height="800" alt="Web Node Demo · 冷启动读回原文后再次保存"></a><figcaption>Web Node Demo · 冷启动读回原文后再次保存</figcaption></figure></div></div>
+</section>
+<section class="wrap section" id="web-ui">
+<h2>在 Web UI 上开发应用</h2>
+<p>Web UI 保留原生桌面，WAP 应用在三级共享池内运行。Blink 渲染 HTML 和 CSS，V8 执行页面 JavaScript，可选的 Node.js 进程处理后台逻辑。页面与后台使用同一套系统 V8 构建。</p>
+<ol>
+<li><strong>声明应用。</strong>在包根目录放置 <code>app.json</code>，声明三级。</li>
+<li><strong>编写界面。</strong>在 <code>app.html</code> 中编写页面、样式和浏览器端 JavaScript。</li>
+<li><strong>按需添加后台。</strong>在 <code>app.js</code> 中编写本地处理逻辑。示例通过 <code>rpc.save()</code> 和 <code>rpc.load()</code> 在页面与 Node.js 之间传递保存和读取请求。</li>
+</ol>
+<p>在 Files 中打开 <code>demo.wap</code>，保存笔记。保留同一数据盘重启后，再打开应用即可读回原文。已验证的 QEMU 配置为单核 Cortex-A35 和 1 GiB RAM。</p>
+<p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">构建与启动</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo">示例源码</a> · <a href="screenshots/web-node-cold.png">冷启动读回</a> · <a href="tests/frame-intervals/web.json">帧间隔结果</a></p>
 </section>
 <section class="wrap section" id="compare">
 <h2>系统对比</h2><p>同样是预留 CPU 时间，给一组线程分配最低份额、给单个线程设置周期预算、为整个分区排定时间窗，解决的是不同的问题。下表从分配对象和运行规则比较五种做法。</p>

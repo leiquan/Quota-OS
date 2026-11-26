@@ -13,12 +13,30 @@ The three editions share this directory. Each branch's top-level README describe
 | Historical notes · 历史技术记录 | [Technical notes](../TECHNICAL-NOTES.md) · [Older acceptance runs](accept-v008/) · [v016 records](v016/) |
 | Earlier WebKit experiments · 早期 WebKit 原型 | [Page experiment](tests/webkit-page/) · [Runtime experiment](tests/webkit-stack/) |
 
+## Edition guides · 各版指南
+
+| Edition · 发行版 | Environment · 环境 | Default QEMU RAM · 默认内存 | Evidence · 验收 |
+|---|---|---|---|
+| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | Serial console · 串口 | 4 MiB | [Standalone Test and cold readback](tests/cli-4m/) |
+| [C UI](https://github.com/leiquan/Quota-OS/tree/C-UI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Frame timing](tests/frame-intervals/base.json) |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 1 GiB | [Frame timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
+
+## Web UI development · Web UI 开发
+
+Web UI adds a Tier 3 WAP runtime to the native desktop. The package root contains `app.json` (the Tier 3 manifest), `app.html` (HTML, CSS and browser JavaScript) and optional `app.js` (Node.js background logic). Blink renders the page and the demo uses `rpc.save()` and `rpc.load()` to communicate with the Node.js process.
+
+Web UI 在原生桌面上增加三级 WAP 运行时。包根目录的 `app.json` 声明三级，`app.html` 提供页面、样式和浏览器端 JS，可选的 `app.js` 提供 Node.js 后台逻辑。Blink 渲染界面，示例通过本地消息接口保存和读回笔记。
+
+The 1 GiB QEMU profile has separate evidence for WAP cold readback and guest framebuffer timing. / 1 GiB QEMU 配置下，WAP 冷启动读回和虚拟机帧缓冲提交分别有验收记录。
+
+[Build and boot · 构建与启动](https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建) · [Demo source · 示例源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo) · [Cold readback · 冷启动读回](screenshots/web-node-cold.png) · [Frame timing · 帧间隔](tests/frame-intervals/web.json)
+
 ## CLI validation · CLI 验收
 
-The CLI boot image is 72.25 KiB (73,984 bytes). The QEMU default is 16 MiB. Serial interaction and the standalone C Test passed in both quota modes at 3 and 16 MiB in short runs. Saving a note and reading it back after a cold boot passed at 16 MiB.
+The CLI boot image is 72.25 KiB (73,984 bytes). The QEMU default is 4 MiB. Serial interaction and the standalone C Test passed in both quota modes at 3 and 16 MiB in short runs. Saving a note and reading it back after a cold boot passed at 4 and 16 MiB.
 
-CLI 启动镜像为 72.25 KiB（73,984 字节），QEMU 默认 16 MiB。3 MiB 和 16 MiB 均通过串口交互及独立 C Test 的二三级短程验证。16 MiB 下已验证保存及冷启动读回。
+CLI 启动镜像为 72.25 KiB（73,984 字节），QEMU 默认 4 MiB。3 MiB 和 16 MiB 均通过串口交互及独立 C Test 的二三级短程验证。4 MiB 和 16 MiB 下已验证保存及冷启动读回。
 
-[CLI build and launch · 构建与启动](https://github.com/leiquan/Quota-OS/tree/CLI) · [3 MiB](tests/cli-16m/3M.log) · [16 MiB](tests/cli-16m/16M.log) · [Save](tests/cli-16m/disk-boot-1.log) · [Cold readback](tests/cli-16m/disk-boot-2.log)
+[CLI build and launch · 构建与启动](https://github.com/leiquan/Quota-OS/tree/CLI) · [3 MiB](tests/cli-16m/3M.log) · [16 MiB](tests/cli-16m/16M.log) · [4 MiB save](tests/cli-4m/disk-boot-1.log) · [4 MiB cold readback](tests/cli-4m/disk-boot-2.log)
 
 [Earlier 32 MiB profile · 早期 32 MiB 配置记录](tests/cli/)
