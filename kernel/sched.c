@@ -107,6 +107,9 @@ static struct task *slot_owner[MAX_SLOTS];
 
 /* 上一段内核停留 */
 static uint64_t prev_entry;
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
+static uint64_t caller_work_ticks;
+#endif
 static int prev_guard;          /* 上一段停留以等待槽起点结束 */
 static uint64_t prev_release;
 
@@ -1356,8 +1359,13 @@ static uint64_t schedule(uint64_t sp, int timer)
     obs_entry = entry;
     obs_now = entry;
 
-    if (prev_stint_sc && !prev_guard && eret > prev_entry) {
-        uint64_t d = eret - prev_entry;
+    uint64_t system_entry = prev_entry;
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
+    system_entry += caller_work_ticks;
+    caller_work_ticks = 0;
+#endif
+    if (prev_stint_sc && !prev_guard && eret > system_entry) {
+        uint64_t d = eret - system_entry;
         pend_b = pend_spin = 0;     /* 这段算调用者的，不算内核每周期 */
         struct task *x = prev_stint_sc;
         /* 全部记在调用者头上。Tier 2 超出预算上限的部分（调用者预算在内核路径里用完）
@@ -1393,7 +1401,7 @@ static uint64_t schedule(uint64_t sp, int timer)
             x->p_kent += c;
         }
     } else {
-        kernel_stint(prev_entry, eret, prev_guard);
+        kernel_stint(system_entry, eret, prev_guard);
     }
     prev_stint_sc = 0;
     prev_stint_srv = 0;
@@ -1557,8 +1565,27 @@ uint64_t handle_sync(uint64_t frame_sp)
     uint32_t ec = (uint32_t)((esr >> 26) & 0x3f);
     if ((f->spsr & 0xfu) == 0) {
         k_ipc_op = 0;
-        if (ec == 0x15)
+        if (ec == 0x15) {
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
+            /* Selected synchronous services run on the caller's budget.
+             * Charge the measured handler interval before dispatch so this
+             * period's remaining Tier 3 pool includes it. */
+            int caller_work = cur->tier == TIER3 && proc_svc_charges_caller(f);
+            uint64_t start = caller_work ? ticks_now() : 0;
+#endif
             proc_el0_svc(f);
+#ifdef QUOTA_CALLER_ACCOUNTED_SVC
+            if (caller_work) {
+                uint64_t elapsed = ticks_now() - start;
+                tier_charge(cur, elapsed);
+                cur->used_t += elapsed;
+                cur->used_total += elapsed;
+                uint64_t next_sp = schedule(frame_sp, 0);
+                caller_work_ticks = elapsed;
+                return next_sp;
+            }
+#endif
+        }
         else
             proc_el0_abort(f, esr);
         return schedule(frame_sp, 0);
