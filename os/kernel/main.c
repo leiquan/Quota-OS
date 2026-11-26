@@ -32,6 +32,9 @@ void kmain(uint64_t dtb)
     uint64_t ram = dtb_ram_bytes(dtb);
     resource_init(ram);
     color_init(ram);
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    proc_bind_color_pool();
+#endif
     printf("[boot] kernel image+bss %lu KB of the %u KB system reserve\n",
            (uint64_t)(__image_end - __image_start) / 1024, system_reserve_kb());
     rng_init();

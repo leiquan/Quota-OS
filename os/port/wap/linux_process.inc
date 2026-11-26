@@ -221,6 +221,8 @@ int proc_prepare_volume_catalog(void)
         if (i && strcmp(disk_names[i - 1], disk_names[i]) >= 0)
             return -1;
         disk_catalog[i].name = disk_names[i];
+        if (!strcmp(disk_names[i], "libv8.so"))
+            volume_v8_index = i;
         ++disk_catalog_cursor;
     }
     if (disk_catalog_cursor != count)
@@ -244,6 +246,11 @@ static const struct runtime_file *disk_catalog_lookup(const char *name)
             low = mid + 1;
     }
     return NULL;
+}
+
+static const char *disk_extent_name(unsigned index)
+{
+    return index < disk_catalog_count ? disk_names[index] : "unknown";
 }
 
 static const struct runtime_volume_file *disk_catalog_extent(unsigned index)
@@ -401,7 +408,7 @@ static void drop_high_frame(struct proc *p, uint64_t *entry)
     uintptr_t pa = FRAME_ADDR(*entry);
     *entry = 0;
     tlb_asid(p->asid);
-    free_idx((pa - (uintptr_t)pool) / 4096);
+    free_idx(pool_index(pa));
     --p->high_frames;
 }
 
@@ -444,6 +451,21 @@ static void release_high(struct proc *p, uint64_t lo, uint64_t hi)
     }
 }
 
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+static int retry_after_reclaim(struct proc *p, unsigned skip, unsigned length)
+{
+    unsigned need = p->mapping.needed;
+    if (!p->clean_pages || need > private_pages_left(p) + p->clean_pages ||
+        need > free_frames - reserved_frames + p->clean_pages ||
+        p->clean_scanned >= ELF_DSO_PAGES) {
+        p->clean_scanned = 0;
+        return 0;
+    }
+    reclaim_disk_page(p, skip, length);
+    return 1;
+}
+#endif
+
 static int64_t protect_high(struct proc *p, struct irq_frame *f, uint64_t va, unsigned pages, unsigned prot)
 {
     if (prot > 7 || (prot & 6) == 6) return -22;
@@ -462,11 +484,19 @@ static int64_t protect_high(struct proc *p, struct irq_frame *f, uint64_t va, un
         if (prot && !e2 && (!i || !(at & ((1ull << 21)-1)))) p->mapping.needed++;
         if (prot && !e3) p->mapping.needed++;
     }
-    if (p->mapping.checked < pages) {
+    if (!p->mapping.next && !p->mapping.reserved) {
         p->mapping.checked = stop;
         if (stop < pages) { f->elr -= 4; return va; }
         if (p->mapping.needed > private_pages_left(p) ||
             p->mapping.needed > free_frames - reserved_frames) {
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+            if (retry_after_reclaim(p, 0, 0)) {
+                f->elr -= 4;
+                return va;
+            }
+            printf("[wap-volume] high commit denied pid=%d pages=%u private_left=%u clean=%u\n",
+                   p->pid, p->mapping.needed, private_pages_left(p), p->clean_pages);
+#endif
             memset(&p->mapping, 0, sizeof p->mapping);
             return -12;
         }
@@ -617,9 +647,7 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     if (map && (((flags & 3) != 2 && !shared_readonly && !share_writable) || (!(flags & 32) && !file) || (off & 4095))) return -22;
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
     const struct runtime_volume_file *disk_file = map && !(flags & 32) ? disk_file_extent(file) : NULL;
-    if (disk_file && (off >= disk_file->size ||
-                      pages > ((disk_file->size - off - 1) >> 12) + 1 ||
-                      (off >> 12) > DISK_DSO_POSITION_MASK - (pages - 1)))
+    if (disk_file && (off >> 12) > DISK_DSO_POSITION_MASK - (pages - 1))
         return -22;
 #endif
     if (p->mapping.va) va = p->mapping.va;
@@ -677,6 +705,10 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
         }
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
         uint64_t old = image_pt[p->slot][(va - ELF_BASE) / 4096 + i];
+        int existing = image_frames[p->slot][p->dso_frame + idx];
+        if (existing >= 0 && v8_references[existing] && !disk_file &&
+            (map || (op == 226 && (prot & 2))))
+            ++p->mapping.needed;
         if (disk_file || (op == 226 && (old & DISK_DSO_PENDING)))
             continue;
 #endif
@@ -691,7 +723,7 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
         if (op != 215 && !reserve && !share &&
             image_frames[p->slot][p->dso_frame + idx] < 0) ++p->mapping.needed;
     }
-    if (p->mapping.checked < pages) {
+    if (!p->mapping.next && !p->mapping.reserved) {
         p->mapping.checked = stop;
         if (stop != pages) {
             f->elr -= 4;
@@ -702,6 +734,12 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
             || p->mapping.needed > private_pages_left(p)
 #endif
         ) {
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+            if (retry_after_reclaim(p, first, pages)) {
+                f->elr -= 4;
+                return f->r[0];
+            }
+#endif
             memset(&p->mapping, 0, sizeof p->mapping);
             return -12;
         }
@@ -714,6 +752,22 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
         unsigned idx = first + i;
         int *slot = &image_frames[p->slot][p->dso_frame + idx];
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        if (*slot >= 0 && v8_references[*slot] && !disk_file &&
+            (map || (op == 226 && (prot & 2)))) {
+            int old = *slot;
+            uint64_t dest;
+            --p->mapping.reserved;
+            --reserved_frames;
+            *slot = alloc_page(&dest);
+            if (*slot < 0) { *slot = old; return -12; }
+            if (!map) memcpy(pool[*slot], pool[old], 4096);
+            p->dso_source[idx] = dest;
+            free_idx(old);
+        }
+        if (p->disk_clean[idx]) {
+            p->disk_clean[idx] = 0;
+            --p->clean_pages;
+        }
         uint64_t *pending_pte = &image_pt[p->slot][(va - ELF_BASE) / 4096 + i];
         if (disk_file || (op == 226 && (*pending_pte & DISK_DSO_PENDING))) {
             if (disk_file) {
@@ -1006,6 +1060,11 @@ static int64_t fork_private(struct proc *parent, struct irq_frame *f)
             if (r->name) child->package_files[i] = (struct runtime_file){r->name, child->package_contents[i],
                 child->package_contents[i] + (r->end - r->begin)};
         }
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        child->disk_elf = parent->disk_elf;
+        child->disk_segment_count = parent->disk_segment_count;
+        memcpy(child->disk_segments, parent->disk_segments, sizeof child->disk_segments);
+#endif
         child->dso_frame = parent->dso_frame;
         child->image_pages = child->dso_frame + ELF_DSO_PAGES;
         parent->fork_init++;
@@ -1040,13 +1099,21 @@ static int64_t fork_private(struct proc *parent, struct irq_frame *f)
                 image_frames[child->slot][index] = fresh;
                 replacement[child->slot][old] = fresh;
                 memcpy((void *)(uintptr_t)pa, pool[old], 4096);
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+                if (index >= child->dso_frame) {
+                    unsigned d = index - child->dso_frame;
+                    child->dso_source[d] = pa;
+                    child->disk_clean[d] = parent->disk_clean[d];
+                    if (child->disk_clean[d]) ++child->clean_pages;
+                }
+#endif
             }
         } else {
             unsigned i = index - child->image_pages;
             uint64_t pte = image_pt[parent->slot][i], pa = FRAME_ADDR(pte);
-            if (pa == parent->pa[1]) pa = child->pa[1];
-            else if (pa >= (uintptr_t)pool && pa < (uintptr_t)pool + sizeof pool) {
-                unsigned old = (pa - (uintptr_t)pool) >> 12;
+            int old = (pte & PTE_VALID) ? pool_index(pa) : -1;
+            if (pa == parent->pa[1] && (pte & PTE_VALID)) pa = child->pa[1];
+            else if (old >= 0) {
                 pa = (uintptr_t)pool[replacement[child->slot][old]];
             }
             image_pt[child->slot][i] = (pte & ~0x0000fffffffff000ull) | pa;
@@ -2390,9 +2457,16 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
     if (op == 61 && file && !strcmp(file->name, "/usr/lib/quota-runtime/fonts")) {
         unsigned *cursor = &p->files[index].position->offset;
         unsigned total = 0;
-        while (*cursor < (unsigned)(wap_libs_end - wap_libs_start)) {
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        const struct runtime_file *entries = disk_catalog;
+        unsigned count = disk_catalog_count;
+#else
+        const struct runtime_file *entries = wap_libs_start;
+        unsigned count = wap_libs_end - wap_libs_start;
+#endif
+        while (*cursor < count) {
             unsigned pos = *cursor;
-            const char *name = wap_libs_start[pos].name;
+            const char *name = entries[pos].name;
             unsigned matched = 0;
             while (matched < 6 && name[matched] == "fonts/"[matched]) ++matched;
             if (matched != 6) { ++*cursor; continue; }
@@ -2997,6 +3071,11 @@ next_range:;
     p->exec_cursor = 0;
     sp = p->exec_stack;
     p->mapped_dso_pages = 0;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    memset(p->disk_clean, 0, sizeof p->disk_clean);
+    p->clean_pages = p->clean_cursor = p->clean_scanned = 0;
+    p->disk_segment_count = 0;
+#endif
     p->linux_brk = ELF_BRK_BASE;
     p->clear_child_tid = 0;
     for (unsigned i = 0; i < 64; ++i)

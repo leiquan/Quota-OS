@@ -14,7 +14,7 @@ test -r "$runtime"
 if [[ ! -e "$notes" ]]; then
     (set -C; umask 077; dd if=/dev/zero bs=1024 count=64 >"$notes")
 fi
-exec qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m "${QUOTA_RAM:-512M}" \
+exec qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m "${QUOTA_RAM:-256M}" \
     -nic none -global virtio-mmio.force-legacy=false -device virtio-rng-device \
     -device ramfb -device virtio-tablet-device -device virtio-keyboard-device \
     -drive "if=none,id=notes,format=raw,file=$notes" \

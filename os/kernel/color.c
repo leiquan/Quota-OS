@@ -20,7 +20,7 @@
 
 extern char __image_start[];
 
-static uint64_t pool_base, pool_pages, per_color;
+static uint64_t pool_base, pool_pages, per_color, shared_rows;
 static int color_owner[NCOLORS];        /* -1 共享，否则 Tier 1 表里的下标 */
 static uint32_t t1_pages[MAX_T1_PAGES]; /* 页号（相对 pool_base） */
 static uint8_t t1_who[MAX_T1_PAGES];
@@ -50,6 +50,7 @@ void color_init(uint64_t ram_bytes)
     uint64_t end = base + ram_bytes;
     pool_pages = end > pool_base ? (end - pool_base) / PAGE : 0;
     per_color = pool_pages / NCOLORS;
+    shared_rows = per_color;
     for (int c = 0; c < NCOLORS; c++)
         color_owner[c] = -1;
     int n = 0;
@@ -89,6 +90,29 @@ uint64_t color_padding_kb(void)
     return pad_kb;
 }
 
+/* Process frames own complete rows of shared colors above the demo allocator. */
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+unsigned color_bind_process_frames(uint8_t **frames, unsigned capacity)
+{
+    unsigned colors = NCOLORS - t1_colors_used;
+    unsigned count = 0;
+    if (!colors)
+        return 0;
+    unsigned demo_rows = (MAX_SHARED_PAGES + colors - 1) / colors;
+    uint64_t rows = per_color > demo_rows ? per_color - demo_rows : 0;
+    if (rows > capacity / colors)
+        rows = capacity / colors;
+    shared_rows = per_color - rows;
+    for (uint64_t row = shared_rows; row < per_color; ++row)
+        for (unsigned column = 0; column < NCOLORS; ++column) {
+            uint64_t pa = pool_base + (row * NCOLORS + column) * PAGE;
+            if (color_owner[color_of(pa)] < 0)
+                frames[count++] = (uint8_t *)(uintptr_t)pa;
+        }
+    return count;
+}
+#endif
+
 /* 从共享颜色里拿 n 页（演示用），轮流取各颜色。返回拿到的页数。 */
 uint32_t color_alloc_shared(uint32_t n)
 {
@@ -96,7 +120,7 @@ uint32_t color_alloc_shared(uint32_t n)
     while (got < n && n_shared < MAX_SHARED_PAGES) {
         for (int tries = 0; tries < NCOLORS && color_owner[c] >= 0; tries++)
             c = (c + 1) % NCOLORS;
-        if (color_owner[c] >= 0 || shared_next[c] >= per_color)
+        if (color_owner[c] >= 0 || shared_next[c] >= shared_rows)
             break;
         uint64_t pg = nth_page(c, shared_next[c]++);
         shared_pages[n_shared++] = (uint32_t)pg;

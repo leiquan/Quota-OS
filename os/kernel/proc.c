@@ -31,14 +31,10 @@
 #define EL0_SLOTS 2
 #endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
-/* The static pool is covered by system_reserve_kb. */
+/* Virtual address bounds for sparse V8 reservations. */
 #define HIGH_START (2ull << 30)
 #define HIGH_LIMIT (1ull << 47)
-#ifdef QUOTA_RUNTIME_VOLUME_BOOT
-#define EL0_POOL 14336 /* 56 MiB for the experimental external runtime. */
-#else
 #define EL0_POOL 65536
-#endif
 #define ELF_INTERP_BASE 0x10000000u
 #define ELF_DSO_BASE 0x10200000u
 /* Component builds of Blink map many shared ELF segments. Reserve virtual
@@ -348,6 +344,12 @@ struct proc {
     struct disk_elf_segment disk_segments[DISK_ELF_MAX_SEGMENTS];
     unsigned disk_segment_count, disk_fault_segment, disk_fault_page;
     int disk_elf_waiting, disk_read_waiting;
+    unsigned v8_shared, page_ins;
+    const char *stop_reason;
+    uint64_t fault_file_offset[2];
+    const char *fault_file_name[2];
+    unsigned clean_cursor, clean_scanned, clean_pages, evicted_pages;
+    uint64_t disk_clean[ELF_DSO_PAGES];
 #endif
     unsigned linux_traces;
 #ifdef QUOTA_WAP_LOADER_TRACE
@@ -457,9 +459,58 @@ struct elf_mapping {
     unsigned interp_phoff;
     unsigned interp_count;
 };
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+static uint8_t *pool[EL0_POOL];
+static unsigned pool_capacity;
+#else
 static uint8_t pool[EL0_POOL][4096] __attribute__((aligned(4096)));
+#define pool_capacity EL0_POOL
+#endif
 static uint8_t pool_used[EL0_POOL];
 static unsigned free_frames = EL0_POOL;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+void proc_bind_color_pool(void)
+{
+    free_frames = pool_capacity = color_bind_process_frames(pool, EL0_POOL);
+    printf("[proc] shared-color frames %u, %u KiB physical capacity\n", pool_capacity, pool_capacity * 4);
+}
+#endif
+#ifdef QUOTA_LINUX_APP_RUNTIME
+static int pool_index(uintptr_t pa)
+{
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    unsigned lo = 0, hi = pool_capacity;
+    while (lo < hi) {
+        unsigned mid = lo + (hi - lo) / 2;
+        if ((uintptr_t)pool[mid] < pa) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo < pool_capacity && (uintptr_t)pool[lo] == pa ? (int)lo : -1;
+#else
+    if (pa < (uintptr_t)pool || pa - (uintptr_t)pool >= sizeof pool)
+        return -1;
+    return (pa - (uintptr_t)pool) / 4096;
+#endif
+}
+#endif
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+/* Index the immutable pages of this runtime's libv8. Read-only mappings
+ * retain references. Writable remaps detach before user access. */
+#define V8_CACHE_PAGES 16384
+static unsigned v8_frame_plus_one[V8_CACHE_PAGES];
+static unsigned v8_first_va[V8_CACHE_PAGES];
+static uint8_t v8_first_slot[V8_CACHE_PAGES];
+static unsigned short v8_page_plus_one[EL0_POOL];
+static unsigned v8_references[EL0_POOL];
+static int volume_v8_index = -1;
+static void forget_v8_page(unsigned frame)
+{
+    unsigned page = v8_page_plus_one[frame];
+    if (page) v8_frame_plus_one[page - 1] = 0;
+    v8_page_plus_one[frame] = 0;
+    v8_references[frame] = 0;
+}
+#endif
 static unsigned reserved_frames;
 static uint64_t kernel_ttbr;
 static struct el0_reap last_reap;
@@ -514,7 +565,7 @@ static int pages_free_n(void)
 
 static int pages_used_n(void)
 {
-    return EL0_POOL - pages_free_n();
+    return pool_capacity - pages_free_n();
 }
 
 int proc_pages_free(void)
@@ -939,6 +990,9 @@ static void reap_timed(struct proc *p, const char *why, uint64_t t0, uint64_t p0
 
     if (!p || !p->alive)
         return;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    p->stop_reason = why;
+#endif
     pct0 = cntpct_now();
     irq_off_begin(&off0);
 
@@ -1049,6 +1103,7 @@ static uint64_t data_pte(uint64_t pa);
 static int alloc_page(uint64_t *pa);
 static unsigned private_pages_left(const struct proc *p);
 static const struct runtime_volume_file *disk_catalog_extent(unsigned index);
+static const char *disk_extent_name(unsigned index);
 
 static int block_on_disk_elf(struct proc *p, uint64_t far, uint64_t esr)
 {
@@ -1089,6 +1144,34 @@ static int block_on_disk_elf(struct proc *p, uint64_t far, uint64_t esr)
     return 0;
 }
 
+/* Issue at most one reclaim per fault and bound the scan per service poll.
+ * Only pristine read-only file mappings can be reconstructed from disk. */
+static int reclaim_disk_page(struct proc *p, unsigned skip, unsigned length)
+{
+    for (unsigned n = 0; n < 256; ++n) {
+        unsigned idx = p->clean_cursor++ % ELF_DSO_PAGES;
+        ++p->clean_scanned;
+        uint64_t pending = p->disk_clean[idx];
+        if (!pending || (idx >= skip && idx - skip < length)) continue;
+        unsigned page = (ELF_DSO_BASE - ELF_BASE) / 4096 + idx;
+        int *slot = &image_frames[p->slot][p->dso_frame + idx];
+        uint64_t irq = irq_save();
+        image_pt[p->slot][page] = pending;
+        tlb_asid(p->asid);
+        int frame = *slot;
+        *slot = -1;
+        p->dso_source[idx] = p->disk_clean[idx] = 0;
+        --p->mapped_dso_pages;
+        --p->clean_pages;
+        ++p->evicted_pages;
+        p->clean_scanned = 0;
+        irq_restore(irq);
+        free_idx(frame);
+        return 1;
+    }
+    return 0;
+}
+
 static void finish_disk_dso_fault(struct proc *p)
 {
     unsigned page = p->disk_fault_page;
@@ -1100,16 +1183,48 @@ static void finish_disk_dso_fault(struct proc *p)
     uint64_t position = ((pending >> 4) & DISK_DSO_POSITION_MASK) << 12;
     const struct runtime_volume_file *file = disk_catalog_extent(file_index);
     uint64_t pa = 0;
-    int frame = file && position < file->size && private_pages_left(p)
+    if (p->clean_pages && p->clean_scanned < ELF_DSO_PAGES &&
+        (private_pages_left(p) < 1024 || free_frames - reserved_frames < 512) &&
+        !reclaim_disk_page(p, 0, 0))
+        return;
+    p->clean_scanned = 0;
+    unsigned number = position / 4096;
+    int eligible = (int)file_index == volume_v8_index && !(protection & 2) &&
+                   position / 4096 < V8_CACHE_PAGES;
+    unsigned cached = eligible ? v8_frame_plus_one[number] : 0;
+    int frame = cached && private_pages_left(p) ? (int)cached - 1 :
+                file && position < file->size && private_pages_left(p)
         ? alloc_page(&pa) : -1;
     int result = -1;
-    if (frame >= 0) {
+    if (cached && frame >= 0) {
+        ++v8_references[frame];
+        pa = (uintptr_t)pool[frame];
+        result = 1;
+        struct proc *peer = &procs[v8_first_slot[number]];
+        int level;
+        unsigned peer_va = v8_first_va[number];
+        uint64_t peer_pte = walk(peer, peer_va, &level);
+        if (!p->v8_shared && (protection & 4) && p != peer && peer->alive && !peer->draining &&
+            level == 3 && (peer_pte & (PTE_VALID | AP_RO | PTE_UXN)) == (PTE_VALID | AP_RO) &&
+            (peer_pte & 0x0000fffffffff000ull) == pa) {
+            p->v8_shared = 1;
+            printf("[wap-volume] libv8 executable shared pid=%d asid=%u va=%x peer_pid=%d peer_asid=%u peer_va=%x offset=%lu pa=%lx\n",
+                   p->pid, p->asid, page, peer->pid, peer->asid, peer_va, position, pa);
+        }
+    } else if (frame >= 0) {
         uint64_t bytes = file->size - position;
         result = runtime_volume_fill_segment_page(file, position, 0,
                                                   bytes < 4096 ? bytes : 4096,
                                                   (uint8_t *)(uintptr_t)pa);
         if (result != 1)
             free_idx(frame);
+        else if (eligible) {
+            v8_frame_plus_one[number] = frame + 1;
+            v8_first_va[number] = page;
+            v8_first_slot[number] = p->slot;
+            v8_page_plus_one[frame] = number + 1;
+            v8_references[frame] = 1;
+        }
     }
     if (!result)
         return;
@@ -1123,6 +1238,11 @@ static void finish_disk_dso_fault(struct proc *p)
         image_frames[p->slot][p->dso_frame + index] = frame;
         p->mapped_dso_pages++;
         p->dso_source[index] = pa;
+        ++p->page_ins;
+        if (!(protection & 2)) {
+            p->disk_clean[index] = pending;
+            ++p->clean_pages;
+        }
         *pte = protection & 4 ? code_pte(pa) | PTE_PXN :
                data_pte(pa) | ((protection & 2) ? 0 : AP_RO);
         asm volatile("dsb ishst" ::: "memory");
@@ -1130,6 +1250,10 @@ static void finish_disk_dso_fault(struct proc *p)
         task_ready(p->task);
     }
     irq_restore(irq);
+    if (result > 0 && !(p->page_ins % 8192))
+        printf("[wap-volume] pid=%d page_ins=%u clean=%u evicted=%u resident=%u high=%u free=%u\n",
+               p->pid, p->page_ins, p->clean_pages, p->evicted_pages, p->mapped_dso_pages,
+               p->high_frames, free_frames);
 }
 
 static void finish_disk_elf_fault(struct proc *p)
@@ -1180,6 +1304,13 @@ static void finish_one(struct proc *p)
     uint64_t t1, pct1;
     if (!p->draining || p->active_draws)
         return;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (p->stop_reason) {
+        printf("[wap-volume] process stopped pid=%d reason=%s dso=%u high=%u private_limit=%u\n",
+               p->pid, p->stop_reason, p->mapped_dso_pages, p->high_frames, p->private_page_limit);
+        p->stop_reason = NULL;
+    }
+#endif
     if (p->hold != 0 || slot_entries(p->slot) != 0) {
         refused = 1;
         unmap_refusals++;
@@ -1286,6 +1417,11 @@ static void report_fault(struct proc *p)
            f->ap_el0, f->kind, p->gen - 1, p->gen);
 #ifdef QUOTA_NODE_WEB
     for (unsigned i = 0; i < 2; ++i) {
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+        if (p->fault_file_name[i])
+            printf("[wap-volume] fault %s=%s+%lx\n", i ? "lr" : "pc",
+                   p->fault_file_name[i], p->fault_file_offset[i]);
+#endif
         uintptr_t pa = p->fault_code_pa[i];
         for (const struct runtime_file *file = wap_libs_start; file < wap_libs_end; ++file) {
             if (pa >= (uintptr_t)file->begin && pa < (uintptr_t)file->end) {
@@ -1405,6 +1541,16 @@ void proc_el0_abort(struct irq_frame *f, uint64_t esr)
 #ifdef QUOTA_NODE_WEB
         for (unsigned i = 0; i < 2; ++i) {
             uint64_t pc = i ? f->r[30] : f->elr;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+            p->fault_file_name[i] = NULL;
+            if (pc >= ELF_DSO_BASE && pc < ELF_DSO_BASE + (uint64_t)ELF_DSO_PAGES * 4096) {
+                uint64_t src = p->disk_clean[(pc - ELF_DSO_BASE) / 4096];
+                if (src) {
+                    p->fault_file_name[i] = disk_extent_name((src >> 44) & 1023);
+                    p->fault_file_offset[i] = (((src >> 4) & DISK_DSO_POSITION_MASK) << 12) + (pc & 4095);
+                }
+            }
+#endif
             uint64_t leaf = walk(p, pc, &level);
             p->fault_code_pa[i] = (leaf & 1) ? ((leaf & 0x0000fffffffff000ull) | (pc & 4095)) : 0;
         }
@@ -1608,6 +1754,29 @@ void proc_el0_svc(struct irq_frame *f)
         return;
     }
     op = f->r[8];
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    /* A pathname literal may first be touched by the kernel in openat or
+       stat, before EL0 has issued a load from its file-backed page. */
+    if (p->disk_segment_count && (op == 56 || op == 79 || op == 78 || op == 48)) {
+        uint64_t path = f->r[1];
+        unsigned head = 4096 - (path & 4095);
+        if (block_on_disk_elf(p, path, (0x24u << 26) | 7)) {
+            f->elr -= 4;
+            return;
+        }
+        if (head < 256) {
+            char prefix[256];
+            if (!copy_process_bytes(p, path, prefix, head, 0)) {
+                unsigned i = 0;
+                while (i < head && prefix[i]) ++i;
+                if (i == head && block_on_disk_elf(p, path + head, (0x24u << 26) | 7)) {
+                    f->elr -= 4;
+                    return;
+                }
+            }
+        }
+    }
+#endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
     if (p->vfork_pid) {
         /* The single-threaded parent is suspended. The child uses its own
@@ -1860,13 +2029,13 @@ int proc_kill(int64_t handle)
 static int alloc_page(uint64_t *pa)
 {
     static unsigned cursor;
-    for (unsigned scanned = 0; scanned < EL0_POOL; ++scanned) {
+    for (unsigned scanned = 0; scanned < pool_capacity; ++scanned) {
         uint64_t flags = irq_save();
         if (free_frames <= reserved_frames) {
             irq_restore(flags);
             return -1;
         }
-        unsigned i = cursor++ % EL0_POOL;
+        unsigned i = cursor++ % pool_capacity;
         if (pool_used[i]) {
             irq_restore(flags);
             continue;
@@ -1885,6 +2054,12 @@ static void free_idx(int idx)
 {
     if (idx < 0 || idx >= EL0_POOL)
         return;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (v8_page_plus_one[idx]) {
+        if (--v8_references[idx]) return;
+        forget_v8_page(idx);
+    }
+#endif
     memset(pool[idx], 0, 4096);
     uint64_t flags = irq_save();
     pool_used[idx] = 0;
@@ -2009,10 +2184,12 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
         man.mem_min_kb -= (ELF_DSO_PAGES - DSO_PRIVATE_PAGE_LIMIT) * 4;
         man.mem_min_kb += HIGH_FRAME_LIMIT * 4;
         p->private_page_limit = HIGH_FRAME_LIMIT + DSO_PRIVATE_PAGE_LIMIT;
+#ifndef QUOTA_RUNTIME_VOLUME_BOOT
         if (image->role == WAP_BACKEND || image->role == WAP_NODE_ONLY) {
             p->private_page_limit -= 4096;
             man.mem_min_kb -= 4096 * 4;
         }
+#endif
         if (image->role == WAP_FRONTEND || image->role == WAP_PAGE_ONLY) {
 #ifdef QUOTA_NODE_WEB
             /* Blink's component build consumes over 52 MiB of private DSO
@@ -2149,6 +2326,9 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     p->image_pages = 0;
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
     p->disk_segment_count = 0;
+    memset(p->disk_clean, 0, sizeof p->disk_clean);
+    p->v8_shared = p->page_ins = 0;
+    p->clean_pages = p->clean_cursor = p->clean_scanned = p->evicted_pages = 0;
     p->disk_elf_waiting = 0;
     p->disk_read_waiting = 0;
 #endif
@@ -2764,7 +2944,7 @@ void proc_init(void)
     memset(procs, 0, sizeof procs);
     memset(qq, 0, sizeof qq);
     memset(pool_used, 0, sizeof pool_used);
-    free_frames = EL0_POOL;
+    free_frames = pool_capacity;
     for (int i = 0; i < EL0_SLOTS; i++) {
         procs[i].slot = i;
         for (int k = 0; k < 3; k++)

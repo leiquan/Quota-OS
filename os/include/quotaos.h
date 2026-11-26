@@ -479,6 +479,10 @@ uint64_t mmu_kernel_ttbr(void);
 uint64_t mmu_l2_ram_phys(void);
 uint32_t system_reserve_kb(void);
 void color_init(uint64_t ram_bytes);
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+unsigned color_bind_process_frames(uint8_t **frames, unsigned capacity);
+void proc_bind_color_pool(void);
+#endif
 uint64_t color_padding_kb(void);
 uint32_t color_alloc_shared(uint32_t n);
 void color_free_shared(void);
