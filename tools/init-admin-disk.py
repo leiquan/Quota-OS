@@ -5,11 +5,16 @@ import os
 from pathlib import Path
 import tempfile
 
+from wap_disk import seed_new_disk
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("output", type=Path)
 parser.add_argument("--from-legacy", type=Path)
 args = parser.parse_args()
 data = bytearray(args.from_legacy.read_bytes() if args.from_legacy else bytes(65536))
+if args.from_legacy is None:
+    package = Path(__file__).resolve().parents[1] / "examples/todo/todo.wap"
+    seed_new_disk(data, package.read_bytes())
 offset = 63 * 512
 if args.from_legacy and len(data) >= 8192 and len(data) % 512 == 0 and len(data) < 65536:
     data.extend(bytes(65536 - len(data)))
