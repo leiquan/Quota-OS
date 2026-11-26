@@ -14,10 +14,10 @@ CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the seri
 
 | Edition · 发行版 | Default QEMU RAM · 默认内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
-| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 72.3 KiB |
-| [UI](https://github.com/leiquan/Quota-OS/tree/UI) | 512 MiB | 685.4 KiB |
-| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 512 MiB | Runtime on disk · 运行时独立盘 |
-| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 512 MiB | Build from source · 源码构建 |
+| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 111.5 KiB |
+| [UI](https://github.com/leiquan/Quota-OS/tree/UI) | 512 MiB | 764.8 KiB |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 512 MiB | 874.2 KiB + runtime volume · 另附运行时卷 |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 512 MiB | 825.0 KiB (LVGL) |
 
 The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
