@@ -9,6 +9,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#if defined(QUOTA_SYSTEM_STATUS) && !defined(QUOTA_CLI)
+#define SYSTEM_STATUS_ENABLED 1
+#define SYSTEM_STATUS_TASK "system-status"
+#endif
+
+
 /* Nested critical sections must preserve exception-entry IRQ masking. */
 static inline uint64_t irq_save(void)
 {
@@ -283,12 +289,14 @@ const struct app_manifest *resource_catalog(int *count);
 
 /* App-demo framebuffer rectangles. LVGL must preserve their pixel writes. */
 #define APP_DESK_EDGE 840
-#define APP_DRAW_X 890
-#define APP_DASH_Y 205
+#define APP_CARD_WIDTH 440
+#define APP_CARD_X ((int)DISPLAY_WIDTH - 40 - APP_CARD_WIDTH)
+#define APP_DRAW_X (APP_CARD_X + 30)
+#define APP_DASH_Y 283
 #define APP_DASH_W 128
 #define APP_DASH_H 28
-#define APP_VIDEO_Y 370
-#define APP_MUSIC_Y 535
+#define APP_VIDEO_Y 448
+#define APP_MUSIC_Y 613
 #define APP_METER_W 128
 #define APP_METER_H 40
 #define APP_MUSIC_SIZE 32
@@ -306,9 +314,28 @@ struct app_display_stats {
 };
 void app_display_read(struct app_display_stats *stats);
 void app_display_core_frame(uint64_t release);
+#ifdef SYSTEM_STATUS_ENABLED
+void sched_volume_pressure_begin(struct task *probe);
+void sched_volume_pressure_end(void);
+void sched_volume_pressure_dump(void);
+#endif
 void app_frame_trace_start(void);
 void app_frame_trace_dump(void);
 void app_desktop_stall_probe(void);
+
+struct sched_status_snapshot {
+    uint64_t generation, release_ticks, sample_ticks;
+    uint64_t busy_ticks, window_ticks, reserved_kb, total_kb;
+    uint64_t tier1_misses, tier2_short, task_peak_ticks;
+    unsigned tasks, sample_misses;
+};
+
+/* Returns zero until the optional Tier 1 sampler has published a snapshot. */
+int sched_system_status_read(struct sched_status_snapshot *snapshot);
+#ifdef SYSTEM_STATUS_ENABLED
+void *color_tier1_first_page(const char *name);
+#endif
+
 struct sched_system_info {
     uint64_t period;
     uint64_t cpu_us[3], kernel_us, tier3_limit_us;
@@ -435,6 +462,9 @@ void decl_add_t1_app(const char *who, int dev, uint64_t b, int policy);
 uint64_t dev_real_us(const struct sim_dev *d, uint64_t req);
 uint64_t up_us(uint64_t t);
 int clock_is_icount(void);
+#ifdef SYSTEM_STATUS_ENABLED
+int clock_fractional_icount(void);
+#endif
 void clock_detect(void);
 const char *clock_tag(void);
 void klog(const char *s);
@@ -512,9 +542,9 @@ void fb_geometry(uint32_t *w, uint32_t *h);
 
 /* Fixed budgets for the LVGL demo. The heap is LVGL's pool (no expand).
  * The draw buffer and framebuffer are separate and do not grow. */
-#define DISPLAY_WIDTH 1280u
-#define DISPLAY_HEIGHT 800u
-#define LVGL_HEAP_BYTES (256u * 1024u)
+#define DISPLAY_WIDTH 1600u
+#define DISPLAY_HEIGHT 900u
+#include "desktop_heap.h"
 #define LVGL_DRAW_BYTES (DISPLAY_WIDTH * 48u * 4u)
 #define LVGL_FB_BYTES (DISPLAY_WIDTH * DISPLAY_HEIGHT * 4u)
 

@@ -122,8 +122,8 @@ def gui(kernel, out, mode, *, pointer_traffic=True, pause_ms=0, task_manager=Fal
                 else:
                     press(x + w // 2, y + h // 2)
             elif task_manager:
-                if (sw, sh) != (1280, 800):
-                    raise AssertionError('Task Manager test requires the 1280x800 default layout')
+                if (sw, sh) != (1600, 900):
+                    raise AssertionError('Task Manager test requires the 1600x900 default layout')
                 if mode == 'icount':
                     press(430, 550)
                     press(x + w // 2, y + h // 2)

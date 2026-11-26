@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Exercise the 1280x800 desktop via /tmp/quota-desktop-wide.sock.
+"""Exercise the 1600x900 desktop via /tmp/quota-desktop-wide.sock.
 Run from the repo root after launching QEMU with that QMP socket.
 """
 from pathlib import Path
 import json,re,runpy,time
-out=Path('../../outputs/desktop-1280').resolve();mod=runpy.run_path('tools/realtime-rounds.py');q=mod['QMP']('/tmp/quota-desktop-wide.sock');t=(out/'serial.log').read_text();m=re.search(r'ramfb published (\d+)x(\d+)',t);w,h=map(int,m.groups());assert(w,h)==(1280,800)
+out=Path('../../outputs/desktop-1280').resolve();mod=runpy.run_path('tools/realtime-rounds.py');q=mod['QMP']('/tmp/quota-desktop-wide.sock');t=(out/'serial.log').read_text();m=re.search(r'ramfb published (\d+)x(\d+)',t);w,h=map(int,m.groups());assert(w,h)==(1600,900)
 def move(x,y):q.call('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':x*32767//(w-1)}},{'type':'abs','data':{'axis':'y','value':y*32767//(h-1)}}]})
 def button(n):q.call('human-monitor-command',{'command-line':'mouse_button '+str(n)})
 def click(x,y):

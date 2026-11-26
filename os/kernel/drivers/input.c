@@ -241,7 +241,7 @@ static uint32_t raw_prints;
 
 static void take_event(struct idev *d, struct evbuf *ev)
 {
-    if (raw_prints < 12) {
+    if (d->kind != QUOTA_INPUT_KEY && raw_prints < 12) {
         raw_prints++;
         printf("[input] raw %s type %u code %u value %u\n",
                d->kind == QUOTA_INPUT_KEY ? "key" : "ptr", ev->type, ev->code, ev->value);

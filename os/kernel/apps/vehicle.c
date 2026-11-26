@@ -1,4 +1,5 @@
 #include "quotaos.h"
+#include "auth.h"
 
 /* Dedicated framebuffer demo mode. The desktop never draws on these regions. */
 static uint32_t *volatile app_surface;
@@ -89,11 +90,22 @@ static struct frame_trace {
 } frame_trace[1536];
 static unsigned trace_count, trace_dropped;
 static volatile int trace_active;
+#ifdef SYSTEM_STATUS_ENABLED
+static uint32_t trace_initial_frames[2];
+static uint64_t trace_prev_commit[2], trace_begin_tick;
+#endif
 
 void app_frame_trace_start(void)
 {
     uint64_t flags = irq_save();
     trace_count = trace_dropped = 0;
+#ifdef SYSTEM_STATUS_ENABLED
+    trace_initial_frames[0] = dashboard_frames;
+    trace_initial_frames[1] = video_frames;
+    trace_prev_commit[0] = display_commit_tick;
+    trace_prev_commit[1] = video_tick;
+    trace_begin_tick = ticks_now();
+#endif
     trace_active = 1;
     irq_restore(flags);
 }
@@ -115,7 +127,16 @@ void app_frame_trace_dump(void)
 {
     uint64_t flags = irq_save();
     trace_active = 0;
+#ifdef SYSTEM_STATUS_ENABLED
+    uint64_t end = ticks_now();
+    uint32_t speed = dashboard_frames - trace_initial_frames[0];
+    uint32_t camera = video_frames - trace_initial_frames[1];
+#endif
     irq_restore(flags);
+#ifdef SYSTEM_STATUS_ENABLED
+    printf("[frame-window] begin=%lu end=%lu speed=%u camera=%u prev_speed=%lu prev_camera=%lu\n",
+           trace_begin_tick, end, speed, camera, trace_prev_commit[0], trace_prev_commit[1]);
+#endif
     printf("[frame-trace] hz=%lu count=%u dropped=%u\n", (unsigned long)timer_freq(),
            trace_count, trace_dropped);
     for (unsigned i = 0; i < trace_count; i++) {
@@ -130,11 +151,58 @@ void app_frame_trace_dump(void)
  * release-relative phase. Commit timestamps are taken after the real stores. */
 static uint32_t speed_pixels[APP_DASH_H][APP_DASH_W] __attribute__((aligned(8)));
 static uint32_t camera_pixels[APP_METER_H][APP_METER_W] __attribute__((aligned(8)));
+_Static_assert(APP_DASH_H <= APP_METER_H && APP_DASH_W <= APP_METER_W,
+               "locked surface must fit both instruments");
+static uint32_t locked_pixels[APP_METER_H][APP_METER_W] __attribute__((aligned(8)));
 
 static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
                                    unsigned height, unsigned y, uint64_t target,
                                    uint64_t *copy_start)
 {
+    /* Keep fixed-phase instrument work alive while the login screen owns scanout. */
+    int visible = auth_state() == AUTH_OPEN;
+    uint32_t *surface = visible ? app_surface + y * app_stride + APP_DRAW_X
+                               : &locked_pixels[0][0];
+    unsigned stride = visible ? app_stride : APP_METER_W;
+#ifdef SYSTEM_STATUS_ENABLED
+    if (clock_fractional_icount()) {
+        /* Eight successive reads span eight instructions. Subtracting
+         * 8 * target from their sum gives the first read's displacement
+         * in instructions, including its position within the counter tick.
+         * Skip that many NOPs before starting the real framebuffer copy. */
+        uint64_t a, b, c, d, e, f, g, h;
+        asm volatile(
+            "1: mrs %[a], cntvct_el0\n"
+            "cmp %[a], %[target]\n"
+            "b.lo 1b\n"
+            "mrs %[a], cntvct_el0\n"
+            "mrs %[b], cntvct_el0\n"
+            "mrs %[c], cntvct_el0\n"
+            "mrs %[d], cntvct_el0\n"
+            "mrs %[e], cntvct_el0\n"
+            "mrs %[f], cntvct_el0\n"
+            "mrs %[g], cntvct_el0\n"
+            "mrs %[h], cntvct_el0\n"
+            "add %[a], %[a], %[b]\n"
+            "add %[c], %[c], %[d]\n"
+            "add %[e], %[e], %[f]\n"
+            "add %[g], %[g], %[h]\n"
+            "add %[a], %[a], %[c]\n"
+            "add %[e], %[e], %[g]\n"
+            "add %[a], %[a], %[e]\n"
+            "sub %[a], %[a], %[target], lsl #3\n"
+            "cmp %[a], #8\n"
+            "b.hi 3f\n"
+            "adr %[b], 2f\n"
+            "add %[b], %[b], %[a], lsl #2\n"
+            "br %[b]\n"
+            "2: .rept 8\n nop\n .endr\n"
+            "3:"
+            : [a] "=&r"(a), [b] "=&r"(b), [c] "=&r"(c), [d] "=&r"(d),
+              [e] "=&r"(e), [f] "=&r"(f), [g] "=&r"(g), [h] "=&r"(h)
+            : [target] "r"(target) : "cc", "memory");
+    } else
+#endif
     if (clock_is_icount()) {
         /* The boot calibration verified one counter tick per instruction.
          * This poll samples every three ticks. Spend the unused part of the
@@ -161,7 +229,7 @@ static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
     *copy_start = ticks_now();
     typedef uint64_t pixel_pair __attribute__((may_alias));
     for (unsigned row = 0; row < height; row++) {
-        uint32_t *line = app_surface + (y + row) * app_stride + APP_DRAW_X;
+        uint32_t *line = surface + row * stride;
         const uint32_t *source = pixels + row * width;
         if ((uintptr_t)line & 7) {
             for (unsigned col = 0; col < width; col++) line[col] = source[col];
