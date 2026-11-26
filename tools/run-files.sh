@@ -17,4 +17,4 @@ exec /bin/bash tools/run-qemu-gui.sh -machine virt,gic-version=2 -cpu cortex-a35
     -global virtio-mmio.force-legacy=false -device virtio-rng-device -device ramfb -device virtio-tablet-device \
     -device virtio-keyboard-device -drive "if=none,id=notes,format=raw,file=$disk" \
     -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES -icount shift=4,sleep=off \
-    -kernel "$kernel" -append apps-video -serial stdio -monitor none "$@"
+    -kernel "$kernel" -append apps-video -serial "${QUOTA_SERIAL:-stdio}" -monitor none "$@"
