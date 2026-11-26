@@ -23,6 +23,14 @@ static const struct {
 };
 
 static unsigned step, started, running, pending;
+#ifdef QUOTA_TOUCH_SMP
+extern const char touch_smp_pressure_start[], touch_smp_pressure_end[];
+static int64_t pressure_worker;
+static uint64_t pressure_period;
+static unsigned memory_sweeps;
+static volatile uint64_t pressure_words[64 * 1024 / sizeof(uint64_t)];
+#endif
+
 static int shell_pending, files_pending;
 static enum root_operation shell_op;
 static char shell_data[ROOT_SERVICE_BYTES + 1];
@@ -194,6 +202,12 @@ static void finish(int pass, int cold)
            last_display.speed_misses - first_display.speed_misses, last_display.video_missed - first_display.video_missed,
            (unsigned long)(after.tier2_short - before.tier2_short), (unsigned long)(after.tier3_over - before.tier3_over));
     app_frame_trace_dump();
+#ifdef QUOTA_TOUCH_SMP
+    if (pressure_worker > 0) proc_kill(pressure_worker);
+    sched_smp_report();
+    printf("[touch-ext4] concurrent_memory_sweeps=%u bytes_per_sweep=%u\n",
+           memory_sweeps, (unsigned)sizeof pressure_words);
+#endif
     for (unsigned i = 0; i < sizeof io_trace / sizeof io_trace[0]; ++i) {
         if (!io_trace[i].completed) break;
         printf("[touch-ext4] request=%u op=%u start=%lu end=%lu result=%d\n",
@@ -225,6 +239,11 @@ void touch_ext4_scroll_step(void)
         sched_read_system_info(&before);
         app_display_read(&first_display);
         app_frame_trace_start();
+#ifdef QUOTA_TOUCH_SMP
+        pressure_worker = proc_spawn_console(touch_smp_pressure_start,
+                                               touch_smp_pressure_end - touch_smp_pressure_start);
+        printf("[touch-ext4] pressure_worker=%ld workers=%d\n", (long)pressure_worker, smp_online());
+#endif
     } else if (running) {
         if (recorded < sizeof scroll_ticks / sizeof scroll_ticks[0])
             scroll_ticks[recorded++] = ticks_now();
@@ -240,6 +259,15 @@ int touch_ext4_busy(void)
 void touch_ext4_poll(void)
 {
     if (!running) return;
+#ifdef QUOTA_TOUCH_SMP
+    uint64_t period = sched_period_now();
+    if (period != pressure_period) {
+        pressure_period = period;
+        for (unsigned i = 0; i < sizeof pressure_words / sizeof pressure_words[0]; ++i)
+            pressure_words[i]++;
+        ++memory_sweeps;
+    }
+#endif
     if (!pending) {
         uint64_t submitted = ticks_now();
         if (submitted < next_request) return;

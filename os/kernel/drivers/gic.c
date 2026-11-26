@@ -155,6 +155,19 @@ void gic_init(void)
     halt();
 }
 
+#ifdef QUOTA_TOUCH_SMP
+int gic_secondary_timer_init(void)
+{
+    if (gic_version != 2) return 0;
+    /* Only banked CPU1 registers; the distributor is already live. */
+    mmio_wr(gicd + GICD_ISENABLER, 1u << TIMER_IRQ);
+    mmio_wr(gicc + GICC_PMR, 0xff);
+    mmio_wr(gicc + GICC_BPR, 0);
+    mmio_wr(gicc + GICC_CTLR, 1);
+    return 1;
+}
+#endif
+
 uint32_t gic_ack(void)
 {
     if (gic_version == 3) {

@@ -2005,6 +2005,16 @@ void proc_el0_svc(struct irq_frame *f)
         f->r[0] = length;
         return;
     }
+#ifdef QUOTA_TOUCH_SMP
+    if (op == 5 && p->console == CONSOLE_QUOTA) {
+        f->r[0] = sched_smp_pending();
+        return;
+    }
+    if (op == 6 && p->console == CONSOLE_QUOTA) {
+        f->r[0] = sched_smp_probe(p->pa[0], f->r[0]);
+        return;
+    }
+#endif
     if (op == 3 && p->console == CONSOLE_QUOTA && !console_updated) {
         uint64_t off = f->r[0], len = f->r[1];
         if ((off == DRAW_VA && len < sizeof console_text) ||
@@ -2106,6 +2116,23 @@ static uint64_t code_pte(uint64_t pa)
            AP_EL0 | AP_RO;
 }
 
+#ifdef QUOTA_TOUCH_SMP
+/* The worker owns this code snapshot, private stack, and translation tables.
+ * Exiting Test on CPU0 cannot recycle pages still executing on CPU1. */
+uint64_t smp_test_space(unsigned index, uint64_t storage, uint64_t code)
+{
+    uint64_t (*tables)[512] = (void *)(uintptr_t)storage;
+    unsigned char *stack = (void *)(uintptr_t)(storage + 4*4096);
+    memset(stack, 0, 4096);
+    for (unsigned i = 0; i < 3; i++)
+        tables[i][0] = (uintptr_t)tables[i+1] | PTE_VALID | PTE_PAGE;
+    tables[1][1] = (uintptr_t)el0_l2_hi | PTE_VALID | PTE_PAGE;
+    tables[3][0] = code_pte(code);
+    tables[3][1] = data_pte((uintptr_t)stack);
+    asm volatile("dsb ishst" ::: "memory");
+    return (uintptr_t)tables[0] | ((255ull-index) << 48);
+}
+#endif
 static void build_pt(struct proc *p)
 {
     memset(pt_l0[p->slot], 0, 4096);

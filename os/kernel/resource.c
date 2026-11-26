@@ -154,6 +154,12 @@ uint32_t resource_cpu_min_sum_us(void)
 uint32_t resource_period_reservations_us(uint32_t target)
 {
     uint32_t reserved = cpu_minima(1);
+#ifdef QUOTA_TOUCH_SMP
+    if (smp_online()) {
+        if (target < SYS_RESERVE_US) target = SYS_RESERVE_US;
+        if (kernel_reserve > target) kernel_reserve = target;
+    }
+#endif
     kernel_target = target;
     if (kernel_reserve < target) {
         uint32_t capacity = resource_app_cpu_capacity_us();

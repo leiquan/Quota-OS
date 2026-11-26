@@ -292,7 +292,7 @@ int dtb_find_compatible(const char *want, uint64_t *out, int max)
 }
 
 /* 同 dtb_find_compatible，但收集每一个匹配节点的第一段 reg 基址。 */
-int dtb_find_bases(const char *want, uint64_t *bases, int max)
+static int find_bases(const char *want, uint64_t *bases, int max, int cpu_nodes)
 {
     if (!dtb_base || max <= 0)
         return 0;
@@ -349,7 +349,9 @@ int dtb_find_bases(const char *want, uint64_t *bases, int max)
                 ac[depth] = (int)be32_at(p);
             else if (strcmp(name, "#size-cells") == 0 && len >= 4)
                 sc[depth] = (int)be32_at(p);
-            else if (strcmp(name, "compatible") == 0)
+            else if (cpu_nodes && strcmp(name, "device_type") == 0)
+                match[depth] = len == 4 && !strcmp((const char *)p, "cpu");
+            else if (!cpu_nodes && strcmp(name, "compatible") == 0)
                 match[depth] = str_in_list((const char *)p, len, want);
             else if (strcmp(name, "reg") == 0) {
                 reg[depth] = p;
@@ -363,6 +365,16 @@ int dtb_find_bases(const char *want, uint64_t *bases, int max)
         }
     }
     return n;
+}
+
+int dtb_cpus(uint64_t *ids, int capacity)
+{
+    return find_bases(NULL, ids, capacity, 1);
+}
+
+int dtb_find_bases(const char *want, uint64_t *bases, int max)
+{
+    return find_bases(want, bases, max, 0);
 }
 
 /* /chosen/bootargs（QEMU -append）。没有就返回空串。 */

@@ -1,0 +1,3 @@
+boot/secondary.S
+kernel/smp.c
+user/touch_smp_pressure.S

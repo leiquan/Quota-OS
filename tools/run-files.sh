@@ -7,6 +7,8 @@ if ! command -v qemu-system-aarch64 >/dev/null; then
 fi
 
 ram=${QUOTA_QEMU_RAM:-512M}
+cpus=${QUOTA_TOUCH_CPUS:-2}
+case "$cpus" in 1|2) ;; *) echo "Touch UI supports one or two configured CPUs." >&2; exit 2 ;; esac
 bootargs=lvgl
 default_kernel=build/quotaos-lvgl.bin
 cpu_args=(-machine virt,gic-version=2 -cpu cortex-a35 -icount shift=1,sleep=off)
@@ -46,7 +48,7 @@ if [[ ( -n ${QUOTA_ROOT_DISK:-} && "$QUOTA_ROOT_DISK" -ef "$disk" ) ||
     exit 1
 fi
 
-exec /bin/bash tools/run-qemu-gui.sh "${cpu_args[@]}" -m "$ram" -nic none \
+exec /bin/bash tools/run-qemu-gui.sh "${cpu_args[@]}" -m "$ram" -smp "$cpus" -nic none \
     -global virtio-mmio.force-legacy=false ${disks[@]+"${disks[@]}"} \
     -drive "if=none,id=notes,format=raw,file=${disk//,/,,}" \
     -device virtio-blk-device,bus=virtio-mmio-bus.29,drive=notes,serial=QUOTA-NOTES \
