@@ -47,6 +47,8 @@ QUOTA_LLVM_BIN="$(brew --prefix llvm)/bin" QUOTA_LLD="$(brew --prefix lld)/bin/l
 bash tools/run-macos-gui.sh build/quotaos-lvgl.bin
 ```
 
+在 macOS 上通过项目启动脚本打开 Quota OS，Dock 会使用[官网标志](docs/quota-mark.svg)。启动脚本会将标志装入本地 QEMU 应用包。
+
 | 操作 | 结果 |
 |---|---|
 | 底部 Bar 单击或向上滑一次 | 返回上一页 |
