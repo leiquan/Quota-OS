@@ -33,11 +33,11 @@
 <section class="wrap section" id="editions">
 <h2>三个发行版，共用一个内核</h2><p>CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。C UI 增加 LVGL 原生桌面，Web UI 在此基础上增加由 Blink、V8 和 Node.js 组成的三级 WAP 运行时。</p>
 <div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">发行版</th><th scope="col">QEMU 内存</th><th scope="col">ARM64 启动镜像</th></tr></thead><tbody>
-<tr><th scope="row">CLI</th><td>待验证</td><td>待验证</td></tr>
+<tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/CLI">CLI</a></th><td>17 MiB 短程通过 · 默认 32 MiB</td><td>75,240 B</td></tr>
 <tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/C-UI">C UI</a></th><td>64 MiB</td><td>701,852 B</td></tr>
 <tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">Web UI</a></th><td>1 GiB</td><td>374,867,224 B</td></tr>
 </tbody></table></div>
-<p>CLI 正在开发。串口交互与独立 Test 在同一镜像通过后，再公布最低内存。</p><p>表中为未压缩的桌面启动镜像大小。Web UI 示例应用包 demo.wap 为 1,705 字节。</p><h3>开发流程</h3><div class="edition-pair"><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="C UI · 二级任务准入"></a><figcaption>C UI · 二级任务准入</figcaption></figure><p>在 C UI 版中，用 C 编写驱动或 LVGL 界面，执行 <code>bash tools/build-lvgl-guest.sh</code>，在 QEMU 的 Apps → Test 检查配额。</p></div><div><figure><a class="capture" href="screenshots/web-node-cold.png"><img loading="lazy" src="screenshots/web-node-cold.png" width="1280" height="800" alt="Web Node Demo · 冷启动读回原文后再次保存"></a><figcaption>Web Node Demo · 冷启动读回原文后再次保存</figcaption></figure><p>Web UI 的系统开发先联合构建 Blink、Node 和共享 V8，再嵌入镜像。应用开发只需将清单、HTML 和可选的后台 JS 打成 WAP，在 Files 双击，保存后用同一磁盘冷启动验证。</p></div></div>
+<p>CLI 在 QEMU 17 MiB 配置下通过串口交互和独立 EL0 Test 的二三级短程验证。<a href="tests/cli/17M.log">查看串口日志</a>。</p><p>表中为未压缩的桌面启动镜像大小。Web UI 示例应用包 demo.wap 为 1,705 字节。</p><h3>开发流程</h3><div class="edition-pair"><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="C UI · 二级任务准入"></a><figcaption>C UI · 二级任务准入</figcaption></figure><p>在 C UI 版中，用 C 编写驱动或 LVGL 界面，执行 <code>bash tools/build-lvgl-guest.sh</code>，在 QEMU 的 Apps → Test 检查配额。</p></div><div><figure><a class="capture" href="screenshots/web-node-cold.png"><img loading="lazy" src="screenshots/web-node-cold.png" width="1280" height="800" alt="Web Node Demo · 冷启动读回原文后再次保存"></a><figcaption>Web Node Demo · 冷启动读回原文后再次保存</figcaption></figure><p>Web UI 的系统开发先联合构建 Blink、Node 和共享 V8，再嵌入镜像。应用开发只需将清单、HTML 和可选的后台 JS 打成 WAP，在 Files 双击，保存后用同一磁盘冷启动验证。</p></div></div>
 </section>
 <section class="wrap section" id="compare">
 <h2>系统对比</h2><p>同样是预留 CPU 时间，给一组线程分配最低份额、给单个线程设置周期预算、为整个分区排定时间窗，解决的是不同的问题。下表从分配对象和运行规则比较五种做法。</p>
