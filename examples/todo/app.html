@@ -1,29 +1,56 @@
 <!doctype html>
+<meta charset="utf-8">
 <style>
-body{font:15px sans-serif;background:#f4f7f6;color:#243;margin:16px}b{font-size:22px}
-small,section button{float:right}
-input,button,section{border:1px solid #bcb;border-radius:5px;padding:5px}
-#add:enabled{background:#177768;color:white}
-section{background:#fff;margin:4px 0}
-section:has(:checked){text-decoration:line-through}
+*{box-sizing:border-box}
+body{margin:0;color:#20364a;background:#f5f2ea;font:14px "DM Sans",sans-serif}
+header{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;background:#18364a;color:#fff6db;padding:8px 18px}
+header:before{content:"";position:absolute;inset:0 0 0 40%;background:repeating-linear-gradient(132deg,transparent 0 10px,#3b6470 10px 12px);opacity:.55}
+h1{margin:0;font:italic bold 34px/1 Georgia,serif;letter-spacing:-1px}
+aside{position:relative;padding:5px 11px;border-radius:6px;background:#18364a;text-align:right}
+#meter{display:block;width:80px;height:4px;margin-top:4px;border-radius:4px;background:linear-gradient(to right,#efb767 var(--done),#496677 var(--done))}
+article{padding:9px 16px}
+nav,section{display:flex;align-items:center;gap:8px}
+nav{margin-bottom:7px}
+input,button{font:inherit}
+#entry{flex:1;min-width:0;padding:6px 9px;border:1px solid #a9b7ab;border-radius:5px;background:#fffdf7}
+button{cursor:pointer}
+#add{padding:6px 14px;border:0;border-radius:5px;background:#177768;color:white;font-weight:bold}
+#add:disabled{opacity:.5}
+label{white-space:nowrap}
+input[type=checkbox]{accent-color:#177768}
+section{padding:5px 8px;border-bottom:1px solid #d5d9cf;background:#fffdf8;border-left:3px solid #d59b4c}
+section:has(:checked){border-left-color:#88a995;background:#e8eee6}
+section:has(:checked) span{color:#52695d;text-decoration:line-through}
+section span{flex:1;overflow-wrap:anywhere}
+section button{border:0;background:transparent;color:#675b55;font-size:12px}
+button:hover{filter:brightness(.85)}
+:focus-visible{outline:2px solid #c17a26;outline-offset:1px}
+#empty,output{color:#566c63;font-size:13px}
+#empty{border:1px dashed #a9b7ab;padding:12px;text-align:center}
 </style>
-<b>Todo</b><small id=count></small><hr>
-<input id=entry maxlength=36 placeholder="New task"><button id=add disabled>Add</button>
-<label><input id=filter type=checkbox>Open only</label>
-<main id=rows></main><output id=msg></output>
+<header><h1>Todo</h1><aside><span id=count></span><i id=meter></i></aside></header>
+<article><nav><input id=entry maxlength=36 aria-label="New task" placeholder="New task"><button id=add disabled>Add</button><label><input id=filter type=checkbox>Open only</label></nav>
+<main id=rows></main><p id=empty hidden></p><output id=msg></output></article>
 <script>
 (async () => {
   let tasks = await rpc.get('list'), busy;
   const input = entry;
   function render() {
     rows.innerHTML = '';
-    count.textContent = tasks.filter(t => !t[1]).length + ' open / ' + tasks.length;
+    const completed = tasks.filter(t => t[1]).length;
+    count.textContent = completed + ' / ' + tasks.length + ' done';
+    meter.style.setProperty('--done', (tasks.length ? completed / tasks.length * 100 : 0) + '%');
+    empty.hidden = tasks.some(t => !(filter.checked && t[1]));
+    empty.textContent = tasks.length ? 'All caught up.' : 'Your list is clear.';
     tasks.forEach(([text, done], i) => {
       if (done && filter.checked) return;
       const row = rows.appendChild(document.createElement('section'));
       row.innerHTML = '<input type=checkbox><button>Delete</button>';
       const toggle = row.firstChild;
-      toggle.after(text);
+      const title = document.createElement('span');
+      title.textContent = text;
+      toggle.after(title);
+      toggle.setAttribute('aria-label', 'Complete ' + text);
       toggle.checked = done;
       toggle.onclick = () => save(tasks.with(i,[text,!done]));
       row.lastChild.onclick = () => save(tasks.toSpliced(i,1));

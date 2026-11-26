@@ -28,7 +28,7 @@ with zipfile.ZipFile(package, "w", zipfile.ZIP_STORED) as archive:
                        ("app.html", html), ("app.js", minify((source / "app.js").read_text()))]:
         archive.writestr(zipfile.ZipInfo(name), data.encode())
 payload = package.getvalue()
-if len(payload) > 2032:
+if len(payload) > 4080:
     raise ValueError(f"{len(payload)} bytes exceed the guest package slot")
 generation = 1
 checksum = ((2166136261 ^ generation) * 16777619) & 0xffffffff
@@ -36,7 +36,8 @@ for byte in payload:
     checksum = ((checksum ^ byte) * 16777619) & 0xffffffff
 record = struct.pack("<4I", 0x51415031, generation, len(payload), checksum) + payload
 disk = bytearray(65536)
-disk[4096:4096 + len(record)] = record
+offset = 18 * 512 if len(payload) > 2032 else 8 * 512
+disk[offset:offset + len(record)] = record
 args.output.mkdir(parents=True, exist_ok=False)
 (args.output / "todo.wap").write_bytes(payload)
 (args.output / "todo.raw").write_bytes(disk)

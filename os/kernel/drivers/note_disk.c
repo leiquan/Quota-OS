@@ -5,7 +5,7 @@
  * Alternate two records so a torn update leaves the prior version readable. */
 #include "quotaos.h"
 
-enum { BLOCK = 512, MAGIC = 0x514e5431, FLUSH_FEATURE = 1u << 9, SOURCE_MAGIC = 0x514e5432, SOURCE_NAME = 32, PACKAGE_MAGIC = 0x51415031, NOTE_DATA_MAGIC = 0x514e4431, NOTE_DATA_SLOT = 3, PACKAGE_EXT = 4, HELLO_SLOT = 5, DOCUMENT_COUNT = 6, LEGACY_BYTES = BLOCK-16, PACKAGE_BANK_BYTES = 4*BLOCK };
+enum { BLOCK = 512, MAGIC = 0x514e5431, FLUSH_FEATURE = 1u << 9, SOURCE_MAGIC = 0x514e5432, SOURCE_NAME = 32, PACKAGE_MAGIC = 0x51415031, NOTE_DATA_MAGIC = 0x514e4431, NOTE_DATA_SLOT = 3, PACKAGE_EXT = 4, HELLO_SLOT = 5, PACKAGE_LARGE = 6, DOCUMENT_COUNT = 7, LEGACY_BYTES = BLOCK-16, PACKAGE_BANK_BYTES = 8*BLOCK };
 struct record {
     uint32_t magic, generation, length, checksum;
     char text[NOTE_DISK_PACKAGE_CAPACITY];
@@ -98,8 +98,10 @@ void note_disk_init(void)
     avail.flags = 1;
     mmio_wr(base+0x44, 1);
     mmio_wr(base+0x70, 15);
-    if (mmio_rd(base + 0x104) || mmio_rd(base + 0x100) >= 16)
-        document_count = (mmio_rd(base + 0x104) || mmio_rd(base + 0x100) >= 18) ? DOCUMENT_COUNT : HELLO_SLOT;
+    uint64_t sectors = (uint64_t)mmio_rd(base + 0x104) << 32 | mmio_rd(base + 0x100);
+    if (sectors >= 34) document_count = DOCUMENT_COUNT;
+    else if (sectors >= 18) document_count = PACKAGE_LARGE;
+    else if (sectors >= 16) document_count = HELLO_SLOT;
     phase = IDENTIFY;
 }
 
@@ -127,6 +129,20 @@ static int valid_source_name(const char *name)
            name[n - 2] == '.' && name[n - 1] == 'c';
 }
 
+static unsigned record_bytes(unsigned index)
+{
+    if (index == PACKAGE_LARGE) return PACKAGE_BANK_BYTES;
+    if (index == PACKAGE_EXT) return 4 * BLOCK;
+    return BLOCK;
+}
+
+static unsigned package_write_index(void)
+{
+    if (document_count > PACKAGE_LARGE) return PACKAGE_LARGE;
+    if (document_count > PACKAGE_EXT) return PACKAGE_EXT;
+    return 2;
+}
+
 static void submit(void)
 {
     int flush = phase == FLUSH || phase == AUTH_FLUSH;
@@ -135,7 +151,8 @@ static void submit(void)
     header.type = phase == IDENTIFY ? 8 : writing ? 1 : flush ? 4 : 0;
     header.sector = phase == READ_B || (phase == WRITE && !slot);
     if (phase == VERIFY) header.sector = slot;
-    if (document == PACKAGE_EXT) header.sector = 8 + 4 * header.sector;
+    if (document == PACKAGE_LARGE) header.sector = 18 + 8 * header.sector;
+    else if (document == PACKAGE_EXT) header.sector = 8 + 4 * header.sector;
     else if (document == HELLO_SLOT) header.sector += 16;
     else header.sector += document * 2;
     if (phase == IDENTIFY || flush) header.sector = 0;
@@ -144,7 +161,7 @@ static void submit(void)
     status = 255;
     desc[0] = (struct descriptor){(uintptr_t)&header, sizeof header, 1, flush ? 2 : 1};
     desc[1] = (struct descriptor){phase == IDENTIFY ? (uintptr_t)serial : credential ? (uintptr_t)credential_sector : (uintptr_t)&transfer,
-        phase == IDENTIFY ? 20 : credential ? BLOCK : document == PACKAGE_EXT ? PACKAGE_BANK_BYTES : BLOCK, writing ? 1 : 3, 2};
+        phase == IDENTIFY ? 20 : credential ? BLOCK : record_bytes(document), writing ? 1 : 3, 2};
     desc[2] = (struct descriptor){(uintptr_t)&status, 1, 2, 0};
     avail.ring[avail.idx % 8] = 0;
     asm volatile("dmb oshst" ::: "memory");
@@ -181,10 +198,9 @@ void note_disk_poll(void)
         } else if (phase == READ_A || phase == READ_B) {
             int valid = document == NOTE_DATA_SLOT
                 ? transfer.magic == NOTE_DATA_MAGIC && transfer.length <= LEGACY_BYTES
-                : (document == 2 || document == PACKAGE_EXT)
-                ? transfer.magic == PACKAGE_MAGIC && (document == PACKAGE_EXT
-                    ? transfer.length <= sizeof transfer.text
-                    : transfer.length && transfer.length <= LEGACY_BYTES)
+                : (document == 2 || document == PACKAGE_EXT || document == PACKAGE_LARGE)
+                ? transfer.magic == PACKAGE_MAGIC && (transfer.length || document != 2) &&
+                    transfer.length <= record_bytes(document) - 16
                 : (transfer.magic == MAGIC || (document == 1 && transfer.magic == SOURCE_MAGIC &&
                     transfer.length < LEGACY_BYTES - SOURCE_NAME &&
                     valid_source_name(transfer.text + LEGACY_BYTES - SOURCE_NAME))) &&
@@ -256,7 +272,7 @@ static int save_document(const char *text, unsigned index, const char *name)
 static int save_binary(unsigned index, uint32_t magic, const unsigned char *bytes, unsigned length)
 {
     if (phase != READY || sched_current()->tier != TIER3 || !bytes ||
-        length > (index == PACKAGE_EXT ? sizeof transfer.text : LEGACY_BYTES))
+        length > record_bytes(index) - 16)
         return -1;
     document = index;
     memset(&transfer, 0, sizeof transfer);
@@ -271,20 +287,21 @@ static int save_binary(unsigned index, uint32_t magic, const unsigned char *byte
 
 int note_disk_save_package(const unsigned char *bytes, unsigned length)
 {
-    return length ? save_binary(document_count > PACKAGE_EXT ? PACKAGE_EXT : 2, PACKAGE_MAGIC, bytes, length) : -1;
+    return length ? save_binary(package_write_index(), PACKAGE_MAGIC, bytes, length) : -1;
 }
 
 int note_disk_package_initialized(void)
 {
-    return documents[PACKAGE_EXT].magic || documents[2].magic;
+    return documents[PACKAGE_LARGE].magic || documents[PACKAGE_EXT].magic || documents[2].magic;
 }
 
 int note_disk_remove_package(void)
 {
     unsigned length;
-    /* An empty record in the extended bank masks both previous banks and the legacy slot. */
-    return document_count > PACKAGE_EXT && note_disk_package(&length)
-        ? save_binary(PACKAGE_EXT, PACKAGE_MAGIC, (const unsigned char *)"", 0) : -1;
+    /* The highest supported bank masks earlier banks, including the legacy slot. */
+    unsigned index = package_write_index();
+    return index != 2 && note_disk_package(&length)
+        ? save_binary(index, PACKAGE_MAGIC, (const unsigned char *)"", 0) : -1;
 }
 
 int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_t *generation)
@@ -316,6 +333,7 @@ const unsigned char *note_disk_wap_note(unsigned *length)
 const unsigned char *note_disk_package(unsigned *length)
 {
     const struct record *r = documents[PACKAGE_EXT].magic ? &documents[PACKAGE_EXT] : &documents[2];
+    if (documents[PACKAGE_LARGE].magic) r = &documents[PACKAGE_LARGE];
     *length = r->length;
     return r->magic && r->length ? (const unsigned char *)r->text : NULL;
 }
@@ -345,7 +363,7 @@ int note_disk_verify_result(void) { return phase == FAILED ? -1 : verify_result;
 const char *note_disk_text(void) { return documents[0].magic ? documents[0].text : 0; }
 const char *note_disk_status(void)
 {
-    if (phase == READY || phase == SCRUB) return documents[0].magic || documents[1].magic || documents[2].magic || documents[PACKAGE_EXT].magic ? "Saved" : "Ready";
+    if (phase == READY || phase == SCRUB) return documents[0].magic || documents[1].magic || note_disk_package_initialized() ? "Saved" : "Ready";
     if (phase == WRITE || phase == FLUSH) return "Saving...";
     if (phase == FAILED) return "Disk error";
     if (phase == VERIFY) return "Verifying...";

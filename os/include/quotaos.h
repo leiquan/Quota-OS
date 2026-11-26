@@ -630,7 +630,7 @@ int note_disk_power_ready(void);
 int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_t *generation);
 int note_disk_wap_note_committed(uint32_t generation);
 const unsigned char *note_disk_wap_note(unsigned *length);
-enum { NOTE_DISK_PACKAGE_CAPACITY = 2032 };
+enum { NOTE_DISK_PACKAGE_CAPACITY = 4080 };
 int note_disk_save_package(const unsigned char *bytes, unsigned length);
 int note_disk_package_initialized(void);
 int note_disk_remove_package(void);
