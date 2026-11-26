@@ -64,7 +64,7 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <tr><th scope="row">Linux SCHED_DEADLINE</th><td>申请截止期调度的线程</td><td>线程声明运行预算、相对截止期和周期。内核检查带宽后决定是否准入，按调度截止期安排执行；在默认策略下，预算耗尽的线程须等待补充。 <a href="https://docs.kernel.org/scheduler/sched-deadline.html">Linux 内核调度文档</a></td></tr>
 <tr><th scope="row">VxWorks 653</th><td>预先配置的应用分区</td><td>模块按时间表轮流运行各分区。窗口内由分区调度器按优先级选择任务；窗口结束后，模块切换到表中的下一个分区。 <a href="https://www.windriver.com/resource/safety-critical-software-development-for-integrated-modular-avionics">Wind River 时间分区说明</a></td></tr>
 </tbody></table></div>
-<p>Quota OS 的公开测试在单核 ARM64 QEMU 中记录调度周期和来宾帧缓冲提交。各系统在同一硬件上的显示延迟仍待测量。</p>
+<p>Quota OS 的公开测试在单核 ARM64 QEMU 中记录调度周期和来宾帧缓冲提交。各系统在同一硬件上的<span style="white-space: nowrap">显示延迟</span>仍待测量。</p>
 </section>
 <section class="wrap section" id="evidence">
 <h2>桌面忙等卡顿时，一二级应用不会卡顿</h2>
