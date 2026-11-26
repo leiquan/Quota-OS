@@ -10,6 +10,13 @@ License: [Apache-2.0](LICENSE)
 
 初次阅读建议从 [内核入门](docs/kernel-guide.md) 开始。
 
+
+## Music Player 的三级帧率
+
+GPS Speed 和 Flight Camera 的目标提交间隔分别为 10 ms 和 40 ms。Music Player 使用三级剩余 CPU，移除了该示例每 10 ms 最多提交两帧的限制。仍通过有界绘制队列提交并逐帧让出 CPU，其余 EL0 画面客户端继续使用通用限额。柱状历史按实际样本调整量程。
+
+QEMU 单核 Cortex-A35、`icount` 验收中，UI（64 MiB）和 Web UI（1 GiB）均通过五项常规场景和三级 CPU、内存、磁盘组合压力。空闲截图分别显示 480、448 FPS，组合压力取样共提交 2,051、1,997 帧（约 10 秒），瞬时帧率随竞争波动。两版组合压力的 GPS Speed 和 Flight Camera 最大间隔均为 10/40 ms，一级遗漏、二级欠配额和三级池越界均为 0。FPS 指来宾提交速率。
+
 ## 当前维护记录
 
 - **发行版**。当前发布的 CLI、UI 和 Web UI 仍使用 QEMU 单核配置。CLI 多核开发分支已有 `icount` 验证，宿主并行时钟下仍出现派发与超时问题，因此尚未纳入发行配置。
