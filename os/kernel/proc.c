@@ -345,7 +345,13 @@ struct proc {
     struct runtime_volume_file disk_elf;
     struct disk_elf_segment disk_segments[DISK_ELF_MAX_SEGMENTS];
     unsigned disk_segment_count, disk_fault_segment, disk_fault_page;
-    int disk_elf_waiting, disk_read_waiting;
+    int disk_elf_waiting;
+    struct {
+        const struct runtime_volume_file *file;
+        uint64_t address, position;
+        unsigned bytes;
+        int result;
+    } disk_read;
     unsigned v8_shared, page_ins;
     const char *stop_reason;
     uint64_t fault_file_offset[2];
@@ -375,7 +381,7 @@ struct proc {
 #endif
     struct {
         uint64_t va;
-        unsigned checked, next, needed, reserved;
+        unsigned checked, next, needed, reserved, search_page, free_run;
     } mapping;
     uint64_t dso_used[(ELF_DSO_PAGES + 63) / 64];
     uint64_t dso_anonymous[(ELF_DSO_PAGES + 63) / 64];
@@ -470,10 +476,23 @@ static uint8_t pool[EL0_POOL][4096] __attribute__((aligned(4096)));
 #endif
 static uint8_t pool_used[EL0_POOL];
 static unsigned free_frames = EL0_POOL;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+/* The disk-backed runtime's recolored physical pool is sparse after reclaim.
+ * Preserve allocation order through a FIFO without scanning used frames. */
+static unsigned free_next[EL0_POOL], free_head = EL0_POOL, free_tail = EL0_POOL;
+#endif
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
 void proc_bind_color_pool(void)
 {
     free_frames = pool_capacity = color_bind_process_frames(pool, EL0_POOL);
+#ifdef QUOTA_NODE_WEB
+    if (pool_capacity) {
+        free_head = 0;
+        free_tail = pool_capacity - 1;
+        for (unsigned i = 0; i < free_tail; ++i) free_next[i] = i + 1;
+        free_next[free_tail] = EL0_POOL;
+    }
+#endif
     printf("[proc] shared-color frames %u, %u KiB physical capacity\n", pool_capacity, pool_capacity * 4);
 }
 #endif
@@ -752,7 +771,13 @@ void proc_last_fault(struct el0_fault *o)
 static void tlb_asid(int asid)
 {
     uint64_t x = (uint64_t)(uint16_t)asid << 48;
+#ifdef QUOTA_WEB_COLD_TRACE
+    unsigned stage = sched_cold_mmap_stage(7);
+#endif
     asm volatile("dsb ish; tlbi aside1, %0; dsb ish; isb" :: "r"(x) : "memory");
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(stage);
+#endif
 }
 
 static uint64_t walk(const struct proc *p, uint64_t va, int *level)
@@ -1127,6 +1152,9 @@ static int block_on_disk_elf(struct proc *p, uint64_t far, uint64_t esr)
             return 0;
         p->disk_fault_page = page;
         p->disk_elf_waiting = 2;
+#ifdef QUOTA_WEB_COLD_TRACE
+        sched_cold_disk(3, page);
+#endif
         p->task->state = TASK_BLOCKED;
         return 1;
     }
@@ -1257,6 +1285,42 @@ static void finish_disk_dso_fault(struct proc *p)
         printf("[wap-volume] pid=%d page_ins=%u clean=%u evicted=%u resident=%u high=%u free=%u\n",
                p->pid, p->page_ins, p->clean_pages, p->evicted_pages, p->mapped_dso_pages,
                p->high_frames, free_frames);
+}
+
+static int copy_process_bytes(struct proc *p, uint64_t va, void *buffer, unsigned count, int to_user);
+
+/* The caller stays blocked at its SVC until the volume and user copies have
+ * finished. A hold protects its pages while this Tier-3 work is preemptible. */
+static void finish_disk_read(struct proc *p)
+{
+    static uint8_t buffer[4096];
+    static int busy;
+    uint64_t irq = irq_save();
+    if (busy || !p->alive || p->draining || !p->disk_read.file ||
+        p->disk_read.result || !p->task) {
+        irq_restore(irq);
+        return;
+    }
+    busy = 1;
+    ++p->hold;
+    irq_restore(irq);
+
+    unsigned bytes = p->disk_read.bytes;
+    int result = runtime_volume_read_file(p->disk_read.file, p->disk_read.position,
+                                          buffer, bytes);
+    if (result > 0)
+        result = copy_process_bytes(p, p->disk_read.address, buffer, bytes, 1) ? -14 : (int)bytes;
+    else if (result < 0)
+        result = -5;
+
+    irq = irq_save();
+    --p->hold;
+    busy = 0;
+    if (result && !p->draining) {
+        p->disk_read.result = result;
+        task_ready(p->task);
+    }
+    irq_restore(irq);
 }
 
 static void finish_disk_elf_fault(struct proc *p)
@@ -1452,13 +1516,7 @@ void proc_finish_pending(void)
         if (sched_current() && sched_current()->tier == TIER3) {
             struct proc *p = &procs[i];
             finish_disk_elf_fault(p);
-            if (p->alive && !p->draining && p->disk_read_waiting &&
-                !runtime_volume_io_pending()) {
-                uint64_t irq = irq_save();
-                p->disk_read_waiting = 0;
-                task_ready(p->task);
-                irq_restore(irq);
-            }
+            finish_disk_read(p);
         }
 #endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
@@ -1958,7 +2016,7 @@ void proc_el0_svc(struct irq_frame *f)
 #endif
         f->r[0] = (uint64_t)result;
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
-        if (p->disk_read_waiting)
+        if (p->disk_read.file && !p->disk_read.result)
             return;
 #endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
@@ -1997,6 +2055,16 @@ void proc_el0_svc(struct irq_frame *f)
         f->r[0] = length;
         return;
     }
+#ifdef QUOTA_TOUCH_SMP
+    if (op == 5 && p->console == CONSOLE_QUOTA) {
+        f->r[0] = sched_smp_pending();
+        return;
+    }
+    if (op == 6 && p->console == CONSOLE_QUOTA) {
+        f->r[0] = sched_smp_probe(p->pa[0], f->r[0]);
+        return;
+    }
+#endif
     if (op == 3 && p->console == CONSOLE_QUOTA && !console_updated) {
         uint64_t off = f->r[0], len = f->r[1];
         if ((off == DRAW_VA && len < sizeof console_text) ||
@@ -2029,8 +2097,22 @@ int proc_kill(int64_t handle)
     return 0;
 }
 
-static int alloc_page(uint64_t *pa)
+static int take_frame(void)
 {
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    uint64_t flags = irq_save();
+    if (free_frames <= reserved_frames || free_head == EL0_POOL) {
+        irq_restore(flags);
+        return -1;
+    }
+    unsigned i = free_head;
+    free_head = free_next[i];
+    if (free_head == EL0_POOL) free_tail = EL0_POOL;
+    pool_used[i] = 1;
+    --free_frames;
+    irq_restore(flags);
+    return i;
+#else
     static unsigned cursor;
     for (unsigned scanned = 0; scanned < pool_capacity; ++scanned) {
         uint64_t flags = irq_save();
@@ -2046,11 +2128,26 @@ static int alloc_page(uint64_t *pa)
         pool_used[i] = 1;
         --free_frames;
         irq_restore(flags);
-        memset(pool[i], 0, 4096);
-        *pa = (uint64_t)(uintptr_t)pool[i];
         return i;
     }
     return -1;
+#endif
+}
+
+static int alloc_page(uint64_t *pa)
+{
+#ifdef QUOTA_WEB_COLD_TRACE
+    unsigned stage = sched_cold_mmap_stage(5);
+#endif
+    int i = take_frame();
+    if (i >= 0) {
+        memset(pool[i], 0, 4096);
+        *pa = (uint64_t)(uintptr_t)pool[i];
+    }
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(stage);
+#endif
+    return i;
 }
 
 static void free_idx(int idx)
@@ -2063,11 +2160,23 @@ static void free_idx(int idx)
         forget_v8_page(idx);
     }
 #endif
+#ifdef QUOTA_WEB_COLD_TRACE
+    unsigned stage = sched_cold_mmap_stage(6);
+#endif
     memset(pool[idx], 0, 4096);
     uint64_t flags = irq_save();
     pool_used[idx] = 0;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (free_tail == EL0_POOL) free_head = idx;
+    else free_next[free_tail] = idx;
+    free_tail = idx;
+    free_next[idx] = EL0_POOL;
+#endif
     ++free_frames;
     irq_restore(flags);
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(stage);
+#endif
 }
 
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
@@ -2098,6 +2207,23 @@ static uint64_t code_pte(uint64_t pa)
            AP_EL0 | AP_RO;
 }
 
+#ifdef QUOTA_TOUCH_SMP
+/* The worker owns this code snapshot, private stack, and translation tables.
+ * Exiting Test on CPU0 cannot recycle pages still executing on CPU1. */
+uint64_t smp_test_space(unsigned index, uint64_t storage, uint64_t code)
+{
+    uint64_t (*tables)[512] = (void *)(uintptr_t)storage;
+    unsigned char *stack = (void *)(uintptr_t)(storage + 4*4096);
+    memset(stack, 0, 4096);
+    for (unsigned i = 0; i < 3; i++)
+        tables[i][0] = (uintptr_t)tables[i+1] | PTE_VALID | PTE_PAGE;
+    tables[1][1] = (uintptr_t)el0_l2_hi | PTE_VALID | PTE_PAGE;
+    tables[3][0] = code_pte(code);
+    tables[3][1] = data_pte((uintptr_t)stack);
+    asm volatile("dsb ishst" ::: "memory");
+    return (uintptr_t)tables[0] | ((255ull-index) << 48);
+}
+#endif
 static void build_pt(struct proc *p)
 {
     memset(pt_l0[p->slot], 0, 4096);
@@ -2333,7 +2459,8 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     p->v8_shared = p->page_ins = 0;
     p->clean_pages = p->clean_cursor = p->clean_scanned = p->evicted_pages = 0;
     p->disk_elf_waiting = 0;
-    p->disk_read_waiting = 0;
+    p->disk_read.file = NULL;
+    p->disk_read.result = 0;
 #endif
     build_pt(p);
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST

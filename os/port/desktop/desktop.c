@@ -2266,6 +2266,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         }
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
         runtime_volume_poll();
+#ifdef QUOTA_WEB_COLD_TRACE
+        sched_cold_report();
+#endif
         int volume_status = wap_volume_prepare_poll(&demo_handle);
         if (volume_status)
             lv_label_set_text(demo_status, volume_status > 0

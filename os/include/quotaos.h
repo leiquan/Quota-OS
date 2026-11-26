@@ -252,6 +252,25 @@ void gic_eoi(uint32_t iar);
 
 void timer_init(void);
 uint64_t ticks_now(void);
+#ifdef QUOTA_TOUCH_SMP
+int gic_secondary_timer_init(void);
+#define SMP_MAX_CPUS 8 /* QEMU virt with GICv2 */
+int dtb_cpus(uint64_t *out, int max);
+uint64_t smp_test_space(unsigned index, uint64_t storage, uint64_t code);
+int sched_record_hash(unsigned seed, const char *input, unsigned length, unsigned *result);
+void smp_hash_input(unsigned seed, const char *input, unsigned length);
+int smp_hash_result(unsigned *result);
+int smp_prepare(uint64_t code);
+int sched_smp_probe(uint64_t code, uint64_t entry);
+int sched_smp_pending(void);
+void sched_smp_report(void);
+void smp_boot(void);
+int smp_online(void);
+uint64_t smp_affinity(unsigned index);
+void smp_submit(unsigned first, unsigned count, uint64_t deadline, uint64_t slice, uint64_t entry);
+uint64_t smp_used(unsigned index);
+int smp_result(unsigned index, uint64_t *start, uint64_t *end, uint64_t *iterations, uint64_t *compare, uint64_t *trap);
+#endif
 uint64_t timer_freq(void);
 int timer_realtime(uint64_t ts[2]);
 uint64_t us_to_ticks(uint64_t us);
@@ -318,6 +337,11 @@ void app_display_core_frame(uint64_t release);
 void sched_volume_pressure_begin(struct task *probe);
 void sched_volume_pressure_end(void);
 void sched_volume_pressure_dump(void);
+#endif
+#ifdef QUOTA_WEB_COLD_TRACE
+void sched_cold_disk(unsigned phase, uint64_t address);
+void sched_cold_report(void);
+unsigned sched_cold_mmap_stage(unsigned next);
 #endif
 void app_frame_trace_start(void);
 void app_frame_trace_dump(void);

@@ -362,18 +362,35 @@ static uint64_t runtime_pte(uint64_t pa, unsigned prot)
     return data_pte(pa) | ((prot & 2) ? 0 : AP_RO);
 }
 
-/* Return the first occupied page in a proposed range, or its end. */
-static unsigned first_mapped_page(struct proc *p, unsigned first, unsigned end)
+/* Scan the bitmap in address order. Persist progress at the SVC boundary
+ * so a fragmented address space cannot hold IRQs off for an entire search. */
+static int find_mapping_slice(struct proc *p, unsigned pages, unsigned *first)
 {
-    while (first < end) {
-        uint64_t bits = p->dso_used[first / 64] & (~0ull << (first % 64));
-        if (bits) {
-            unsigned page = (first & ~63u) + __builtin_ctzll(bits);
-            return page < end ? page : end;
+    uint64_t stop = ticks_now() + us_to_ticks(8);
+    unsigned cursor = p->mapping.search_page, run = p->mapping.free_run;
+    while (cursor < ELF_DSO_PAGES) {
+        unsigned offset = cursor % 64;
+        uint64_t used = p->dso_used[cursor / 64] >> offset;
+        if (used & 1) {
+            unsigned occupied = used == UINT64_MAX ? 64 : __builtin_ctzll(~used);
+            cursor += occupied;
+            run = 0;
+        } else {
+            unsigned free = used ? __builtin_ctzll(used) : 64 - offset;
+            cursor += free;
+            run += free;
+            if (run >= pages) {
+                *first = cursor - run;
+                return 1;
+            }
         }
-        first = (first & ~63u) + 64;
+        if (ticks_now() >= stop) {
+            p->mapping.search_page = cursor;
+            p->mapping.free_run = run;
+            return 0;
+        }
     }
-    return end;
+    return -12;
 }
 
 static void reserve_empty_pages(struct proc *p, unsigned first, unsigned pages)
@@ -471,7 +488,10 @@ static int64_t protect_high(struct proc *p, struct irq_frame *f, uint64_t va, un
     if (prot > 7 || (prot & 6) == 6) return -22;
     /* Small first commits, including any translation tables, are charged together. */
     p->mapping.va = va;
-    unsigned stop = p->mapping.checked + 128;
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(2);
+#endif
+    unsigned stop = p->mapping.checked + 32;
     if (stop > pages) stop = pages;
     for (unsigned i = p->mapping.checked; i < stop; ++i) {
         uint64_t at = va + i * 4096ull;
@@ -504,6 +524,9 @@ static int64_t protect_high(struct proc *p, struct irq_frame *f, uint64_t va, un
         reserved_frames += p->mapping.reserved;
     }
     uint64_t start = ticks_now();
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(3);
+#endif
     while (p->mapping.next < pages) {
         unsigned i = p->mapping.next++;
         uint64_t at = va + i * 4096ull, pa;
@@ -542,6 +565,9 @@ static int release_mapping_slice(struct proc *p, struct irq_frame *f, uint64_t a
         p->mapping.va = addr;
         p->release_cursor = addr;
     }
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(4);
+#endif
     while (p->release_cursor < end && p->high_frames) {
         uint64_t va = p->release_cursor;
         uint64_t *table = pt_l0[p->slot];
@@ -625,6 +651,13 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
 {
     uint64_t va = f->r[0], len = f->r[1], prot = f->r[2], flags = f->r[3], off = f->r[5];
     int op = f->r[8], map = op == 222;
+    /* Every mapping slice returns through the scheduler before continuing.
+     * Leave time before the next protected slot for a page and exception exit. */
+    uint64_t now = ticks_now();
+    if (sched_next_guard(now) <= now + us_to_ticks(100)) {
+        f->elr -= 4;
+        return f->r[0];
+    }
 #ifdef QUOTA_WAP_FULL_RUNTIME
     /* glibc reserves an aligned DSO span with MAP_DENYWRITE before replacing
      * it with file-backed PT_LOAD segments. Keep that span in the DSO window. */
@@ -652,26 +685,33 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
 #endif
     if (p->mapping.va) va = p->mapping.va;
     else if (map && !(flags & 16)) {
-        unsigned first = 0;
-        while (first + pages <= ELF_DSO_PAGES) {
-            unsigned occupied = first_mapped_page(p, first, first + pages);
-            if (occupied == first + pages) break;
-            first = occupied;
-            while (first < ELF_DSO_PAGES) {
-                uint64_t available = ~p->dso_used[first / 64] & (~0ull << (first % 64));
-                if (available) {
-                    first = (first & ~63u) + __builtin_ctzll(available);
-                    break;
-                }
-                first = (first & ~63u) + 64;
+        unsigned first;
+#ifdef QUOTA_WEB_COLD_TRACE
+        sched_cold_mmap_stage(1);
+#endif
+        int result = find_mapping_slice(p, pages, &first);
+        if (result <= 0) {
+            if (result < 0) {
+                memset(&p->mapping, 0, sizeof p->mapping);
+                return result;
             }
+            f->elr -= 4;
+            return f->r[0];
         }
-        if (first + pages > ELF_DSO_PAGES) return -12;
         va = ELF_DSO_BASE + first * 4096;
-        if ((flags & 32) && !prot) {
-            reserve_empty_pages(p, first, pages);
-            return va;
+    }
+    if (map && !(flags & 16) && (flags & 32) && !prot) {
+        p->mapping.va = va;
+        unsigned left = pages - p->mapping.next;
+        unsigned count = left < 512 ? left : 512;
+        reserve_empty_pages(p, (va - ELF_DSO_BASE) / 4096 + p->mapping.next, count);
+        p->mapping.next += count;
+        if (p->mapping.next < pages) {
+            f->elr -= 4;
+            return f->r[0];
         }
+        memset(&p->mapping, 0, sizeof p->mapping);
+        return va;
     }
     /* glibc seals the executable and interpreter RELRO after relocation. */
     if (op == 226 && (prot == 1 || prot == 3) && !(va & 4095) && va >= ELF_BASE &&
@@ -695,7 +735,10 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     /* Re-enter the same SVC between bounded slices. No user instruction
      * observes partial updates: the sole address-space owner resumes at svc. */
     p->mapping.va = va;
-    unsigned stop = p->mapping.checked + 128;
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(2);
+#endif
+    unsigned stop = p->mapping.checked + 32;
     if (stop > pages) stop = pages;
     for (unsigned i = p->mapping.checked; i < stop; ++i) {
         unsigned idx = first + i;
@@ -747,6 +790,9 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
         reserved_frames += p->mapping.reserved;
     }
     uint64_t slice_start = ticks_now();
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(3);
+#endif
     while (p->mapping.next < pages) {
         unsigned i = p->mapping.next++;
         unsigned idx = first + i;
@@ -914,7 +960,10 @@ static int64_t runtime_advise(struct proc *p, struct irq_frame *f)
         va - ELF_DSO_BASE > ELF_DSO_PAGES * 4096 - len) return -12;
     unsigned first = (va - ELF_DSO_BASE) / 4096, count = (len + 4095) / 4096;
     p->mapping.va = va;
-    unsigned stop = p->mapping.checked + 128;
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(2);
+#endif
+    unsigned stop = p->mapping.checked + 32;
     if (stop > count) stop = count;
     for (unsigned i = p->mapping.checked; i < stop; i++) {
         unsigned idx = first + i;
@@ -2676,27 +2725,31 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
         const struct runtime_volume_file *disk_file = disk_file_extent(file);
         if (disk_file) {
-            /* ld.so reads an initial ELF window in one syscall. SVCs
-             * serialize access to this scratch page on the single core. */
-            static uint8_t buffer[4096];
+            if (p->disk_read.file) {
+                int result = p->disk_read.result;
+                uint64_t completed_at = p->disk_read.position;
+                p->disk_read.file = NULL;
+                p->disk_read.result = 0;
+                /* A shared descriptor may have moved while I/O was pending. */
+                if (pos == completed_at) {
+                    if (op == 63 && result > 0) p->files[index].position->offset += result;
+                    return result;
+                }
+            }
             if (pos >= disk_file->size || !f->r[2])
                 return 0;
             uint64_t bytes = disk_file->size - pos;
             if (bytes > f->r[2]) bytes = f->r[2];
-            if (bytes > sizeof buffer) bytes = sizeof buffer;
-            int result = runtime_volume_read_file(disk_file, pos, buffer, bytes);
-            if (result < 0)
-                return -5;
-            if (!result) {
-                p->disk_read_waiting = 1;
-                p->task->state = TASK_BLOCKED;
-                f->elr -= 4;
-                return fd;
-            }
-            if (copy_process_bytes(p, f->r[1], buffer, bytes, 1))
-                return -14;
-            if (op == 63) p->files[index].position->offset += bytes;
-            return bytes;
+            if (bytes > 4096) bytes = 4096;
+            /* ld.so needs the full initial ELF window. Retry the SVC only
+             * after the Tier-3 service has copied it with IRQs enabled. */
+            p->disk_read.file = disk_file;
+            p->disk_read.address = f->r[1];
+            p->disk_read.position = pos;
+            p->disk_read.bytes = bytes;
+            p->task->state = TASK_BLOCKED;
+            f->elr -= 4;
+            return fd;
         }
 #endif
         uint64_t size = file->end - file->begin;
