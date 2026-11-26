@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Quota OS 是一款以资源配额为核心的 ARM64 实验操作系统。">
+<meta name="description" content="Quota OS 是一款以资源配额为核心的 ARM64 操作系统。">
 <title>Quota OS — 以资源配额为核心的操作系统</title>
-<link rel="stylesheet" href="site.css?v=editorial-2">
+<link rel="stylesheet" href="site.css?v=layout-3">
 <script src="site.js?v=dev" defer></script>
 <link rel="icon" href="favicon.png" type="image/png">
 </head>
@@ -15,7 +15,7 @@
 <section class="wrap hero" id="home">
 <div class="hero-copy"><p class="eyebrow">面向 ARM64 的资源配额操作系统</p>
 <h1>让关键任务<br><span>按时拿到资源。</span></h1>
-<p class="intro">Quota OS 是一款以资源配额为核心的实验操作系统。内核为关键任务预留执行时间，按容量接纳应用，并将剩余资源交给普通任务共享。</p>
+<p class="intro">Quota OS 是一款以资源配额为核心的操作系统。内核为关键任务预留执行时间，按容量接纳应用，并将剩余资源交给普通任务共享。</p>
 <p class="actions"><a class="primary" href="#run">运行 Quota OS</a><a href="https://github.com/leiquan/Quota-OS">查看源码 ↗</a></p>
 </div><div class="showcase"><div class="gallery" tabindex="0" aria-label="桌面截图"><figure><a class="capture" href="screenshots/pages-apps.png"><img src="screenshots/pages-apps.png?v=desktop" width="1280" height="800" alt="应用目录"></a><figcaption>应用目录</figcaption></figure><figure><a class="capture" href="screenshots/pages-task.png"><img src="screenshots/pages-task.png?v=desktop" width="1280" height="800" alt="系统任务"></a><figcaption>系统任务</figcaption></figure><figure><a class="capture" href="screenshots/pages-info.png"><img src="screenshots/pages-info.png?v=desktop" width="1280" height="800" alt="系统信息"></a><figcaption>系统信息</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="下一张">→</button><button type="button" class="playback"></button></div></div>
 <h3 class="platform-title">演示运行环境</h3><dl class="platform"><div><dt>发行版</dt><dd>C LVGL 版</dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（单核）</dd></div><div><dt>内存</dt><dd>64 MiB</dd></div><div><dt>显示与计时</dt><dd>1280 × 800 · LVGL / ramfb · QEMU TCG / icount</dd></div></dl>
@@ -23,7 +23,7 @@
 </section>
 <section class="wrap section" id="model">
 <h2>三种资源承诺</h2>
-<p>GPS Speed、Flight Camera 和 Music Player 的卡片右侧标出各自的级别。Flight Camera 以 25 FPS 为目标模拟车道动画。</p>
+<p>示例应用GPS Speed、Flight Camera 和 Music Player 的卡片右侧标出各自的级别。Flight Camera 以 25 FPS 为目标模拟车道动画。</p>
 <div class="grid">
 <article><p class="eyebrow">一级</p><h3>厂商预留</h3><p>速度表和系统定时服务使用固定 CPU 时间槽。即使桌面任务忙等，关键任务仍按槽表获得执行机会。</p></article>
 <article><p class="eyebrow">二级</p><h3>用户指定</h3><p>行车记录仪声明最低需求。用户同意且容量足够才启动，内核按周期兑现已准入的最低配额。</p></article>
@@ -32,7 +32,7 @@
 </section>
 <section class="wrap section" id="editions">
 <h2>选择发行版</h2><p>两个发行版共用 ARM64 配额内核和 LVGL 桌面。一、二级资源配额型应用，比如速度仪表等，适合用C LVGL开发；三级无配额应用，选择 Web Node模式开发；系统已经集成完整开发环境；直接打包上传到系统即可运行。</p>
-<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">项目</th><th scope="col"><a href="https://github.com/leiquan/Quota-OS/tree/C-LVGL">C LVGL</a></th><th scope="col"><a href="https://github.com/leiquan/Quota-OS/tree/Web-Node">Web Node</a></th></tr></thead><tbody><tr><th scope="row">镜像大小</th><td>701,852 B · 685.4 KiB</td><td>374,863,128 B · 357.5 MiB</td></tr><tr><th scope="row">QEMU 验证内存</th><td>64 MiB</td><td>1 GiB</td></tr><tr><th scope="row">系统实现</th><td>C · AArch64 ASM · LVGL</td><td>C · AArch64 ASM · LVGL + C++ (Blink, V8, Node.js)</td></tr><tr><th scope="row">应用开发</th><td>C + LVGL</td><td>C + LVGL / HTML + CSS + JS / Node.js</td></tr></tbody></table></div>
+<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">项目</th><th scope="col"><a href="https://github.com/leiquan/Quota-OS/tree/C-LVGL">C LVGL</a></th><th scope="col"><a href="https://github.com/leiquan/Quota-OS/tree/Web-Node">Web Node</a></th></tr></thead><tbody><tr><th scope="row">镜像大小</th><td>701,852 B · 685.4 KiB</td><td>374,863,128 B · 357.5 MiB</td></tr><tr><th scope="row">QEMU 验证内存</th><td>64 MiB</td><td>1 GiB</td></tr><tr><th scope="row">系统实现</th><td>C · AArch64 ASM · LVGL</td><td>C · AArch64 ASM · LVGL · C++ (Blink, V8, Node.js)</td></tr><tr><th scope="row">应用开发</th><td>C + LVGL</td><td>C + LVGL + HTML / CSS / JS / Node.js</td></tr></tbody></table></div>
 <p>未压缩启动镜像，2026-11-26 实测构建。Web Node 包含共享运行时、动态库、字体和启动数据；Web Node Demo 的 demo.wap 仅 1,653 字节。</p><h3>开发流程</h3><div class="edition-pair"><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="C LVGL · 二级任务准入"></a><figcaption>C LVGL · 二级任务准入</figcaption></figure><p>在 C LVGL 版中，用 C 编写驱动或 LVGL 界面，执行 <code>bash tools/build-lvgl-guest.sh</code>，在 QEMU 的 Apps → Test 检查配额。</p></div><div><figure><a class="capture" href="screenshots/web-node-cold.png"><img loading="lazy" src="screenshots/web-node-cold.png" width="1280" height="800" alt="Web Node Demo · 冷启动读回原文后再次保存"></a><figcaption>Web Node Demo · 冷启动读回原文后再次保存</figcaption></figure><p>Web Node 的系统开发先联合构建 Blink、Node 和共享 V8，再嵌入镜像。应用开发只需将清单、HTML 和可选的后台 JS 打成 WAP，在 Files 双击，保存后用同一磁盘冷启动验证。</p></div></div>
 </section>
 <section class="wrap section" id="compare">
@@ -50,7 +50,8 @@
 <section class="wrap section" id="evidence">
 <h2>桌面忙等时，速度表继续更新</h2>
 <p>从 Apps 打开 Test。第 1–3 项测试二级超额申请、正常启动和 CPU 限额。第 1 项显示申请量、当前可用量和总量。第 4–5 项运行三级普通任务和 10 秒死循环。结果显示 Music Player 实际提交帧数。GPS Speed 的 10 ms 和 Flight Camera 的 40 ms 目标需单独核对最大帧间隔。</p>
-<div class="evidence-grid"><figure><a class="capture" href="screenshots/system-test.png"><img loading="lazy" width="1280" height="800"  src="screenshots/system-test.png" alt="QEMU 实拍的 Test 应用与三级忙循环测试结果"></a><figcaption>三级忙循环测试显示配额执行结果和仪表最大帧间隔</figcaption></figure><figure ><a class="capture" href="screenshots/vehicle-instruments.png"><img loading="lazy" width="1280" height="800"  src="screenshots/vehicle-instruments.png" alt="桌面实拍：速度表、模拟行车记录仪和音乐播放器"></a><figcaption>速度表显示累计错过的截止期；行车记录仪目标为每秒 25 个模拟画面；音乐播放器的紫色柱条表示最近八次采样的画面提交速率。 <a href="screenshots/instruments-live.gif">查看 QEMU 连续实拍</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">运行对应的 LVGL 版本</a></figcaption></figure></div>
+<p>两张关键仪表卡分别显示漏帧和超长间隔。Test 同时报告严格帧时限和配额结果，System → Events 记录最近的异常。</p>
+<div class="evidence-grid"><figure><a class="capture" href="screenshots/system-test.png"><img loading="lazy" width="1280" height="800"  src="screenshots/system-test.png" alt="QEMU 实拍的 Test 应用与三级忙循环测试结果"></a><figcaption>三级忙循环测试显示配额执行结果和仪表最大帧间隔</figcaption></figure><figure><a class="capture" href="screenshots/system-events.png"><img loading="lazy" width="1280" height="800"  src="screenshots/system-events.png" alt="系统事件分组显示帧间隔异常"></a><figcaption>系统事件分组显示帧间隔异常</figcaption></figure><figure><a class="capture" href="screenshots/test-admission.png"><img loading="lazy" width="1280" height="800"  src="screenshots/test-admission.png" alt="二级超额申请显示拒绝原因"></a><figcaption>二级超额申请显示拒绝原因</figcaption></figure><figure><a class="capture" href="screenshots/test-countdown.png"><img loading="lazy" width="1280" height="800"  src="screenshots/test-countdown.png" alt="三级压力测试倒计时与仪表实时帧率"></a><figcaption>三级压力测试倒计时与仪表实时帧率</figcaption></figure><figure ><a class="capture" href="screenshots/vehicle-instruments.png"><img loading="lazy" width="1280" height="800"  src="screenshots/vehicle-instruments.png" alt="桌面实拍：速度表、模拟行车记录仪和音乐播放器"></a><figcaption>速度表显示累计错过的截止期；行车记录仪目标为每秒 25 个模拟画面；音乐播放器的紫色柱条表示最近八次采样的画面提交速率。 <a href="screenshots/instruments-live.gif">查看 QEMU 连续实拍</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">运行对应的 LVGL 版本</a></figcaption></figure></div>
 <div class="stats"><div><strong>100 / 100</strong><span>速度表提交帧数 / 采样周期</span></div><div><strong>0</strong><span>速度表错过截止期</span></div><div><strong>0</strong><span>三级总池越线</span></div></div>
 <p>这组结果来自 QEMU TCG 的 <code>icount</code> 桌面忙等测试，测量的是虚拟机内的帧缓冲提交。GPU 队列、宿主窗口呈现和物理屏幕延迟仍待验证。</p>
 <p><a href="https://github.com/leiquan/Quota-OS/blob/C-LVGL/docs/tests/cortex-a35/03-apps-desktop-stall.log">查看原始串口日志 ↗</a></p>

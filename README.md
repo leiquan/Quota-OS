@@ -19,8 +19,8 @@ ARM64 运行时的联合构建入口是 [build-node-web-runtime.py](tools/build-
 |---|---|---|
 | 镜像大小 | 701,852 B · 685.4 KiB | 374,863,128 B · 357.5 MiB |
 | QEMU 验证内存 | 64 MiB | 1 GiB |
-| 系统实现 | C · AArch64 ASM · LVGL | C · AArch64 ASM · LVGL + C++ (Blink, V8, Node.js) |
-| 应用开发 | C + LVGL | C + LVGL / HTML + CSS + JS / Node.js |
+| 系统实现 | C · AArch64 ASM · LVGL | C · AArch64 ASM · LVGL · C++ (Blink, V8, Node.js) |
+| 应用开发 | C + LVGL | C + LVGL + HTML / CSS / JS / Node.js |
 
 镜像大小取自 2026-11-26 构建的未压缩 ARM64 启动文件。内存一行是 QEMU 实测配置。Web Node 镜像包含系统共享运行时、ICU 数据、V8 快照、字体及动态依赖；本次导出的 Web Node Demo 应用包为 **1,653 字节**。
 
