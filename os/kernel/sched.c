@@ -1087,15 +1087,15 @@ static uint64_t disp_now, cur_entry;
 static struct task *prev_stint_sc, *prev_stint_srv;
 static int prev_stint_reply;      /* 这一段是回复返回（svc #2 之后） */
 
-static struct task *pick_t2(int sugg)
+static struct task *pick_t2_class(int sugg, int periodic)
 {
-    if (sugg && resource_pressure())
-        return 0;
     for (int n = 1; n <= n2; n++) {
         int i = rr2 + n;
         if (i >= n2)
             i -= n2;
         struct task *t = lst2[i];
+        if (periodic >= 0 && (t->kind == KIND_JOB) != periodic)
+            continue;
         if (!runnable(t))
             continue;
         uint64_t cap = t->min_t + (sugg ? t->sugg_t : 0);
@@ -1123,6 +1123,19 @@ static struct task *pick_t2(int sugg)
         }
     }
     return 0;
+}
+
+static struct task *pick_t2(int sugg)
+{
+    if (sugg && resource_pressure()) return NULL;
+    /* Serve released periodic work before continuously runnable consumers in
+     * the minimum-budget pass. Keep each account's existing cap and rotate
+     * peers within its class; the surplus pass still considers all peers. */
+    if (!sugg) {
+        struct task *job = pick_t2_class(0, 1);
+        if (job) return job;
+    }
+    return pick_t2_class(sugg, sugg ? -1 : 0);
 }
 
 static struct task *pick_t3(void)
