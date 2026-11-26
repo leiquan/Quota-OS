@@ -38,7 +38,7 @@ On a new installation, set and confirm the `admin` password, then sign in.
 Later boots wait at the password prompt. Run `logout` to lock the shell.
 
 The default launcher attaches a separate read-only ext4 example disk.
-After signing in, `ls` shows `todo.wap`. The package is the same example
+After signing in, `ls` and `ls /` list the mounted root, including `todo.wap` on the example disk. Use `cat /FILE` to read a text file on that disk. The package is the same example
 distributed by Web UI and Touch UI. CLI provides the file without a
 Web runtime. To use a different root disk, set `CLI_ROOT_DISK` explicitly.
 Set it to an empty value to start without a root disk.
