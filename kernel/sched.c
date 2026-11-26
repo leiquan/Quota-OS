@@ -518,11 +518,14 @@ void task_ready(struct task *t)
     rebuild_lists();
 }
 
-/* 死循环型立刻就绪；周期作业等下一次释放。 */
+/* New Tier-2 CPU reservations begin at the next full period. */
 void task_start(struct task *t)
 {
     uint64_t irq_flags = irq_save();
-    task_ready(t);
+    if (t->tier == TIER2 && t->kind == KIND_SPIN && t->state == TASK_BLOCKED)
+        t->start_next_period = 1;
+    else
+        task_ready(t);
     irq_restore(irq_flags);
 }
 
@@ -826,7 +829,7 @@ static void end_period(uint64_t now, int skipped)
                 t->w.used_min = t->used_t;
             if (t->used_t > t->w.used_max)
                 t->w.used_max = t->used_t;
-            if (t->tier == TIER2 && t->kind == KIND_SPIN && t->used_t < t->min_t)
+            if (short_cpu)
                 t->w.short_periods++;
         }
         if (rec) {
@@ -928,6 +931,13 @@ static void ipc_release_held(void);
 static void begin_period(void)
 {
     t3_reset_period();
+    for (int i = 0; i < MAX_TASKS; i++) {
+        struct task *t = &tasks[i];
+        if (t->start_next_period && t->state == TASK_BLOCKED) {
+            t->start_next_period = 0;
+            task_ready(t);
+        }
+    }
     dev_period();
     ipc_release_held();
     if (bench_state == 1) {
@@ -1506,7 +1516,7 @@ void job_body(uint64_t start)
         }
     }
     if (t == dashboard_app)
-        app_display_core_frame();
+        app_display_core_frame(t->release_ts);
     uint64_t end = start + t->work_t;
     while (ticks_now() < end)
         asm volatile("" ::: "memory");
@@ -1879,6 +1889,11 @@ void sched_total_misses(uint64_t *a, uint64_t *b)
 uint64_t sched_period_now(void)
 {
     return pk;
+}
+
+uint64_t sched_period_release(uint64_t period)
+{
+    return epoch + period * P;
 }
 
 /* now 在某个 Tier 1 保护区或槽内。 */

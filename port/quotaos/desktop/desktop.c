@@ -16,6 +16,9 @@ static uint8_t draw_buf[LVGL_DRAW_BYTES] __attribute__((aligned(64)));
 static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *field;
+static lv_obj_t *power_menu, *power_status, *power_backdrop;
+enum power_action { POWER_NONE, POWER_OFF, POWER_RESET };
+static enum power_action requested_power;
 static lv_obj_t *menu_list;
 static lv_obj_t *detail;
 static lv_obj_t *page_home, *page_test;
@@ -422,8 +425,9 @@ static struct {
     uint64_t period;
     struct sched_system_info before;
     struct app_display_stats display;
-    struct running_app *reservation;
+    struct running_app *reservation, *pressure_memory;
     struct task *task;
+    unsigned pressure_kib;
     int64_t process;
 } trial;
 static lv_obj_t *approve, *cancel_trial, *busy_loop_label;
@@ -511,18 +515,47 @@ static void begin_trial(int number, int approved)
         trial.reservation->task = trial.task;
         task_start(trial.task);
     } else {
-        trial.process = proc_spawn("quota-test", number == 5 ? 15 : 16, 0,0,0,0,0,0,1,1);
+        trial.process = proc_spawn("quota-test", number == 5 ? 17 : 16, 0,0,0,0,0,0,1,1);
         if (trial.process < 0) { trial_result(number, "Unable to launch EL0 process."); return; }
         trial.task = sched_find("quota-test");
+        if (number == 5 && note_disk_scrub_start() == 0) {
+            uint32_t cpu_available;
+            uint64_t memory_available;
+            resource_app_available(&cpu_available, &memory_available);
+            if (memory_available && memory_available <= UINT32_MAX) {
+                unsigned kib = (unsigned)memory_available;
+                const struct app_manifest pressure = {"quota-memory", "Capacity pressure", kib, kib, 0, 0};
+                trial.pressure_memory = resource_commit(&pressure);
+                if (trial.pressure_memory) trial.pressure_kib = kib;
+            }
+            if (!trial.pressure_memory) {
+                unsigned completed_requests;
+                note_disk_scrub_stop(&completed_requests);
+                proc_kill(trial.process);
+                trial_result(number, "FAIL  Unable to reserve remaining application memory.");
+                return;
+            }
+        }
     }
     trial.active = number;
     trial.period = sched_period_now();
     if (number == 5) update_busy_loop_countdown(trial_periods(number) * PERIOD_US / 1000000);
     sched_read_system_info(&trial.before);
     app_display_read(&trial.display);
+    if (trial.pressure_memory) app_frame_trace_start();
     char status[64];
     lv_snprintf(status, sizeof status, "Running  /  sampling %u periods", trial_periods(number));
     trial_result(number, status);
+}
+
+enum { PRESSURE_WORKING_SET_BYTES = 64 * 1024 };
+static volatile uint64_t pressure_words[PRESSURE_WORKING_SET_BYTES / sizeof(uint64_t)];
+
+static void touch_pressure_memory(void)
+{
+    if (!trial.pressure_memory) return;
+    for (unsigned i = 0; i < sizeof pressure_words / sizeof pressure_words[0]; i++)
+        pressure_words[i]++;
 }
 
 static void poll_trial(void)
@@ -548,6 +581,21 @@ static void poll_trial(void)
     unsigned long shortfalls = sys.tier2_short - trial.before.tier2_short;
     uint64_t peak = trial.task ? trial.task->used_max_all : 0;
     int ok = peak && frames + 1 >= elapsed && !misses && !crossings && !shortfalls && !over;
+    int combined = trial.pressure_memory != NULL;
+    if (combined) {
+        unsigned completed_requests;
+        unsigned submitted_requests = note_disk_scrub_stop(&completed_requests);
+        uint32_t cpu_available;
+        uint64_t memory_available;
+        resource_app_available(&cpu_available, &memory_available);
+        printf("[combined-pressure] periods=%lu cpu_peak_us=%lu memory_reserved_kib=%u memory_available_kib=%lu working_set_kib=72 disk_submitted=%u disk_completed=%u\n",
+               (unsigned long)elapsed, (unsigned long)ticks_to_us(peak), trial.pressure_kib,
+               (unsigned long)memory_available, submitted_requests, completed_requests);
+        ok = ok && completed_requests && submitted_requests <= elapsed + 1 &&
+             submitted_requests - completed_requests <= 1;
+        resource_release(trial.pressure_memory);
+        trial.pressure_memory = NULL;
+    }
     if (number < 4) {
         if (number == 2) ok = ok && trial.task->jobs && !trial.task->misses;
         ok = ok && peak <= us_to_ticks(number == 3 ? 800 : 400);
@@ -581,6 +629,7 @@ static void poll_trial(void)
         frames, misses, camera, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings,
         display.frames[2] - trial.display.frames[2], timing, speed_late, camera_late);
     trial.active = 0;
+    if (combined) app_frame_trace_dump();
     trial_result(number, result);
 }
 
@@ -617,12 +666,54 @@ static void shell_help(char *out, unsigned capacity)
     const char *name = note_disk_source_name();
     if (name)
         lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
-                    "cc %s -o hello   Compile your source\n"
-                    "./hello   Run in Tier 3", name);
+                    "cc %s -o hello.cap   Compile your source\n"
+                    "./hello.cap   Run in Tier 3", name);
     else
         lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
                     "In Notes, choose C Example, then Save As... to save a .c file.\n"
                     "Return here to compile and run it.");
+}
+
+static void power_dismiss(lv_event_t *e)
+{
+    (void)e;
+    monitor_visible(power_menu, 0);
+    monitor_visible(power_backdrop, 0);
+}
+
+static void power_click(lv_event_t *e)
+{
+    if (requested_power != POWER_NONE) return;
+    enum power_action action = (uintptr_t)lv_event_get_user_data(e);
+    if (action != POWER_NONE) {
+        requested_power = action;
+        lv_obj_set_height(power_menu, 124);
+        lv_label_set_text(power_status, "Waiting for disk...");
+        return;
+    }
+    lv_obj_set_height(power_menu, 86);
+    lv_label_set_text(power_status, "");
+    monitor_visible(power_backdrop, 1);
+    monitor_visible(power_menu, 1);
+    lv_obj_move_foreground(power_backdrop);
+    lv_obj_move_foreground(power_menu);
+}
+
+static void power_poll(void)
+{
+    if (requested_power == POWER_NONE) return;
+    int ready = note_disk_power_ready();
+    if (!ready) return;
+    enum power_action action = requested_power;
+    requested_power = POWER_NONE;
+    if (ready < 0) {
+        lv_label_set_text(power_status, "Disk error. Power action canceled.");
+        return;
+    }
+    printf("[power] %s after disk ready\n", action == POWER_RESET ? "reset" : "off");
+    register uint64_t function asm("x0") = action == POWER_RESET ? 0x84000009u : 0x84000008u;
+    asm volatile("dsb sy; hvc #0" : "+r"(function) :: "memory");
+    lv_label_set_text(power_status, "Power action unavailable.");
 }
 
 static void on_group(lv_event_t *e)
@@ -658,10 +749,11 @@ static void on_group(lv_event_t *e)
     if (id == 231) {
         const char *command = lv_textarea_get_text(shell_input);
         if (!command[0]) return;
-        char output[200], compile[96];
+        char output[200], compile[96], legacy_compile[96];
         const char *name = note_disk_source_name();
         const char *result = "Unknown command. Type help.";
-        lv_snprintf(compile, sizeof compile, "cc %s -o hello", name ? name : "hello.c");
+        lv_snprintf(compile, sizeof compile, "cc %s -o hello.cap", name ? name : "hello.c");
+        lv_snprintf(legacy_compile, sizeof legacy_compile, "cc %s -o hello", name ? name : "hello.c");
         if (!strcmp(command, "help")) {
             shell_help(output, sizeof output);
             result = output;
@@ -680,11 +772,11 @@ static void on_group(lv_event_t *e)
             shell_refresh();
             lv_textarea_set_text(shell_input, "");
             return;
-        } else if (name && !strcmp(command, compile)) {
+        } else if (name && (!strcmp(command, compile) || !strcmp(command, legacy_compile))) {
             if (c_demo_compile(note_disk_source()))
                 result = "Compile error: check the saved C source.";
             else {
-                lv_snprintf(output, sizeof output, "Compiled %s to hello", name);
+                lv_snprintf(output, sizeof output, "Compiled %s to %s", name, !strcmp(command, compile) ? "hello.cap" : "hello");
                 result = output;
             }
         }
@@ -694,8 +786,12 @@ static void on_group(lv_event_t *e)
             else shell_help(output, sizeof output);
             result = output;
         }
-        else if (!strcmp(command, "./hello"))
-            result = c_demo_run() < 0 ? "Run failed: compile first or wait for a free process slot." : "Running hello (Tier 3)";
+        else if (!strcmp(command, "./hello.cap") || !strcmp(command, "./hello")) {
+            if (c_demo_run() < 0)
+                result = "Run failed: compile first or wait for a free process slot.";
+            else
+                result = !strcmp(command, "./hello.cap") ? "Running hello.cap (Tier 3)" : "Running hello (Tier 3)";
+        }
         char entry[256];
         lv_snprintf(entry, sizeof entry, "quota> %s\n%s", command, result);
         shell_append(entry);
@@ -1471,18 +1567,34 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_bg_color(top, lv_color_hex(0x152641), 0);
     lv_obj_set_style_bg_opa(top, LV_OPA_70, 0);
     lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *power_button = lv_button_create(top);
+    lv_obj_set_pos(power_button, 10, 0);
+    lv_obj_set_size(power_button, 44, 40);
+    lv_obj_set_style_bg_opa(power_button, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(power_button, LV_OPA_20, LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(power_button, 0, 0);
+    lv_obj_center(desk_label(power_button, 0, 0, LV_SYMBOL_POWER, 0xffffff));
     lv_obj_t *about_button = lv_button_create(top);
-    lv_obj_set_pos(about_button, 10, 0);
     lv_obj_set_size(about_button, 108, 40);
+    lv_obj_center(about_button);
     lv_obj_set_style_bg_opa(about_button, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_opa(about_button, LV_OPA_20, LV_STATE_PRESSED);
     lv_obj_set_style_shadow_width(about_button, 0, 0);
-    lv_obj_t *brand = lv_label_create(about_button);
-    lv_label_set_text(brand, "Quota OS");
-    lv_obj_set_style_text_color(brand, lv_color_hex(0xffffff), 0);
-    lv_obj_center(brand);
+    lv_obj_center(desk_label(about_button, 0, 0, "Quota OS", 0xffffff));
     lv_obj_add_event_cb(about_button, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)201);
+    lv_obj_add_event_cb(power_button, power_click, LV_EVENT_CLICKED, NULL);
 
+    lv_obj_t *network_icon = desk_label(top, 0, 0, LV_SYMBOL_WIFI, 0x94a3b8);
+    lv_obj_t *volume_icon = desk_label(top, 0, 0, LV_SYMBOL_VOLUME_MAX, 0x94a3b8);
+    lv_obj_align(network_icon, LV_ALIGN_LEFT_MID, 60, 0);
+    lv_obj_align(volume_icon, LV_ALIGN_LEFT_MID, 98, 0);
+    static const lv_point_precise_t outer_wave[] = {
+        {0, 0}, {2, 3}, {3, 7}, {3, 11}, {2, 15}, {0, 18}
+    };
+    lv_obj_t *volume_wave = lv_line_create(top);
+    lv_line_set_points(volume_wave, outer_wave, sizeof outer_wave / sizeof outer_wave[0]);
+    lv_obj_set_style_line_width(volume_wave, 1, 0);
+    lv_obj_set_style_line_color(volume_wave, lv_color_hex(0x94a3b8), 0);
+    lv_obj_align(volume_wave, LV_ALIGN_LEFT_MID, 114, 0);
     if (dtb_find_bases("arm,pl031", &rtc_base, 1) > 0) {
         clock_label = desk_label(top, 0, 0, "", 0xdce8ff);
         lv_obj_align(clock_label, LV_ALIGN_RIGHT_MID, -26, 0);
@@ -1811,6 +1923,49 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
     }
     printf("[menu] serial 6 10 13 14 15 16 18 stay on the coverage page\n");
+    power_backdrop = lv_obj_create(screen);
+    lv_obj_remove_style_all(power_backdrop);
+    lv_obj_set_size(power_backdrop, lv_pct(100), lv_pct(100));
+    lv_obj_remove_flag(power_backdrop, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(power_backdrop, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(power_backdrop, power_dismiss, LV_EVENT_CLICKED, NULL);
+    monitor_visible(power_backdrop, 0);
+    power_menu = lv_obj_create(screen);
+    lv_obj_set_pos(power_menu, 10, 43);
+    lv_obj_set_size(power_menu, 196, 86);
+    lv_obj_set_style_pad_all(power_menu, 8, 0);
+    lv_obj_set_style_radius(power_menu, 11, 0);
+    lv_obj_set_style_border_width(power_menu, 1, 0);
+    lv_obj_set_style_shadow_width(power_menu, 18, 0);
+    lv_obj_set_style_shadow_ofs_y(power_menu, 5, 0);
+    lv_obj_set_style_shadow_opa(power_menu, LV_OPA_40, 0);
+    lv_obj_set_style_bg_color(power_menu, lv_color_hex(0x152641), 0);
+    lv_obj_set_style_border_color(power_menu, lv_color_hex(0x415674), 0);
+    lv_obj_remove_flag(power_menu, LV_OBJ_FLAG_SCROLLABLE);
+    for (unsigned i = 0; i < 2; i++) {
+        lv_obj_t *button = lv_button_create(power_menu);
+        lv_obj_set_pos(button, 0, i * 35);
+        lv_obj_set_size(button, lv_pct(100), 32);
+        lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_HOVERED);
+        lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_PRESSED);
+        lv_obj_set_style_bg_color(button, lv_color_hex(0x293f5c), LV_STATE_HOVERED);
+        lv_obj_set_style_bg_color(button, lv_color_hex(0x355375), LV_STATE_PRESSED);
+        lv_obj_set_style_shadow_width(button, 0, 0);
+        lv_obj_t *icon = desk_label(button, 0, 0, i ? LV_SYMBOL_REFRESH : LV_SYMBOL_POWER,
+                                   i ? 0xaecaf1 : 0xf4b6bd);
+        lv_obj_t *label = desk_label(button, 0, 0, i ? "Restart" : "Shut Down", 0xf5f8ff);
+        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 10, 0);
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, 36, 0);
+        lv_obj_add_event_cb(button, power_click, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)(i ? POWER_RESET : POWER_OFF));
+    }
+    power_status = lv_label_create(power_menu);
+    lv_obj_set_pos(power_status, 0, 73);
+    lv_obj_set_width(power_status, lv_pct(100));
+    lv_obj_set_style_text_color(power_status, lv_color_hex(0xdce8ff), 0);
+    lv_label_set_text(power_status, "");
+    monitor_visible(power_menu, 0);
     printf("[lvgl] ready\n");
 
     /* The shell stack is 8 KB. These stay off that stack. */
@@ -1823,6 +1978,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
      * and the scheduler still charges all rendering/input to Tier 3. */
     for (;;) {
         note_disk_poll();
+        touch_pressure_memory();
+        power_poll();
         const char *console = proc_console_text();
         if (console) {
             shell_append(console);

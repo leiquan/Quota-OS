@@ -106,6 +106,7 @@ struct task {
     uint64_t work_t;            /* KIND_JOB：每个作业的工作量 */
     uint64_t deadline_t;        /* KIND_JOB：相对释放时刻的截止期 */
     uint64_t refundable_t; /* Current-period job reservation included in the pool calculation. */
+    int start_next_period;
     uint64_t last_used_t;
     uint64_t period_grant_t, last_grant_t;
     uint64_t used_t;            /* 本周期已用 */
@@ -303,7 +304,9 @@ struct app_display_stats {
     int video_paused, video_running;
 };
 void app_display_read(struct app_display_stats *stats);
-void app_display_core_frame(void);
+void app_display_core_frame(uint64_t release);
+void app_frame_trace_start(void);
+void app_frame_trace_dump(void);
 void app_desktop_stall_probe(void);
 struct sched_system_info {
     uint64_t period;
@@ -465,6 +468,7 @@ void dev_slot(int in_slot);
 int dev_busy(void);
 void dev_period(void);
 uint64_t sched_period_now(void);
+uint64_t sched_period_release(uint64_t period);
 int sched_in_t1_window(uint64_t now);
 void gic_ppi_enable(uint32_t id, int on);
 void mmu_init(void);
@@ -528,6 +532,9 @@ int input_pop(struct quota_input *ev);
 uint32_t input_drop_count(void);
 void note_disk_init(void);
 void note_disk_poll(void);
+int note_disk_scrub_start(void);
+unsigned note_disk_scrub_stop(unsigned *completed_requests);
+int note_disk_power_ready(void);
 int note_disk_save(const char *text);
 int note_disk_save_source(const char *text, const char *name);
 const char *note_disk_source_name(void);

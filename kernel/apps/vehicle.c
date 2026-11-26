@@ -81,10 +81,83 @@ int app_desktop_mode(void)
     return app_surface ? (video_configured ? 2 : 1) : 0;
 }
 
-void app_display_core_frame(void)
+/* The 10 s test produces about 1,250 records. Never log from the drawing path. */
+static struct frame_trace {
+    uint64_t release, start, copy, commit;
+    unsigned stream;
+} frame_trace[1536];
+static unsigned trace_count, trace_dropped;
+static volatile int trace_active;
+
+void app_frame_trace_start(void)
+{
+    uint64_t flags = irq_save();
+    trace_count = trace_dropped = 0;
+    trace_active = 1;
+    irq_restore(flags);
+}
+
+static void trace_frame(unsigned stream, uint64_t release, uint64_t start, uint64_t copy, uint64_t commit)
+{
+    if (!start) return;
+    uint64_t flags = irq_save();
+    if (trace_active) {
+        if (trace_count < sizeof frame_trace / sizeof frame_trace[0])
+            frame_trace[trace_count++] = (struct frame_trace){release, start, copy, commit, stream};
+        else
+            trace_dropped++;
+    }
+    irq_restore(flags);
+}
+
+void app_frame_trace_dump(void)
+{
+    uint64_t flags = irq_save();
+    trace_active = 0;
+    irq_restore(flags);
+    printf("[frame-trace] hz=%lu count=%u dropped=%u\n", (unsigned long)timer_freq(),
+           trace_count, trace_dropped);
+    for (unsigned i = 0; i < trace_count; i++) {
+        const struct frame_trace *f = &frame_trace[i];
+        printf("[frame] stream=%u release=%lu start=%lu copy=%lu commit=%lu\n",
+               f->stream, (unsigned long)f->release, (unsigned long)f->start,
+               (unsigned long)f->copy, (unsigned long)f->commit);
+    }
+}
+
+/* The small instrument surfaces are drawn off-screen and copied at a fixed
+ * release-relative phase. Commit timestamps are taken after the real stores. */
+static uint32_t speed_pixels[APP_DASH_H][APP_DASH_W] __attribute__((aligned(8)));
+static uint32_t camera_pixels[APP_METER_H][APP_METER_W] __attribute__((aligned(8)));
+
+static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
+                                   unsigned height, unsigned y, uint64_t target,
+                                   uint64_t *copy_start)
+{
+    while (ticks_now() < target)
+        asm volatile("" ::: "memory");
+    *copy_start = trace_active ? ticks_now() : 0;
+    typedef uint64_t pixel_pair __attribute__((may_alias));
+    for (unsigned row = 0; row < height; row++) {
+        uint32_t *line = app_surface + (y + row) * app_stride + APP_DRAW_X;
+        const uint32_t *source = pixels + row * width;
+        if ((uintptr_t)line & 7) {
+            for (unsigned col = 0; col < width; col++) line[col] = source[col];
+        } else {
+            pixel_pair *dst = (pixel_pair *)line;
+            const pixel_pair *src = (const pixel_pair *)source;
+            for (unsigned col = 0; col < width / 2; col++) dst[col] = src[col];
+        }
+    }
+    asm volatile("dsb st" ::: "memory");
+    return ticks_now();
+}
+
+void app_display_core_frame(uint64_t release)
 {
     if (!app_surface)
         return;
+    uint64_t trace_start = trace_active ? ticks_now() : 0;
     static const uint8_t masks[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66,
                                     0x6d, 0x7d, 0x07, 0x7f, 0x6f};
     static const uint8_t segments[7][4] = {
@@ -92,10 +165,9 @@ void app_display_core_frame(void)
         {0,15,3,10}, {0,3,3,10}, {3,12,12,3}
     };
     unsigned speed = 45 + ((dashboard_frames + 1) / 10) % 76;
-    uint32_t *fb = app_surface;
     for (unsigned y = 0; y < APP_DASH_H; y++)
         for (unsigned x = 0; x < APP_DASH_W; x++)
-            fb[(APP_DASH_Y + y) * app_stride + APP_DRAW_X + x] = 0x182338;
+            speed_pixels[y][x] = 0x182338;
     for (unsigned i = 0, divisor = 100; i < 3; i++, divisor /= 10) {
         if (!i && speed < 100)
             continue;
@@ -106,22 +178,21 @@ void app_display_core_frame(void)
             const uint8_t *r = segments[j];
             for (unsigned y = 0; y < r[3]; y++)
                 for (unsigned x = 0; x < r[2]; x++)
-                    fb[(APP_DASH_Y + r[1] + y) * app_stride +
-                       APP_DRAW_X + i * 20 + r[0] + x] = 0x35dfa0;
+                    speed_pixels[r[1] + y][i * 20 + r[0] + x] = 0x35dfa0;
         }
     }
     /* The linear gauge shares the Tier-1 commit with the numeric readout. */
     unsigned marker = 64 + speed / 2;
     for (unsigned y = 0; y < 8; y++) {
-        uint32_t *line = fb + (APP_DASH_Y + 11 + y) * app_stride + APP_DRAW_X;
+        uint32_t *line = speed_pixels[11 + y];
         for (unsigned x = marker - y / 2; x <= marker + y / 2; x++)
             line[x] = 0x70ebc1;
     }
     for (unsigned x = 64; x < APP_DASH_W; x++)
-        fb[(APP_DASH_Y + 20) * app_stride + APP_DRAW_X + x] = 0x82a4ad;
-    /* Complete framebuffer stores before recording a Tier-1 commit. */
-    asm volatile("dsb st" ::: "memory");
-    uint64_t now = ticks_now();
+        speed_pixels[20][x] = 0x82a4ad;
+    uint64_t copy_start;
+    uint64_t now = publish_instrument(&speed_pixels[0][0], APP_DASH_W, APP_DASH_H,
+                                      APP_DASH_Y, release + us_to_ticks(270), &copy_start);
     if (display_commit_tick) {
         uint64_t gap = now - display_commit_tick;
         if (gap > display_max_gap) display_max_gap = gap;
@@ -129,6 +200,7 @@ void app_display_core_frame(void)
     }
     display_commit_tick = now;
     dashboard_frames++;
+    trace_frame(0, release, trace_start, copy_start, now);
 }
 
 static void observe_desktop_stall(uint64_t period)
@@ -177,6 +249,7 @@ static void app_demo_video_frame(void)
     for (;;) {
         uint64_t period = sched_period_now();
         if (!video_stalled && period % 4 == 0 && (!video_tick || period != video_period)) {
+            uint64_t trace_start = trace_active ? ticks_now() : 0;
             uint32_t frame = video_frames + 1;
             int first = !video_tick;
             unsigned phase = frame & 63;
@@ -184,7 +257,9 @@ static void app_demo_video_frame(void)
             unsigned last = (frame - 1) & 63;
             int old_bend = (int)(last < 32 ? last : 63 - last) - 16;
             for (int y = 0; y < APP_METER_H; y++) {
-                uint32_t *row = app_surface + (APP_VIDEO_Y + y) * app_stride + APP_DRAW_X;
+                uint32_t *row = camera_pixels[y];
+                if (first)
+                    for (unsigned x = 0; x < APP_METER_W; x++) row[x] = 0x101820;
                 int center = 64 + bend * (APP_METER_H - y) / APP_METER_H;
                 int old = 64 + old_bend * (APP_METER_H - y) / APP_METER_H;
                 int edge = 6 + y;
@@ -203,9 +278,11 @@ static void app_demo_video_frame(void)
                     row[center] = row[center+1] = row[center+2] = stripe;
                 }
             }
-            asm volatile("dsb st" ::: "memory");
+            uint64_t release = sched_period_release(period);
+            uint64_t copy_start;
+            uint64_t now = publish_instrument(&camera_pixels[0][0], APP_METER_W, APP_METER_H,
+                                              APP_VIDEO_Y, release + us_to_ticks(300), &copy_start);
             uint64_t flags = irq_save();
-            uint64_t now = ticks_now();
             if (video_tick) {
                 uint64_t gap = now - video_tick;
                 if (gap > video_max_gap) video_max_gap = gap;
@@ -216,6 +293,7 @@ static void app_demo_video_frame(void)
             video_period = period;
             video_tick = now;
             video_frames = frame;
+            trace_frame(1, release, trace_start, copy_start, now);
             irq_restore(flags);
         }
         observe_desktop_stall(period);
