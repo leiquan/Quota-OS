@@ -75,7 +75,7 @@ def boot():
                 raise AssertionError(pattern)
             def click(x,y):
                 q.call("input-send-event", {"events":[{"type":"abs","data":{"axis":a,"value":v*32767//n}}
-                    for a,v,n in [("x",x,1279),("y",y,799)]]})
+                    for a,v,n in [("x",x,1599),("y",y,899)]]})
                 time.sleep(.15)
                 for down in (True,False):
                     q.call("input-send-event", {"events":[{"type":"btn","data":{"button":"left","down":down}}]})

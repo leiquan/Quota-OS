@@ -27,3 +27,5 @@ kernel/drivers/input.c
 kernel/lvgl_boot.c
 kernel/proc.c
 kernel/isolate.c
+kernel/auth.c
+third_party/monocypher/monocypher.c

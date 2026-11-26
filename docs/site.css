@@ -102,7 +102,7 @@ footer.bar { border-bottom: 0; border-top: 1px solid var(--line); }
 .platform-note { grid-column: 1/-1; margin: 10px 0 0; font-size: .85rem; }
 .platform dd, .compare-table td { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .section > .compare-scroll + h3, .editions-grid + h3 { margin-top: 32px; }
-.editions-grid { margin-bottom: 28px; }
+.editions-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 28px; }
 .editions-grid article { display: flex; flex-direction: column; }
 .editions-grid article p:last-child { margin-top: auto; }
 #dev article ol { margin: 16px 0; padding-inline-start: 1.45em; }
@@ -113,6 +113,9 @@ footer.bar { border-bottom: 0; border-top: 1px solid var(--line); }
 code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .91em; }
 :not(pre) > code { overflow-wrap: anywhere; }
 a, button, .indicator::before { transition: background-color 160ms ease, color 160ms ease, width 160ms ease; }
+@media (min-width: 1200px) {
+  .editions-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 @media (max-width: 800px) {
   .wrap { width: calc(100% - 32px); }
   .bar { flex-wrap: wrap; }
@@ -123,7 +126,7 @@ a, button, .indicator::before { transition: background-color 160ms ease, color 1
   .showcase { padding: 9px; }
 }
 @media (max-width: 640px) {
-  .grid,.stats { grid-template-columns: minmax(0,1fr); }
+  .grid,.stats,.editions-grid { grid-template-columns: minmax(0,1fr); }
   .controls:not([hidden]) { gap: 2px; }
   .controls .playback { padding-inline: 9px; }
   .compare-table { min-width: 0; }
@@ -147,4 +150,11 @@ a, button, .indicator::before { transition: background-color 160ms ease, color 1
 .cli-transcript { margin: 0; padding: 14px; border-radius: 6px; overflow-x: auto; background: #243e59; color: #ecf4f1; font-size: .8rem; line-height: 1.5; }
 @media (max-width: 800px) {
   .edition-examples { grid-template-columns: minmax(0, 1fr); }
+}
+
+.touch-captures { display: grid; gap: var(--gap); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.touch-captures figure { min-width: 0; margin: 0; text-align: center; }
+.touch-captures img { width: min(100%, 280px); height: auto; margin-inline: auto; border-radius: 10px; }
+@media (max-width: 540px) {
+  .touch-captures { grid-template-columns: minmax(0, 1fr); }
 }

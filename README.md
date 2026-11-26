@@ -2,7 +2,7 @@
 
 # Quota OS · Web UI 版
 
-**Quick links** · [Run Web UI](#启动本地-web-ui-构建) · [Three editions](#quota-os-editions--三个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
+**Quick links** · [Run Web UI](#启动本地-web-ui-构建) · [Four editions](#quota-os-editions--四个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
 
 UI 版（`UI`）提供 C 应用和 LVGL 桌面。Web UI 版（`Web-UI`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
 
@@ -19,23 +19,32 @@ ARM64 运行时的联合构建入口是 [build-node-web-runtime.py](tools/build-
 
 [Music Player pressure results / 音乐播放器掉帧实测](docs/tests/music-pressure/) · [官网实验截图](https://www.quotaos.org/zh.html#music-pressure)
 
-## Quota OS editions · 三个发行版
+## Quota OS editions · 四个发行版
 
-CLI, UI and Web UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. UI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js.
+CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. UI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js. Touch UI provides a 900 × 1600 portrait desktop with full-screen applications and a bottom gesture bar.
 
-三个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。
+四个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。Touch UI 提供 900 × 1600 竖屏、全屏应用和底部手势栏。
 
 | Edition · 发行版 | Default QEMU RAM · 默认内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 72.3 KiB |
 | [UI](https://github.com/leiquan/Quota-OS/tree/UI) | 64 MiB | 685.4 KiB |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 1 GiB | 357.5 MiB |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 64 MiB demo · 128 MiB macOS launcher | Build from source · 源码构建 |
 
-The two desktop figures are verified QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
+The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
 图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `todo.wap` 为 **2,021 字节**。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
+
+## Touch UI screenshots · 触屏版实拍
+
+900 × 1600 QEMU captures · 900 × 1600 QEMU 竖屏实拍
+
+| Home · 主屏 | Apps · 应用列表 | Notes · 全屏便笺 |
+|---|---|---|
+| <img src="docs/screenshots/touch-ui-home.png" width="220" alt="Touch UI home screen · 触屏版主屏"> | <img src="docs/screenshots/touch-ui-apps.png" width="220" alt="Touch UI Apps · 触屏版应用列表"> | <img src="docs/screenshots/touch-ui-notes.png" width="220" alt="Touch UI full-screen Notes · 触屏版全屏便笺"> |
 
 ### 开发与验证
 
@@ -56,7 +65,7 @@ The two desktop figures are verified QEMU launch configurations. CLI passed seri
 
 ```sh
 test -e build/todo-data.raw || (set -C; umask 077; dd if=/dev/zero bs=1024 count=64 >build/todo-data.raw)
-qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 1G -nic none \
+bash tools/run-qemu-gui.sh -machine virt,gic-version=2 -cpu cortex-a35 -m 1G -nic none \
   -global virtio-mmio.force-legacy=false -device virtio-rng-device -device ramfb \
   -device virtio-tablet-device -device virtio-keyboard-device \
   -drive if=none,id=notes,format=raw,file=build/todo-data.raw \

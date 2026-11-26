@@ -19,7 +19,7 @@ The new directory contains a stored ZIP named `todo.wap` and a fresh `todo.raw` 
 Start the Web UI image with the dedicated task disk:
 
 ```sh
-qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 1G -nic none \
+bash tools/run-qemu-gui.sh -machine virt,gic-version=2 -cpu cortex-a35 -m 1G -nic none \
   -global virtio-mmio.force-legacy=false -device virtio-rng-device -device ramfb \
   -device virtio-tablet-device -device virtio-keyboard-device \
   -drive if=none,id=notes,format=raw,file=build/todo-preview/todo.raw \

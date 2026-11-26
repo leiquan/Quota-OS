@@ -6,3 +6,5 @@ lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, uint32_t 
 void instruments_create(lv_obj_t *screen, int mode);
 void instruments_select(int index);
 void instruments_refresh(void);
+void instruments_status_refresh(void);
+void instruments_status_flushed(void);
