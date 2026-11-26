@@ -10,7 +10,7 @@ The four editions share this directory. Each branch's top-level README describes
 | Official website · 官网 | [English](index.html) · [简体中文](zh.html) · [CSS](site.css) · [JavaScript](site.js) |
 | Screenshots · 截图 | [screenshots/](screenshots/) |
 | Music Player under pressure · 音乐播放器压力实测 | [Screenshots, data and logs · 实拍、数据与日志](tests/music-pressure/) |
-| Current desktop frame evidence · 桌面帧间隔证据 | [UI summary](tests/frame-intervals/base.json) · [Web UI summary](tests/frame-intervals/web.json) · [serial logs](tests/frame-intervals/) |
+| Current desktop frame evidence · 桌面帧间隔证据 | [GUI summary](tests/frame-intervals/base.json) · [Web UI summary](tests/frame-intervals/web.json) · [serial logs](tests/frame-intervals/) |
 | Quota and persistence evidence · 配额与持久化证据 | [Quota scenarios](tests/quota-scenarios/) · [Cortex-A35 runs](tests/cortex-a35/) · [C workflow](tests/c-workflow/) |
 | Historical notes · 历史技术记录 | [Technical notes](../TECHNICAL-NOTES.md) · [Older acceptance runs](accept-v008/) · [v016 records](v016/) |
 | Earlier WebKit experiments · 早期 WebKit 原型 | [Page experiment](tests/webkit-page/) · [Runtime experiment](tests/webkit-stack/) · [Archived HTML sample](archive/webkit/hello.html) |
@@ -20,7 +20,7 @@ The four editions share this directory. Each branch's top-level README describes
 | Edition · 发行版 | Environment · 环境 | Default QEMU RAM · 默认内存 | Evidence · 验收 |
 |---|---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | Serial console · 串口 | 4 MiB | [Standalone Test and cold readback](tests/cli-4m/) |
-| [UI](https://github.com/leiquan/Quota-OS/tree/UI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Frame timing](tests/frame-intervals/base.json) |
+| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Frame timing](tests/frame-intervals/base.json) |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 1 GiB | [Frame timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
 | [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 900 × 1600 portrait LVGL · 竖屏触控界面 | 64 MiB demo · 128 MiB macOS launcher | [QEMU touch verification · 模拟器触控验证](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui) |
 
