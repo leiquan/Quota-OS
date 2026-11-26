@@ -544,6 +544,11 @@ int runtime_volume_trim(void);
 void runtime_volume_poll(void);
 int runtime_volume_find(const char *name, uint64_t *offset, uint64_t *size);
 int runtime_volume_read(uint64_t offset, void *destination, unsigned length);
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+int runtime_volume_acquire(uint64_t offset, const uint8_t **data);
+void runtime_volume_release(const uint8_t *data);
+int64_t proc_spawn_volume_probe(const char *name, uint64_t offset, uint64_t data_offset, int execute);
+#endif
 
 #endif
 

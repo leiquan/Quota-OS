@@ -159,7 +159,7 @@ const uint32_t *proc_page_surface(int64_t handle, unsigned *frame_number)
     *frame_number = 1;
     return page_pixels[0];
 }
-enum console_abi { CONSOLE_NONE, CONSOLE_QUOTA, CONSOLE_LINUX_BOOTSTRAP, CONSOLE_PAGE };
+enum console_abi { CONSOLE_NONE, CONSOLE_QUOTA, CONSOLE_LINUX_BOOTSTRAP, CONSOLE_PAGE, CONSOLE_VOLUME_PROBE };
 #ifdef QUOTA_WAP_FULL_RUNTIME
 #define WAP_THREADS 32
 struct wap_thread {
@@ -363,6 +363,11 @@ struct proc {
     int fault_pending;
 #ifdef QUOTA_NODE_WEB
     uintptr_t fault_code_pa[2];
+#endif
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    uint64_t volume_offset, volume_data_offset;
+    const uint8_t *volume_page;
+    int volume_waiting, volume_exec;
 #endif
     struct el0_fault fault_report;
     int pages[3];
@@ -961,6 +966,51 @@ static void free_idx(int idx);
 #ifdef QUOTA_WAP_FULL_RUNTIME
 static void release_high(struct proc *, uint64_t, uint64_t);
 #endif
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+#define VOLUME_PROBE_VA 0x3000ull
+static void clean_code(void *p, uint64_t n);
+static void finish_volume_wait(struct proc *p)
+{
+    if (!p->alive || p->draining || !p->volume_waiting || !p->task)
+        return;
+    const uint8_t *page;
+    int writable = p->volume_waiting == 2;
+    int result = runtime_volume_acquire(writable ? p->volume_data_offset : p->volume_offset, &page);
+    if (!result)
+        return;
+    if (result > 0 && writable)
+        memcpy((void *)(uintptr_t)p->pa[2], page, 4096);
+    if (result > 0 && !writable && p->volume_exec)
+        clean_code((void *)page, 4096);
+    uint64_t flags = irq_save();
+    p->volume_waiting = 0;
+    if (result < 0) {
+        reap_timed(p, "volume-read", ticks_now(), sched_period_now());
+    } else if (writable) {
+        pt_l3[p->slot][DRAW_VA >> 12] = p->pa[2] | PTE_VALID | PTE_PAGE | PTE_AF |
+            SH_INNER | ATTR_NORMAL | PTE_NG | AP_EL0 | PTE_UXN | PTE_PXN;
+        asm volatile("dsb ishst" ::: "memory");
+        tlb_asid(p->asid);
+        task_ready(p->task);
+    } else {
+        p->volume_page = page;
+        pt_l3[p->slot][VOLUME_PROBE_VA >> 12] =
+            (uintptr_t)page | PTE_VALID | PTE_PAGE | PTE_AF | SH_INNER |
+            ATTR_NORMAL | PTE_NG | AP_EL0 | AP_RO | PTE_PXN | (p->volume_exec ? 0 : PTE_UXN);
+        asm volatile("dsb ishst" ::: "memory");
+        tlb_asid(p->asid);
+        task_ready(p->task);
+    }
+    irq_restore(flags);
+    if (result > 0 && writable) {
+        runtime_volume_release(page);
+        printf("[volume-pager] private data mapped pid=%d\n", p->pid);
+    } else if (result > 0)
+        printf("[volume-pager] resumed pid=%d asid=%d page=0x%lx\n", p->pid, p->asid,
+               (uintptr_t)page);
+}
+#endif
+
 static void finish_one(struct proc *p)
 {
     int refused = 0;
@@ -1008,7 +1058,18 @@ static void finish_one(struct proc *p)
         for (int i = 0; i < 3; i++)
             pt_l3[p->slot][i] = 0;
         asm volatile("dsb ish" ::: "memory");
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        pt_l3[p->slot][VOLUME_PROBE_VA >> 12] = 0;
+        asm volatile("dsb ishst" ::: "memory");
+#endif
         tlb_asid(p->asid);
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        if (p->volume_page) {
+            runtime_volume_release(p->volume_page);
+            p->volume_page = NULL;
+        }
+        p->volume_waiting = 0;
+#endif
         while (p->image_pages) {
             int pg = image_frames[p->slot][--p->image_pages];
             if (pg < 0) continue;
@@ -1085,6 +1146,10 @@ void proc_finish_pending(void)
         if (procs[i].draining)
             finish_one(&procs[i]);
         report_fault(&procs[i]);
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        if (sched_current() && sched_current()->tier == TIER3)
+            finish_volume_wait(&procs[i]);
+#endif
     }
 }
 
@@ -1132,6 +1197,23 @@ void proc_el0_abort(struct irq_frame *f, uint64_t esr)
     uint64_t pte = 0;
 
     asm volatile("mrs %0, far_el1" : "=r"(far));
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    unsigned ec = (esr >> 26) & 0x3f;
+    if (p && p->console == CONSOLE_VOLUME_PROBE && p->task == sched_current() &&
+        p->task->tier == TIER3 && (esr & 0x3f) == 7) {
+        uint64_t target = far & ~4095ull;
+        if (!p->volume_page && ec == (p->volume_exec ? 0x20u : 0x24u) &&
+            !(esr & 0x40) && target == VOLUME_PROBE_VA)
+            p->volume_waiting = 1;
+        else if (p->volume_data_offset && ec == 0x24 && target == DRAW_VA &&
+                 !pt_l3[p->slot][DRAW_VA >> 12])
+            p->volume_waiting = 2;
+        if (p->volume_waiting) {
+            p->task->state = TASK_BLOCKED;
+            return;
+        }
+    }
+#endif
     memset(&last_fault, 0, sizeof last_fault);
     last_fault.valid = 1;
     last_fault.ec = (uint32_t)((esr >> 26) & 0x3f);
@@ -1528,6 +1610,10 @@ void proc_el0_svc(struct irq_frame *f)
     }
     if (op == 1) {
         if (p->console == CONSOLE_QUOTA) printf("[cap] exit=%ld\n", (long)f->r[0]);
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        if (p->console == CONSOLE_VOLUME_PROBE)
+            printf("[volume-pager] exit pid=%d byte=%lu\n", p->pid, f->r[0]);
+#endif
         reap_timed(p, "exit", ticks_now(), sched_period_now());
         return;
     }
@@ -1820,6 +1906,13 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     }
 #endif
     p->console = console;
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    p->volume_offset = console == CONSOLE_VOLUME_PROBE ? role : 0;
+    p->volume_page = NULL;
+    p->volume_waiting = 0;
+    p->volume_exec = console == CONSOLE_VOLUME_PROBE && limit;
+    p->volume_data_offset = p->volume_exec ? foreign_pa : 0;
+#endif
 #ifdef QUOTA_NODE_WEB
     p->page_executable = image && (image->role == WAP_FRONTEND || image->role == WAP_PAGE_ONLY)
                          ? blink_executable() : NULL;
@@ -1850,6 +1943,10 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     p->unpaced_draw = role == EL0_PAINT_MUSIC;
     p->image_pages = 0;
     build_pt(p);
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    if (p->volume_data_offset)
+        pt_l3[p->slot][DRAW_VA >> 12] = 0;
+#endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
     memset(p->threads, 0, sizeof p->threads);
     p->fork_child = NULL;
@@ -1967,6 +2064,21 @@ int64_t proc_spawn_console(const char *code, unsigned bytes)
     console_updated = 0;
     return spawn_image(NULL, code, bytes, NULL, 0, NULL, 0, 0, CONSOLE_QUOTA, "hello", 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
+
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+int64_t proc_spawn_volume_probe(const char *name, uint64_t offset, uint64_t data_offset, int execute)
+{
+    /* mov x1,#0x3000; ldrb w0,[x1]; mov x8,#1; svc #0 */
+    static const uint32_t code[] = { 0xd2860001, 0x39400020, 0xd2800028, 0xd4000001 };
+    /* mov x1,#0x3000; br x1 */
+    static const uint32_t jump[] = { 0xd2860001, 0xd61f0020 };
+    if (offset & 4095)
+        return -1;
+    return spawn_image(NULL, (const char *)(execute ? jump : code), execute ? sizeof jump : sizeof code, NULL, 0, NULL, 0, 0,
+                       CONSOLE_VOLUME_PROBE, name, offset,
+                       execute, data_offset, 0, 0, 0, 0, 0, 0);
+}
+#endif
 
 /* The existing single RX page process layout supports this ELF subset.
  * Linux runtime executables need a separate mapper and process ABI. */

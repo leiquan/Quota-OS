@@ -18,7 +18,12 @@ static int same_package(const unsigned char *data, unsigned size)
 }
 
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
-static const char *const runtime_components[] = {"quota-blink", "libv8.so", "node"};
+static const char *const runtime_components[] = {
+    "quota-blink", "libv8.so", "node", "ld-linux-aarch64.so.1",
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    "quota-pager-test",
+#endif
+};
 /* ELF64 little-endian records from the ARM64 runtime volume. */
 struct runtime_elf_header {
     uint8_t ident[16];
@@ -42,6 +47,11 @@ static int volume_pending;
 static uint64_t file_offset, file_size, text_offset;
 static struct runtime_elf_header header;
 static unsigned next_segment, load_segments;
+static int interpreter_seen;
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+static uint64_t probe_data_offset;
+static int64_t probe_handle;
+#endif
 
 static int prepare_component(void)
 {
@@ -74,6 +84,21 @@ static int prepare_component(void)
         int result = runtime_volume_read(position, &segment, sizeof segment);
         if (result != 1)
             return result;
+        if (segment.type == 3) {
+            static const char expected[] = "/lib/ld-linux-aarch64.so.1";
+            char interpreter[sizeof expected];
+            if (interpreter_seen || segment.offset > file_size ||
+                segment.filesz != sizeof interpreter ||
+                sizeof interpreter > file_size - segment.offset)
+                return -1;
+            result = runtime_volume_read(file_offset + segment.offset, interpreter,
+                                         sizeof interpreter);
+            if (result != 1)
+                return result;
+            if (interpreter[sizeof interpreter - 1] || strcmp(interpreter, expected))
+                return -1;
+            interpreter_seen = 1;
+        }
         if (segment.type == 1) {
             if (segment.offset > file_size || segment.filesz > file_size - segment.offset ||
                 segment.filesz > segment.memsz || segment.memsz > UINT64_MAX - segment.vaddr ||
@@ -82,6 +107,17 @@ static int prepare_component(void)
                                       ((segment.offset ^ segment.vaddr) & (segment.align - 1)))))
                 return -1;
             ++load_segments;
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+            if (!strcmp(runtime_components[next_component], "quota-pager-test")) {
+                if (segment.filesz != 4096 || segment.memsz != 4096 ||
+                    (segment.offset & 4095) ||
+                    !((segment.flags == 5 && segment.vaddr == 0x3000) ||
+                      (segment.flags == 6 && segment.vaddr == 0x2000 && segment.offset)))
+                    return -1;
+                if (segment.flags == 6)
+                    probe_data_offset = segment.offset;
+            }
+#endif
             if (segment.flags == 5 && segment.filesz >= 4) {
                 if (!header.entry)
                     text_offset = segment.offset + 1;
@@ -94,8 +130,18 @@ static int prepare_component(void)
         return 0;
     }
 
-    if (!text_offset)
+    if (!text_offset || (next_component == 0 && !interpreter_seen) ||
+        (next_component == 2 && !interpreter_seen))
         return -1;
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    if (!strcmp(runtime_components[next_component], "quota-pager-test")) {
+        if (load_segments != 2 || header.entry != 0x3000 || !probe_data_offset)
+            return -1;
+        probe_handle = proc_spawn_volume_probe("volume-elf-test", file_offset + text_offset - 1,
+                                              file_offset + probe_data_offset, 1);
+        return probe_handle > 0 ? 1 : -1;
+    }
+#endif
     uint32_t instruction;
     int result = runtime_volume_read(file_offset + (text_offset - 1), &instruction, sizeof instruction);
     if (result == 1)
@@ -111,10 +157,18 @@ static void reset_component(void)
     text_offset = 0;
     next_segment = 0;
     load_segments = 0;
+    interpreter_seen = 0;
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    probe_data_offset = 0;
+#endif
 }
 
 int wap_volume_prepare_poll(void)
 {
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    if (probe_handle > 0 && proc_pid(probe_handle) < 0 && runtime_volume_trim())
+        probe_handle = 0;
+#endif
     if (!volume_pending)
         return 0;
 
@@ -125,6 +179,10 @@ int wap_volume_prepare_poll(void)
     if (result > 0 && ++next_component < sizeof runtime_components / sizeof runtime_components[0])
         return 0;
     volume_pending = 0;
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    if (probe_handle > 0)
+        return result;
+#endif
     runtime_volume_trim();
     return result;
 }
@@ -147,6 +205,10 @@ enum wap_open_result wap_open_saved(int64_t *handle)
     *handle = -1;
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
     if (!start) {
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        if (probe_handle > 0)
+            return WAP_VOLUME_PENDING;
+#endif
         if (!volume_pending) {
             next_component = 0;
             runtime_volume_init();
