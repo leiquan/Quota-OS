@@ -8,9 +8,6 @@
 #define FB_H DISPLAY_HEIGHT
 #define FB_BPP 4u
 
-extern char __image_start[], __image_end[];
-
-static uint64_t reserve_cursor;
 static uint32_t *fb_pixels;
 static uint32_t fb_bytes;
 
@@ -27,24 +24,6 @@ static uint32_t bswap32(uint32_t v)
 static uint64_t bswap64(uint64_t v)
 {
     return __builtin_bswap64(v);
-}
-
-int kernel_reserve_alloc(uint64_t bytes, uint64_t align, uint64_t *pa)
-{
-    if (!reserve_cursor) {
-        uint64_t base = (uint64_t)__image_start & ~((16ull << 20) - 1);
-        reserve_cursor = base + (uint64_t)system_reserve_kb() * 1024;
-    }
-    if (align == 0 || (align & (align - 1)) != 0)
-        return -1;
-    if (bytes > reserve_cursor)
-        return -1;
-    uint64_t a = (reserve_cursor - bytes) & ~(align - 1);
-    if (a < (uint64_t)__image_end)
-        return -1;
-    reserve_cursor = a;
-    *pa = a;
-    return 0;
 }
 
 struct fw_dma {
