@@ -6,18 +6,21 @@ Quota OS is an experimental single-core ARM64 operating system built around reso
 
 Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
 
-## 两个发行版怎么选
+## Quota OS editions · 三个发行版
 
-| | [C LVGL 版](https://github.com/leiquan/Quota-OS/tree/LVGL) | [Web Node 版](https://github.com/leiquan/Quota-OS/tree/Web-Node) |
+CLI, LVGL and Web-Node share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. LVGL adds the native desktop. Web-Node extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js.
+
+三个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。LVGL 增加原生桌面，Web-Node 在桌面上增加三级 WAP 运行时。
+
+| Edition · 发行版 | QEMU RAM · 内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
-| 镜像大小 | 701,852 B · 685.4 KiB | 374,867,224 B · 357.5 MiB |
-| QEMU 验证内存 | 64 MiB | 1 GiB |
-| 系统实现 | C · AArch64 ASM · LVGL | C · AArch64 ASM · LVGL · C++ (Blink, V8, Node.js) |
-| 应用开发 | C + LVGL | C + LVGL + HTML / CSS / JS / Node.js |
+| CLI · In development / 开发中 | Minimum under test / 下限实测中 | Pending release / 待发布 |
+| [LVGL](https://github.com/leiquan/Quota-OS/tree/LVGL) | 64 MiB | 701,852 B |
+| [Web-Node](https://github.com/leiquan/Quota-OS/tree/Web-Node) | 1 GiB | 374,867,224 B |
 
-镜像大小取自 2026-11-26 构建的未压缩 ARM64 启动文件。内存一行是 QEMU 实测配置。Web Node 镜像包含系统共享运行时、ICU 数据、V8 快照、字体及动态依赖；本次导出的 Web Node Demo 应用包为 **1,705 字节**。
+The two desktop figures are verified QEMU launch configurations. The CLI minimum will be published after the serial console and standalone Test are verified on the same image. Graphical builds include their respective UI and runtime components.
 
-两个版本都使用同一套三级配额机制。一级仪表有固定 CPU 时间槽，二级任务通过准入后获得预算，三级应用共享封顶的剩余时间。C LVGL 适合原生仪表和资源紧张的设备；需要网页布局、页面脚本和 Node 文件 API 时选 Web Node。
+图形版内存值是已验证的 QEMU 启动配置。CLI 下限将在同一镜像完成串口交互和独立 Test 验证后公布。Web-Node 镜像包含共享运行时、动态库、字体和启动数据，示例 `demo.wap` 为 **1,705 字节**。
 
 ### 开发与验证
 
