@@ -1,5 +1,40 @@
-<!doctype html><meta charset=utf-8><title>Web Node Demo</title><style>body{font:16px sans-serif;margin:16px}textarea{display:block;width:90%;height:72px}output{margin-left:12px}#mark{width:64px;height:10px;background:#21854d;margin:8px 0}#mark.saved{width:96px;background:#1468ae}</style><label>Note<textarea id=note></textarea></label><div id=mark hidden></div><button id=save>Save</button><output id=status></output><script>
-const field=document.querySelector('#note'),button=document.querySelector('#save'),statusText=document.querySelector('#status');
-async function load(){button.disabled=field.disabled=true;try{await rpc.set('saved',text=>{statusText.value=text;document.querySelector('#mark').className='saved'});field.value=await rpc.get('load');document.querySelector('#mark').hidden=false}catch(e){statusText.value=e.message}finally{button.disabled=field.disabled=false}}load();
-button.onclick=async()=>{button.disabled=true;statusText.value='Saving';try{await rpc.get('save',field.value)}catch(e){statusText.value=e.message}finally{button.disabled=false}};
+<!doctype html>
+<meta charset=utf-8>
+
+<style>
+body{margin:16px;font:16px sans-serif}
+textarea{display:block;width:94%;height:56px}
+section{display:flex;gap:12px;margin-top:16px}
+i{display:grid;place-items:center;width:36px;height:36px;background:#21854d;color:white}
+</style>
+<label>Note<textarea id=note disabled></textarea></label>
+<button id=save disabled>Save</button> <output id=o></output>
+<section><i id=tile>↑</i><button id=rotate>Rotate</button><b id=a>0°</b></section>
+<script>
+const q=id=>document.getElementById(id);
+const note=q('note'),save=q('save'),result=q('o');
+const tile=q('tile');
+let progress=0,target=0,timer;
+q('rotate').onclick=()=>{
+  target=1-target;
+  q('a').textContent=90*target+'°';
+  clearInterval(timer);
+  timer=setInterval(()=>{
+    progress+=Math.sign(target-progress)/8;
+    tile.style.transform='rotate('+90*progress+'deg)';
+    tile.style.background=`rgb(${33-13*progress} ${133-29*progress} ${77+97*progress})`;
+    if(progress===target)clearInterval(timer);
+  },40);
+};
+(async()=>{
+  try{
+    await rpc.set('saved',text=>result.value=text);
+    note.value=await rpc.get('load');
+    result.value='Ready';
+    save.disabled=note.disabled=false;
+  }catch(e){result.value=e.message}
+})();
+save.onclick=async()=>{
+  try{await rpc.get('save',note.value)}catch(e){result.value=e.message}
+};
 </script>

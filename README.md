@@ -4,7 +4,7 @@
 
 UI 版（`UI`）提供 C 应用和 LVGL 桌面。Web UI 版（`Web-UI`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
 
-从 Files 双击 `demo.wap`，Blink 在普通桌面窗口中渲染 HTML/CSS 并执行页面 JS，Node 后台通过本地消息处理保存请求。两个来宾进程加载同一份系统 V8。示例只包含 [app.json](examples/demo/app.json)、[app.html](examples/demo/app.html) 和 [app.js](examples/demo/app.js)。
+从 Files 双击 `demo.wap`，Blink 在普通桌面窗口中渲染 HTML/CSS 并执行页面 JS，Node 后台通过本地消息处理保存请求。点击 Rotate 可切换 0° 和 90°，并观察 JavaScript 驱动的 CSS 旋转与颜色过渡。两个来宾进程加载同一份系统 V8。示例只包含 [app.json](examples/demo/app.json)、[app.html](examples/demo/app.html) 和 [app.js](examples/demo/app.js)。
 
 | 代码位置 | 职责 |
 |---|---|
@@ -29,7 +29,7 @@ CLI, UI and Web UI share the ARM64 quota kernel. CLI provides the serial console
 
 The two desktop figures are verified QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
-图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `demo.wap` 为 **1,748 字节**。
+图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `demo.wap` 为 **2,010 字节**。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发)
 
@@ -44,7 +44,7 @@ The two desktop figures are verified QEMU launch configurations. CLI passed seri
 
 ![UI 的二级任务准入检查](docs/screenshots/c-lvgl-admission.png)
 
-![Web UI 冷启动后恢复便笺并再次保存](docs/screenshots/web-node-cold.png)
+![Web UI 示例保存笔记并旋转至 90°](docs/screenshots/web-ui-wap-rotate.png)
 
 ### 启动本地 Web UI 构建
 
