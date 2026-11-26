@@ -37,8 +37,23 @@ static lv_obj_t *status_panel, *status_values[5];
 static struct sched_status_snapshot displayed_status;
 static int status_pending;
 
+static lv_font_t status_font;
+static bool tabular_metrics(const lv_font_t *font, lv_font_glyph_dsc_t *glyph,
+                            uint32_t ch, uint32_t next)
+{
+    (void)font;
+    if (!lv_font_montserrat_14.get_glyph_dsc(&lv_font_montserrat_14, glyph, ch, next)) return false;
+    if (ch >= '0' && ch <= '9') {
+        glyph->adv_w = 9;
+        glyph->ofs_x = (9 - (int)glyph->box_w) / 2;
+    }
+    return true;
+}
+
 static void status_create(lv_obj_t *screen)
 {
+    status_font = lv_font_montserrat_14;
+    status_font.get_glyph_dsc = tabular_metrics;
     status_panel = app_card(screen, 48, "System status", "", "Tier 1", LV_SYMBOL_SETTINGS, 0x69dfbd);
     lv_obj_set_height(status_panel, 139);
     lv_obj_set_y(lv_obj_get_child(status_panel, 0), 5);
@@ -52,7 +67,7 @@ static void status_create(lv_obj_t *screen)
         lv_obj_set_style_text_font(key, &lv_font_montserrat_14, 0);
         status_values[i] = desk_label(status_panel, 170, y, "--", 0xd8f7ef);
         lv_obj_set_width(status_values[i], 190);
-        lv_obj_set_style_text_font(status_values[i], &lv_font_unscii_16, 0);
+        lv_obj_set_style_text_font(status_values[i], &status_font, 0);
         lv_obj_set_style_text_align(status_values[i], LV_TEXT_ALIGN_RIGHT, 0);
     }
 }
