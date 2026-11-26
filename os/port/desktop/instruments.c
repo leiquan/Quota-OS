@@ -59,7 +59,7 @@ static void status_create(lv_obj_t *screen)
 {
     status_font = lv_font_montserrat_14;
     status_font.get_glyph_dsc = tabular_metrics;
-    status_panel = app_card(screen, 48, "System status", "", "Tier 1", LV_SYMBOL_SETTINGS, 0x69dfbd);
+    status_panel = app_card(screen, 48, "System Status", "", "Tier 1", LV_SYMBOL_SETTINGS, 0x69dfbd);
     lv_obj_set_height(status_panel, 139);
     lv_obj_set_y(lv_obj_get_child(status_panel, 0), 5);
     static const char *const titles[] = {"CPU busy (%)", "Reserved / total (KiB)", "Tasks",
