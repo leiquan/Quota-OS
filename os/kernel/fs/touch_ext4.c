@@ -5,12 +5,13 @@
 
 static const char payload[] = "Quota OS Touch UI journaled replacement and cold readback";
 static const char keep[] = "touch-keep.txt", scratch[] = "touch-scratch.txt";
-static const struct {
+struct probe_step {
     enum root_operation op;
     const char *name, *input;
     size_t bytes;
     int result;
-} steps[] = {
+};
+static const struct probe_step steps[] = {
     {ROOT_READ, keep, NULL, 0, EXT4_NOT_FOUND},
     {ROOT_SAVE, scratch, "created", 7, EXT4_OK},
     {ROOT_READ, scratch, "created", 7, EXT4_OK},
@@ -22,6 +23,14 @@ static const struct {
     {ROOT_READ, keep, payload, sizeof payload - 1, EXT4_OK},
 };
 
+#ifdef QUOTA_TOUCH_SMP
+static const struct probe_step continuation[] = {
+    {ROOT_SAVE, scratch, payload, sizeof payload - 1, EXT4_OK},
+    {ROOT_READ, scratch, payload, sizeof payload - 1, EXT4_OK},
+    {ROOT_REMOVE, scratch, NULL, 0, EXT4_OK},
+};
+#endif
+enum { INITIAL_STEPS = sizeof steps / sizeof steps[0], REQUEST_RECORDS = 96 };
 static unsigned step, started, running, pending;
 #ifdef QUOTA_TOUCH_SMP
 extern const char touch_smp_pressure_start[], touch_smp_pressure_end[];
@@ -51,11 +60,12 @@ static struct app_display_stats first_display;
 static unsigned recorded, dropped;
 static struct {
     uint64_t submitted, completed;
+    enum root_operation op;
     int result;
-} io_trace[sizeof steps / sizeof steps[0]];
+} io_trace[REQUEST_RECORDS];
 static uint64_t scroll_ticks[1024];
 static unsigned bus_count, bus_dropped, page_count, page_dropped;
-static struct { uint64_t begin, end; unsigned operation, bytes; } bus_trace[512];
+static struct { uint64_t begin, end; unsigned operation, bytes; } bus_trace[4096];
 static struct { uint64_t tick; unsigned generation; } page_trace[128];
 
 void touch_ext4_record_io(unsigned op, unsigned bytes, unsigned long begin_tick, unsigned long end_tick)
@@ -196,6 +206,9 @@ static void finish(int pass, int cold)
     sched_read_system_info(&after);
     app_display_read(&last_display);
     running = pending = 0;
+#ifdef QUOTA_TOUCH_SMP
+    sched_touch_quota_stop();
+#endif
     uint64_t end = ticks_now();
     printf("[touch-ext4] io-end ticks=%lu result=%s cold=%d scroll_delta=%u\n",
            (unsigned long)end, pass ? "PASS" : "FAIL", cold, recorded);
@@ -206,13 +219,14 @@ static void finish(int pass, int cold)
 #ifdef QUOTA_TOUCH_SMP
     if (pressure_worker > 0) proc_kill(pressure_worker);
     sched_smp_report();
+    sched_touch_quota_dump();
     printf("[touch-ext4] concurrent_memory_sweeps=%u bytes_per_sweep=%u\n",
            memory_sweeps, (unsigned)sizeof pressure_words);
 #endif
     for (unsigned i = 0; i < sizeof io_trace / sizeof io_trace[0]; ++i) {
         if (!io_trace[i].completed) break;
         printf("[touch-ext4] request=%u op=%u start=%lu end=%lu result=%d\n",
-               i, steps[i].op, (unsigned long)io_trace[i].submitted,
+               i, io_trace[i].op, (unsigned long)io_trace[i].submitted,
                (unsigned long)io_trace[i].completed, io_trace[i].result);
     }
     printf("[touch-ext4] bus-trace count=%u dropped=%u\n", bus_count, bus_dropped);
@@ -241,6 +255,7 @@ void touch_ext4_scroll_step(void)
         app_display_read(&first_display);
         app_frame_trace_start();
 #ifdef QUOTA_TOUCH_SMP
+        sched_touch_quota_start();
         pressure_worker = proc_spawn_console(touch_smp_pressure_start,
                                                touch_smp_pressure_end - touch_smp_pressure_start);
         printf("[touch-ext4] pressure_worker=%ld workers=%d\n", (long)pressure_worker, smp_online());
@@ -269,15 +284,24 @@ void touch_ext4_poll(void)
         ++memory_sweeps;
     }
 #endif
+    if (step >= REQUEST_RECORDS) { finish(0, 0); return; }
+    const struct probe_step *operation;
+#ifdef QUOTA_TOUCH_SMP
+    const unsigned count = sizeof continuation / sizeof continuation[0];
+    operation = step < INITIAL_STEPS ? &steps[step] : &continuation[(step - INITIAL_STEPS) % count];
+#else
+    operation = &steps[step];
+#endif
     if (!pending) {
         uint64_t submitted = ticks_now();
         if (submitted < next_request) return;
-        int rc = root_service_submit(steps[step].op, steps[step].name,
-                                     steps[step].op == ROOT_SAVE ? steps[step].input : NULL,
-                                     steps[step].op == ROOT_SAVE ? steps[step].bytes : 0);
+        int rc = root_service_submit(operation->op, operation->name,
+                                     operation->op == ROOT_SAVE ? operation->input : NULL,
+                                     operation->op == ROOT_SAVE ? operation->bytes : 0);
         if (rc < 0) finish(0, 0);
         if (rc) return;
         io_trace[step].submitted = submitted;
+        io_trace[step].op = operation->op;
         pending = 1;
     }
     static char data[ROOT_SERVICE_BYTES];
@@ -294,24 +318,32 @@ void touch_ext4_poll(void)
         finish(bytes == sizeof payload - 1 && matches(payload, data, bytes), 1);
         return;
     }
-    if (result != steps[step].result ||
-        (steps[step].op == ROOT_READ && result == EXT4_OK &&
-         (bytes != steps[step].bytes || !matches(steps[step].input, data, bytes)))) {
+    if (result != operation->result ||
+        (operation->op == ROOT_READ && result == EXT4_OK &&
+         (bytes != operation->bytes || !matches(operation->input, data, bytes)))) {
         printf("[touch-ext4] request-failed step=%u ext4=%d\n", step, result);
         finish(0, 0);
         return;
     }
-    if (++step == sizeof steps / sizeof steps[0]) {
+    ++step;
+#ifdef QUOTA_TOUCH_SMP
+    if (step >= INITIAL_STEPS && (step - INITIAL_STEPS) % count == 0) {
+        if (page_count || ticks_now() - begin >= us_to_ticks(28000000) ||
+            step + count > REQUEST_RECORDS) {
+            printf("[touch-ext4] io-start ticks=%lu mount=0\n", (unsigned long)begin);
+            finish(page_count != 0, 0);
+            return;
+        }
+    }
+    /* After lifecycle verification, maintain alternating real writes, reads and flushes
+     * until a viewport frame arrives or the bounded observation window expires. */
+    next_request = ticks_now() + us_to_ticks(step < INITIAL_STEPS ? 1400000 : 0);
+#else
+    if (step == INITIAL_STEPS) {
         printf("[touch-ext4] io-start ticks=%lu mount=0\n", (unsigned long)begin);
         finish(1, 0);
     } else {
-        /* Continue exercising the disk across multiple visible swipe frames. */
-        next_request = ticks_now() + us_to_ticks(
-#ifdef QUOTA_TOUCH_SMP
-            1400000
-#else
-            350000
-#endif
-        );
+        next_request = ticks_now() + us_to_ticks(350000);
     }
+#endif
 }

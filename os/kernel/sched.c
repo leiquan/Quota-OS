@@ -119,6 +119,65 @@ static struct {
     struct smp_wave wave[SMP_MAX_CPUS-1];
 } probe;
 
+struct touch_quota_row {
+    uint64_t period, start, cpu0, remote, cap, minimum, grant, used;
+    unsigned spinning, shortfalls, skipped, remote_incomplete;
+};
+static struct {
+    uint64_t first;
+    unsigned active, count, dropped;
+    struct touch_quota_row row[3200];
+} touch_quota;
+
+void sched_touch_quota_start(void)
+{
+    uint64_t flags = irq_save();
+    touch_quota.count = touch_quota.dropped = 0;
+    touch_quota.first = pk + 1;
+    touch_quota.active = 1;
+    irq_restore(flags);
+}
+
+void sched_touch_quota_stop(void)
+{
+    uint64_t flags = irq_save();
+    touch_quota.active = 0;
+    irq_restore(flags);
+}
+
+void sched_touch_quota_dump(void)
+{
+    printf("[touch-quota] count=%u dropped=%u\n", touch_quota.count, touch_quota.dropped);
+    for (unsigned i = 0; i < touch_quota.count; ++i) {
+        const struct touch_quota_row *row = &touch_quota.row[i];
+        printf("[touch-period] seq=%lu start=%lu cpu0=%lu remote=%lu cap=%lu t2_min=%lu t2_grant=%lu t2_used=%lu spinning=%u short=%u skipped=%u remote_incomplete=%u\n",
+               row->period, row->start, row->cpu0, row->remote, row->cap,
+               row->minimum, row->grant, row->used, row->spinning, row->shortfalls,
+               row->skipped, row->remote_incomplete);
+    }
+}
+
+static struct touch_quota_row *touch_quota_period(struct smp_wave *wave, int skipped)
+{
+    if (!touch_quota.active || pk < touch_quota.first) return NULL;
+    if (touch_quota.count == sizeof touch_quota.row / sizeof touch_quota.row[0]) {
+        ++touch_quota.dropped;
+        return NULL;
+    }
+    struct touch_quota_row *row = &touch_quota.row[touch_quota.count++];
+    *row = (struct touch_quota_row){.period=pk, .start=pstart, .cpu0=t3_used,
+                                  .cap=t3_limit, .skipped=skipped};
+    if (wave) {
+        row->cap += wave->held;
+        for (unsigned i = 0; i < wave->workers; ++i) {
+            uint64_t used = smp_used(wave->first_worker + i);
+            if (used == UINT64_MAX) ++row->remote_incomplete;
+            else row->remote += used;
+        }
+    }
+    return row;
+}
+
 static struct smp_wave *current_wave(void)
 {
     if (!probe.owner || !probe.waves) return NULL;
@@ -1023,6 +1082,7 @@ static void end_period(uint64_t now, int skipped)
         wave->cap = t3_limit + wave->held;
         wave->finished = 1;
     }
+    struct touch_quota_row *touch_row = touch_quota_period(wave, skipped);
 #endif
     for (int i = 0; i < 3; i++)
         last_tier_ticks[i] = tier_ticks[i];
@@ -1055,6 +1115,17 @@ static void end_period(uint64_t now, int skipped)
         int short_cpu = t->tier == TIER2 && t->kind == KIND_SPIN &&
                         (t->state == TASK_RUNNING || t->state == TASK_READY) &&
                         t->used_t < t->min_t;
+#ifdef QUOTA_TOUCH_SMP
+        if (touch_row && t->tier == TIER2) {
+            touch_row->grant += t->period_grant_t;
+            touch_row->used += t->used_t;
+            if (t->kind == KIND_SPIN && (t->state == TASK_RUNNING || t->state == TASK_READY)) {
+                touch_row->minimum += t->min_t;
+                ++touch_row->spinning;
+            }
+            touch_row->shortfalls += short_cpu;
+        }
+#endif
         if (short_cpu)
             tier2_short_count++;
         if (rec) {
