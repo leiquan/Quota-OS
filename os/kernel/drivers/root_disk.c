@@ -19,6 +19,15 @@ static uint8_t sector_data[BLOCK] __attribute__((aligned(64)));
 static volatile uint8_t status;
 static uint64_t base, capacity, last_period, cached;
 static int initialized, failed, submitted, writable;
+#ifdef QUOTA_CLI
+static uint64_t max_request_ticks, requests;
+
+void root_disk_timing(uint64_t *latency, uint64_t *count)
+{
+    *latency = max_request_ticks;
+    *count = requests;
+}
+#endif
 
 static void address(unsigned offset, uintptr_t pointer)
 {
@@ -44,14 +53,23 @@ static int transfer(unsigned operation, uint64_t sector, unsigned bytes)
     asm volatile("dsb sy" ::: "memory");
     available.index = index + 1;
     asm volatile("dsb sy" ::: "memory");
+    uint64_t start = ticks_now();
     mmio_wr(base + 0x50, 0);
-    uint64_t deadline = ticks_now() + us_to_ticks(1000000);
+    uint64_t deadline = start + us_to_ticks(1000000);
     while (used.index == index) {
-        if (ticks_now() >= deadline) { failed = 1; return -1; }
+        if (ticks_now() >= deadline) {
+            failed = 1;
+            break;
+        }
         asm volatile("wfi");
     }
     asm volatile("dsb sy" ::: "memory");
-    if (used.index != (uint16_t)(index + 1) || used.entries[index % QUEUE].id ||
+#ifdef QUOTA_CLI
+    uint64_t elapsed = ticks_now() - start;
+    if (elapsed > max_request_ticks) max_request_ticks = elapsed;
+    ++requests;
+#endif
+    if (failed || used.index != (uint16_t)(index + 1) || used.entries[index % QUEUE].id ||
         used.entries[index % QUEUE].length != (device_writes ? bytes + 1 : 1) || status) {
         failed = 1;
         return -1;

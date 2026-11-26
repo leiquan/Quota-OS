@@ -140,6 +140,57 @@ static void overwrite_root(char *arg)
         printf("ext4 saved\n");
 }
 
+static void trace_wait_periods(uint64_t periods)
+{
+    uint64_t until = sched_period_now() + periods;
+    while (sched_period_now() < until)
+        asm volatile("wfi");
+}
+
+static void trace_timing(const char *mode)
+{
+    int block = !strcmp(mode, "block");
+    int disk = !strcmp(mode, "disk");
+    int overflow = !strcmp(mode, "overflow");
+    if ((*mode && !block && !disk && !overflow) ||
+        ((block || overflow) && strcmp(dtb_bootargs(), "cli timing-test"))) {
+        printf("Usage: timing [disk]; block and overflow require CLI_TIMING_TEST=1\n");
+        return;
+    }
+    if (!__cli_module_size || __cli_module_size > 4096) {
+        printf("Timing probe requires CLI_TEST=1\n");
+        return;
+    }
+    int64_t probe = proc_spawn_module((const char *)__cli_module, __cli_module_size, TIER2);
+    if (probe < 0) {
+        printf("Timing probe admission refused\n");
+        return;
+    }
+
+    sched_trace_begin();
+    trace_wait_periods(4);
+    uint64_t injected = 0;
+    if (block) {
+        uint64_t flags = irq_save();
+        uint64_t start = ticks_now(), end = start + us_to_ticks(22000);
+        while (ticks_now() < end) asm volatile("" ::: "memory");
+        injected = ticks_now() - start;
+        irq_restore(flags);
+    } else if (disk && !ensure_root(0)) {
+        size_t bytes;
+        int rc = ext4_read_root(&root_volume, "hello.txt", root_file, sizeof root_file, &bytes);
+        printf("[timing-disk] result=%s bytes=%lu\n", ext4_result_text(rc), (uint64_t)bytes);
+    }
+    trace_wait_periods(overflow ? 136 : 4);
+    sched_trace_dump(injected);
+    uint64_t root_ticks, root_count, notes_ticks, notes_count;
+    root_disk_timing(&root_ticks, &root_count);
+    note_disk_timing(&notes_ticks, &notes_count);
+    printf("[timing-virtio] root_observed_ticks=%lu root_requests=%lu notes_observed_ticks=%lu notes_requests=%lu max_inflight_per_device=1\n",
+           root_ticks, root_count, notes_ticks, notes_count);
+    while (proc_alive(probe)) asm volatile("wfi");
+}
+
 static void show_commands(void)
 {
     printf("System   uname          Show kernel version and architecture\n"
@@ -147,6 +198,7 @@ static void show_commands(void)
            "         mem / free     Show RAM and available application budget\n"
            "         tasks / ps     List active tasks and their tiers\n"
            "         quota / events Show scheduling counters\n"
+           "         timing [disk] Capture raw job and Tier 2 budget ticks\n"
            "Files    pwd            Show the root directory\n"
            "         ls             List the root directory\n"
            "         cat FILE       Read a file from the root directory\n"
@@ -252,6 +304,8 @@ void shell_main(void)
                 run_root(arg);
             else
                 printf("Usage: run Test [t2] or run /FILE\n");
+        } else if (!strcmp(command, "timing")) {
+            trace_timing(arg);
         } else if (*arg)
             printf("Unexpected arguments. Type help for usage.\n");
         else if (!strcmp(command, "help"))

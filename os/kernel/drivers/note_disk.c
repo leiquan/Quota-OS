@@ -25,6 +25,22 @@ static unsigned document;
 #define saved (documents[document])
 static uint64_t base, submitted, last_period;
 static unsigned submitted_once, inflight;
+#ifdef QUOTA_CLI
+static uint64_t note_request_start, note_request_max, note_request_count;
+
+void note_disk_timing(uint64_t *latency, uint64_t *requests)
+{
+    *latency = note_request_max;
+    *requests = note_request_count;
+}
+
+static void note_record_request(void)
+{
+    uint64_t elapsed = ticks_now() - note_request_start;
+    if (elapsed > note_request_max) note_request_max = elapsed;
+    ++note_request_count;
+}
+#endif
 static uint16_t completed;
 static int slots[2];
 #define slot (slots[document])
@@ -147,6 +163,9 @@ static void submit(void)
     asm volatile("dmb oshst" ::: "memory");
     avail.idx++;
     asm volatile("dsb sy" ::: "memory");
+#ifdef QUOTA_CLI
+    note_request_start = ticks_now();
+#endif
     mmio_wr(base+0x50, 0);
     submitted = now_us();
     inflight = 1;
@@ -159,12 +178,20 @@ void note_disk_poll(void)
         return;
     if (inflight) {
         if (used.idx == completed) {
-            if (now_us()-submitted > 30000000) phase = FAILED;
+            if (now_us()-submitted > 30000000) {
+#ifdef QUOTA_CLI
+                note_record_request();
+#endif
+                phase = FAILED;
+            }
             return;
         }
         asm volatile("dmb oshld" ::: "memory");
         completed++;
         inflight = 0;
+#ifdef QUOTA_CLI
+        note_record_request();
+#endif
         if (status) { phase = FAILED; return; }
         if (phase == IDENTIFY) {
             phase = !strcmp(serial, "QUOTA-NOTES") ? AUTH_READ : OFFLINE;

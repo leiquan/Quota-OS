@@ -16,4 +16,8 @@ int root_disk_overwrite(const struct ext4_volume *, const char *, const char *, 
 
 int root_disk_remove(const struct ext4_volume *, const char *);
 
+#ifdef QUOTA_CLI
+void root_disk_timing(uint64_t *latency, uint64_t *requests);
+#endif
+
 #endif

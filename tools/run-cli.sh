@@ -3,6 +3,7 @@ set -eu
 cd "$(dirname "$0")/.."
 args=()
 bootargs=cli
+if [[ ${CLI_TIMING_TEST:-0} == 1 ]]; then bootargs="cli timing-test"; fi
 if [[ $# == 1 && $1 == --quiet ]]; then
     args+=(-device "loader,addr=$(cat build/cli/quiet.addr),data=1,data-len=1")
 elif [[ $# != 0 ]]; then
