@@ -8,8 +8,7 @@ extern const unsigned char demo_manifest[], demo_manifest_end[];
 extern const unsigned char demo_html[], demo_html_end[];
 extern const unsigned char demo_node[], demo_node_end[];
 
-enum { PACKAGE_CAPACITY = 2032 };
-static unsigned char running_package[PACKAGE_CAPACITY];
+static unsigned char running_package[NOTE_DISK_PACKAGE_CAPACITY];
 static unsigned running_size;
 
 static int same_package(const unsigned char *data, unsigned size)
@@ -24,14 +23,14 @@ enum wap_open_result wap_open_saved(int64_t *handle)
 {
     unsigned size;
     const unsigned char *data = note_disk_package(&size);
+    if (*handle > 0 && proc_pid(*handle) >= 0 && same_package(data, size))
+        return WAP_RESTORED;
     static struct app_zip archive;
     const struct app_zip_entry *ui, *backend;
     if (app_zip_read(data, size, &archive) || app_zip_launch_entries(&archive, &ui, &backend))
         return WAP_INVALID;
     printf("[wap] launch entries tier=3 ui=%s bytes=%u backend=%s bytes=%u\n",
            ui->name, ui->size, backend ? backend->name : "-", backend ? backend->size : 0);
-    if (*handle > 0 && proc_pid(*handle) >= 0 && same_package(data, size))
-        return WAP_RESTORED;
     uintptr_t start = (uintptr_t)wap_worker_start, end = (uintptr_t)wap_worker_end;
     running_size = 0;
     *handle = -1;
@@ -54,7 +53,7 @@ int wap_export_demo(void)
         {"app.html", demo_html, (uintptr_t)demo_html_end - (uintptr_t)demo_html},
         {"app.js", demo_node, (uintptr_t)demo_node_end - (uintptr_t)demo_node}
     };
-    static unsigned char bytes[PACKAGE_CAPACITY];
+    static unsigned char bytes[NOTE_DISK_PACKAGE_CAPACITY];
     int size = app_zip_write(entries, sizeof entries / sizeof entries[0], bytes, sizeof bytes);
     int ok = size > 0 && note_disk_save_package(bytes, size) == 0;
     printf("[zip-app] export queued=%d bytes=%d\n", ok, size);

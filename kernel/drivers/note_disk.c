@@ -6,7 +6,7 @@
 enum { BLOCK = 512, MAGIC = 0x514e5431, FLUSH_FEATURE = 1u << 9, SOURCE_MAGIC = 0x514e5432, SOURCE_NAME = 32, PACKAGE_MAGIC = 0x51415031, NOTE_DATA_MAGIC = 0x514e4431, NOTE_DATA_SLOT = 3, PACKAGE_EXT = 4, HELLO_SLOT = 5, DOCUMENT_COUNT = 6, LEGACY_BYTES = BLOCK-16, PACKAGE_BANK_BYTES = 4*BLOCK };
 struct record {
     uint32_t magic, generation, length, checksum;
-    char text[PACKAGE_BANK_BYTES - 16];
+    char text[NOTE_DISK_PACKAGE_CAPACITY];
 };
 _Static_assert(sizeof(struct record) == PACKAGE_BANK_BYTES, "package bank");
 struct descriptor { uint64_t addr; uint32_t length; uint16_t flags, next; };
