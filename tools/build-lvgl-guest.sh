@@ -6,22 +6,7 @@
 set -euo pipefail
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
-if [ -n "${QUOTA_LLVM_BIN:-}" ]; then
-    cc=("$QUOTA_LLVM_BIN/clang" --target=aarch64-none-elf)
-    link_flags=(-nostdlib -static "-fuse-ld=${QUOTA_LLD:-ld.lld}")
-    OBJCOPY=${OBJCOPY:-"$QUOTA_LLVM_BIN/llvm-objcopy"}
-    NM=${NM:-"$QUOTA_LLVM_BIN/llvm-nm"}
-    READELF=${READELF:-"$QUOTA_LLVM_BIN/llvm-readelf"}
-    RUNTIME_LIB=${RUNTIME_LIB:-}
-    lv_headers=(-Itools/freestanding)
-else
-    cc=("${CC:-aarch64-linux-gnu-gcc}")
-    link_flags=(-nostdlib -nostartfiles -static -no-pie)
-    OBJCOPY=${OBJCOPY:-aarch64-linux-gnu-objcopy}
-    NM=${NM:-aarch64-linux-gnu-nm}
-    RUNTIME_LIB=${RUNTIME_LIB:--lgcc}
-    lv_headers=()
-fi
+source tools/guest-toolchain.sh
 EXTRA_CFLAGS=${EXTRA_CFLAGS:-}
 image_name=quotaos-lvgl
 if [[ -n "${QUOTA_NODE_WEB_OUT:-}${QUOTA_WAP_PAGE_ELF:-}${QUOTA_WAP_INTERPRETER:-}" ]]; then
