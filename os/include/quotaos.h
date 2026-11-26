@@ -542,8 +542,14 @@ void proc_runtime_cache_free(int frame);
 void runtime_volume_init(void);
 int runtime_volume_trim(void);
 void runtime_volume_poll(void);
-int runtime_volume_find(const char *name, uint64_t *offset, uint64_t *size);
-int runtime_volume_read(uint64_t offset, void *destination, unsigned length);
+struct runtime_volume_file {
+    uint64_t offset;
+    uint64_t size;
+};
+/* 1 = complete, 0 = retry after I/O, -1 = invalid or unavailable. */
+int runtime_volume_find(const char *name, struct runtime_volume_file *file);
+int runtime_volume_read_file(const struct runtime_volume_file *file, uint64_t position,
+                             void *destination, unsigned length);
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
 int runtime_volume_acquire(uint64_t offset, const uint8_t **data);
 void runtime_volume_release(const uint8_t *data);

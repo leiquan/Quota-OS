@@ -44,7 +44,8 @@ _Static_assert(sizeof(struct runtime_elf_segment) == 56, "ELF64 program header s
 
 static unsigned next_component;
 static int volume_pending;
-static uint64_t file_offset, file_size, text_offset;
+static struct runtime_volume_file file;
+static uint64_t text_offset;
 static struct runtime_elf_header header;
 static unsigned next_segment, load_segments;
 static int interpreter_seen;
@@ -55,15 +56,15 @@ static int64_t probe_handle;
 
 static int prepare_component(void)
 {
-    if (!file_size) {
-        int result = runtime_volume_find(runtime_components[next_component], &file_offset, &file_size);
+    if (!file.size) {
+        int result = runtime_volume_find(runtime_components[next_component], &file);
         if (result != 1)
             return result;
     }
     if (!next_segment) {
-        if (file_size < sizeof header)
+        if (file.size < sizeof header)
             return -1;
-        int result = runtime_volume_read(file_offset, &header, sizeof header);
+        int result = runtime_volume_read_file(&file, 0, &header, sizeof header);
         if (result != 1)
             return result;
         static const uint8_t ident[] = {0x7f, 'E', 'L', 'F', 2, 1, 1};
@@ -74,24 +75,24 @@ static int prepare_component(void)
             header.version != 1 || (header.type != 2 && header.type != 3) ||
             header.ehsize != sizeof header || header.phentsize != sizeof(struct runtime_elf_segment) ||
             !header.phnum || header.phnum > 32 || header.phoff < sizeof header ||
-            header.phoff > file_size || header.phnum * sizeof(struct runtime_elf_segment) > file_size - header.phoff ||
+            header.phoff > file.size || header.phnum * sizeof(struct runtime_elf_segment) > file.size - header.phoff ||
             (header.entry & 3) || (!header.entry && next_component != 1))
             return -1;
     }
     if (next_segment < header.phnum) {
         struct runtime_elf_segment segment;
-        uint64_t position = file_offset + header.phoff + next_segment * sizeof segment;
-        int result = runtime_volume_read(position, &segment, sizeof segment);
+        uint64_t position = header.phoff + next_segment * sizeof segment;
+        int result = runtime_volume_read_file(&file, position, &segment, sizeof segment);
         if (result != 1)
             return result;
         if (segment.type == 3) {
             static const char expected[] = "/lib/ld-linux-aarch64.so.1";
             char interpreter[sizeof expected];
-            if (interpreter_seen || segment.offset > file_size ||
+            if (interpreter_seen || segment.offset > file.size ||
                 segment.filesz != sizeof interpreter ||
-                sizeof interpreter > file_size - segment.offset)
+                sizeof interpreter > file.size - segment.offset)
                 return -1;
-            result = runtime_volume_read(file_offset + segment.offset, interpreter,
+            result = runtime_volume_read_file(&file, segment.offset, interpreter,
                                          sizeof interpreter);
             if (result != 1)
                 return result;
@@ -100,7 +101,7 @@ static int prepare_component(void)
             interpreter_seen = 1;
         }
         if (segment.type == 1) {
-            if (segment.offset > file_size || segment.filesz > file_size - segment.offset ||
+            if (segment.offset > file.size || segment.filesz > file.size - segment.offset ||
                 segment.filesz > segment.memsz || segment.memsz > UINT64_MAX - segment.vaddr ||
                 (segment.flags != 4 && segment.flags != 5 && segment.flags != 6) ||
                 (segment.align > 1 && ((segment.align & (segment.align - 1)) ||
@@ -137,23 +138,23 @@ static int prepare_component(void)
     if (!strcmp(runtime_components[next_component], "quota-pager-test")) {
         if (load_segments != 2 || header.entry != 0x3000 || !probe_data_offset)
             return -1;
-        probe_handle = proc_spawn_volume_probe("volume-elf-test", file_offset + text_offset - 1,
-                                              file_offset + probe_data_offset, 1);
+        probe_handle = proc_spawn_volume_probe("volume-elf-test", file.offset + text_offset - 1,
+                                              file.offset + probe_data_offset, 1);
         return probe_handle > 0 ? 1 : -1;
     }
 #endif
     uint32_t instruction;
-    int result = runtime_volume_read(file_offset + (text_offset - 1), &instruction, sizeof instruction);
+    int result = runtime_volume_read_file(&file, text_offset - 1, &instruction, sizeof instruction);
     if (result == 1)
         printf("[wap-volume] ELF %s bytes=%lu entry=%lx loads=%u text=%lx sample=%x\n",
-               runtime_components[next_component], file_size, header.entry, load_segments,
+               runtime_components[next_component], file.size, header.entry, load_segments,
                text_offset - 1, instruction);
     return result;
 }
 
 static void reset_component(void)
 {
-    file_size = 0;
+    file = (struct runtime_volume_file){0};
     text_offset = 0;
     next_segment = 0;
     load_segments = 0;

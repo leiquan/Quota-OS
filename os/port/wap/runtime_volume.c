@@ -219,7 +219,7 @@ void runtime_volume_release(const uint8_t *data)
 
 /* A bounded read touches at most two cache pages. Retry the whole read
  * after a miss. The destination is only published after both pages arrive. */
-int runtime_volume_read(uint64_t offset, void *destination, unsigned length)
+static int read_volume(uint64_t offset, void *destination, unsigned length)
 {
     if (state == OFFLINE || state == FAILED || !length || length > PAGE_BYTES)
         return -1;
@@ -249,8 +249,17 @@ int runtime_volume_read(uint64_t offset, void *destination, unsigned length)
     return result;
 }
 
+int runtime_volume_read_file(const struct runtime_volume_file *file, uint64_t position,
+                             void *destination, unsigned length)
+{
+    if (position > file->size || length > file->size - position ||
+        file->offset > volume_size || file->size > volume_size - file->offset)
+        return -1;
+    return read_volume(file->offset + position, destination, length);
+}
+
 /* Binary search the sorted index without retaining index pages across calls. */
-int runtime_volume_find(const char *name, uint64_t *offset, uint64_t *size)
+int runtime_volume_find(const char *name, struct runtime_volume_file *file)
 {
     if (state == OFFLINE || state == FAILED)
         return -1;
@@ -261,7 +270,7 @@ int runtime_volume_find(const char *name, uint64_t *offset, uint64_t *size)
         unsigned mid = low + (high - low) / 2;
         uint64_t position = sizeof(struct volume_header) + (uint64_t)mid * INDEX_ENTRY_BYTES;
         struct volume_entry entry;
-        int result = runtime_volume_read(position, &entry, sizeof entry);
+        int result = read_volume(position, &entry, sizeof entry);
         if (result != 1)
             return result;
         unsigned n = 0;
@@ -279,8 +288,7 @@ int runtime_volume_find(const char *name, uint64_t *offset, uint64_t *size)
                 entry.offset >= volume_size || !entry.size ||
                 entry.size > volume_size - entry.offset)
                 return -1;
-            *offset = entry.offset;
-            *size = entry.size;
+            *file = (struct runtime_volume_file){entry.offset, entry.size};
             return 1;
         }
     }
