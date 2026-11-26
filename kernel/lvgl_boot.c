@@ -1,6 +1,6 @@
 /*
  * -append lvgl. Admission and the display/input services live here.
- * Widget code is port/quotaos/desktop/. This file does not include LVGL.
+ * Widget code is port/desktop/. This file does not include LVGL.
  */
 #include "quotaos.h"
 

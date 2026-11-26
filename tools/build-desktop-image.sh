@@ -22,7 +22,7 @@ done < <(cat "${source_lists[@]}")
 LVFLAGS=(${lv_headers[@]:+"${lv_headers[@]}"} $EXTRA_CFLAGS -std=gnu11 -O2 -ffreestanding -fno-stack-protector -fno-builtin
     -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align
     -fno-asynchronous-unwind-tables -Wno-unused-parameter -w
-    -DLV_CONF_INCLUDE_SIMPLE -I third_party/lvgl -I port/quotaos -I include)
+    -DLV_CONF_INCLUDE_SIMPLE -I third_party/lvgl -I port -I include)
 mkdir -p build/lvgl build/port
 while IFS= read -r src; do
     rel=${src#third_party/lvgl/}
@@ -41,7 +41,7 @@ done < <(find third_party/lvgl/src/libs/bin_decoder -name '*.c'; find third_part
     -path 'third_party/lvgl/src/draw/dma2d' -prune -o \
     -path 'third_party/lvgl/src/draw/renesas' -prune -o \
     -name '*.c' -print | sort)
-for src in port/quotaos/desktop/*.c; do
+for src in port/desktop/*.c; do
     obj="build/${src%.c}.o"
     mkdir -p "$(dirname "$obj")"
     "${cc[@]}" "${LVFLAGS[@]}" -c -o "$obj" "$src"
