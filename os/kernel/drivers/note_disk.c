@@ -219,8 +219,10 @@ void note_disk_poll(void)
         } else if (phase == SCRUB) {
             scrub_completed++;
             scrub_sector = (scrub_sector + 1) % 4;
+            uint64_t irq = irq_save();
             phase = scrub_save_queued ? WRITE : READY;
             scrub_save_queued = 0;
+            irq_restore(irq);
         } else if (phase == VERIFY) {
             verify_result = transfer.magic == MAGIC && transfer.generation == saved.generation &&
                 transfer.length == saved.length && transfer.checksum == saved.checksum &&
@@ -246,6 +248,14 @@ void note_disk_poll(void)
     }
     uint64_t period = sched_period_now();
     if (submitted_once && period == last_period) return;
+    /* Close the handoff before allowing a preempting WAP call to claim
+     * transfer. The current request type must match the checksum path. */
+    uint64_t irq = irq_save();
+    if (phase == READY) {
+        phase = SCRUB;
+        scrub_submitted++;
+    }
+    irq_restore(irq);
     if (phase == WRITE) {
 #ifdef QUOTA_TOUCH_SMP
         if (transfer.magic != SOURCE_MAGIC) {
@@ -259,11 +269,6 @@ void note_disk_poll(void)
     }
     last_period = period;
     submitted_once = 1;
-    if (phase == READY) {
-        /* The Notes sectors are read-only here. Each request scans one sector. */
-        phase = SCRUB;
-        scrub_submitted++;
-    }
     submit();
 }
 
