@@ -1,5 +1,5 @@
 #include "quotaos.h"
-#include "kernel/resource.c"
+#include "os/kernel/resource.c"
 uint64_t us_to_ticks(uint64_t us) { return us * 64; }
 uint64_t color_padding_kb(void) { return 0; }
 int main(void) {

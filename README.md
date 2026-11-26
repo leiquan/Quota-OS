@@ -41,7 +41,7 @@ CLI_DISK=notes.raw bash tools/run-cli.sh
 
 At the prompt, use `help`, `mem`, `tasks`, `quota` or `events`. Use `write TEXT` to store one note, wait for `Saved`, and use `cat Note.txt` after reboot. The CLI uses the kernel's Notes block service. `ls` lists the read-only example `test.c` in the root directory alongside any saved note. Use `cat test.c` to read the source and `run test.c` to execute its compiled counterpart. Set `CLI_TEST=0` at boot to omit the example.
 
-`run Test` starts the external EL0 sample in Tier 3. `run Test t2` requests a 400 µs minimum per 10 ms period and prints observed grants and usage in counter ticks. Edit `cli/test.c` and run `make`. The cross compiler builds ARM64 machine code for QEMU, with no application packaging step. Test executes only when requested.
+`run Test` starts the external EL0 sample in Tier 3. `run Test t2` requests a 400 µs minimum per 10 ms period and prints observed grants and usage in counter ticks. Edit `os/cli/test.c` and run `make`. The cross compiler builds ARM64 machine code for QEMU, with no application packaging step. Test executes only when requested.
 
 Kernel boot diagnostics are enabled by default. Run `bash tools/run-cli.sh --quiet` for the concise welcome screen on the same image. Boot errors remain visible.
 
