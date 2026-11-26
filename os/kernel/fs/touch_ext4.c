@@ -23,6 +23,9 @@ static const struct {
 };
 
 static unsigned step, started, running, pending;
+static int shell_pending;
+static enum root_operation shell_op;
+static char shell_data[ROOT_SERVICE_BYTES + 1];
 static uint64_t begin;
 static struct sched_system_info before;
 static struct app_display_stats first_display;
@@ -32,6 +35,84 @@ static struct {
     int result;
 } io_trace[sizeof steps / sizeof steps[0]];
 static uint64_t scroll_ticks[1024];
+
+static int starts_with_word(const char *text, const char *word)
+{
+    while (*word && *text == *word) {
+        ++text;
+        ++word;
+    }
+    return !*word && (!*text || *text == ' ');
+}
+
+int touch_ext4_shell_command(const char *command, char *reply, size_t capacity)
+{
+    if (auth_state() != AUTH_OPEN || strcmp(dtb_bootargs(), TOUCH_EXT4_BOOTARGS))
+        return 0;
+    enum root_operation op;
+    const char *arg;
+    if (starts_with_word(command, "ls")) { op = ROOT_LIST; arg = command + 2; }
+    else if (starts_with_word(command, "cat")) { op = ROOT_READ; arg = command + 3; }
+    else if (starts_with_word(command, "write")) { op = ROOT_SAVE; arg = command + 5; }
+    else if (starts_with_word(command, "rm")) { op = ROOT_REMOVE; arg = command + 2; }
+    else return 0;
+
+    while (*arg == ' ') ++arg;
+    char file[81];
+    size_t length = 0;
+    while (arg[length] && arg[length] != ' ' && length < sizeof file - 1)
+        ++length;
+    memcpy(file, arg, length);
+    file[length] = 0;
+    const char *value = arg + length;
+    while (*value == ' ') ++value;
+    size_t bytes = 0;
+    while (value[bytes]) ++bytes;
+
+    const char *result;
+    if ((op == ROOT_LIST && *arg) ||
+        (op != ROOT_LIST && (!length || (op == ROOT_SAVE ? !bytes : bytes != 0))))
+        result = op == ROOT_LIST ? "Usage: ls" : op == ROOT_READ ? "Usage: cat FILE" :
+                 op == ROOT_SAVE ? "Usage: write FILE TEXT" : "Usage: rm FILE";
+    else if (touch_ext4_busy())
+        result = "ext4 disk busy. Try again after the current operation.";
+    else if (root_service_submit(op, op == ROOT_LIST ? NULL : file,
+                                 op == ROOT_SAVE ? value : NULL, bytes))
+        result = "Unable to queue ext4 request.";
+    else {
+        shell_op = op;
+        shell_pending = 1;
+        result = "ext4 request queued.";
+    }
+    if (capacity) {
+        size_t n = 0;
+        while (result[n] && n + 1 < capacity) {
+            reply[n] = result[n];
+            ++n;
+        }
+        reply[n] = 0;
+    }
+    return 1;
+}
+
+const char *touch_ext4_shell_poll(void)
+{
+    if (!shell_pending) return NULL;
+    size_t bytes;
+    int result;
+    if (root_service_take(shell_data, ROOT_SERVICE_BYTES, &bytes, &result) != 1)
+        return NULL;
+    shell_pending = 0;
+    printf("[touch-ext4-shell] op=%u result=%d bytes=%lu\n", shell_op, result, (unsigned long)bytes);
+    if (result) return ext4_result_text(result);
+    if (shell_op == ROOT_SAVE) return "ext4 saved";
+    if (shell_op == ROOT_REMOVE) return "ext4 removed";
+    if (!bytes) return shell_op == ROOT_LIST ? "No files." : "Empty file.";
+    for (size_t i = 0; i < bytes; ++i)
+        if (!shell_data[i]) shell_data[i] = '?';
+    shell_data[bytes] = 0;
+    return shell_data;
+}
 
 static int matches(const char *expected, const char *actual, size_t size)
 {
@@ -69,6 +150,7 @@ void touch_ext4_scroll_step(void)
 {
     if (auth_state() != AUTH_OPEN || strcmp(dtb_bootargs(), TOUCH_EXT4_BOOTARGS))
         return;
+    if (shell_pending) return;
     if (!started) {
         started = running = 1;
         begin = ticks_now();
@@ -84,7 +166,7 @@ void touch_ext4_scroll_step(void)
 
 int touch_ext4_busy(void)
 {
-    return running != 0;
+    return running || shell_pending;
 }
 
 void touch_ext4_poll(void)

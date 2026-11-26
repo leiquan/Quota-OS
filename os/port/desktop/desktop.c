@@ -990,7 +990,8 @@ static void on_group(lv_event_t *e)
         if (!command[0]) return;
         char output[1024];
         const char *result = output;
-        enum shell_action action = shell_execute(command, output, sizeof output);
+        enum shell_action action = touch_ext4_shell_command(command, output, sizeof output)
+                                 ? SHELL_NONE : shell_execute(command, output, sizeof output);
         if (action == SHELL_CLEAR) {
             shell_transcript[0] = 0;
             shell_refresh();
@@ -2197,6 +2198,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             continue;
         }
         touch_ext4_poll();
+        const char *ext4_reply = touch_ext4_shell_poll();
+        if (ext4_reply) shell_append(ext4_reply);
         touch_pressure_memory();
         power_poll();
         const char *console = proc_console_text();
