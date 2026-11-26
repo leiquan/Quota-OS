@@ -6,9 +6,9 @@
 
 **Quick links** · [Run UI](#run-the-desktop) · [Four editions](#quota-os-editions--四个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
 
-Quota OS is an experimental single-core ARM64 operating system built around resource quotas. Its 1280 × 800 LVGL desktop runs on QEMU with one Cortex-A35 core and 64 MiB of RAM by default. A speedometer uses a fixed Tier 1 CPU slot, a dashcam demo requests a Tier 2 reservation, and music and desktop interaction share the Tier 3 pool. CPU deadlines are measured against the guest clock. The demos use simulated speed, video frames and playback activity.
+Quota OS is an experimental single-core ARM64 operating system built around resource quotas. The landscape LVGL desktop runs at 1600 × 900 on QEMU with one Cortex-A35 core and 512 MiB of RAM by default. A speedometer uses a fixed Tier 1 CPU slot, a dashcam demo requests a Tier 2 reservation, and music and desktop interaction share the Tier 3 pool. CPU deadlines are measured against the guest clock. The demos use simulated speed, video frames and playback activity.
 
-Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
+Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 512 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
 
 [Music Player pressure results / 音乐播放器掉帧实测](docs/tests/music-pressure/) · [官网实验截图](https://www.quotaos.org/zh.html#music-pressure)
 
@@ -21,13 +21,13 @@ CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the seri
 | Edition · 发行版 | Default QEMU RAM · 默认内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 72.3 KiB |
-| [UI](https://github.com/leiquan/Quota-OS/tree/UI) | 64 MiB | 685.4 KiB |
-| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 1 GiB | 357.5 MiB |
-| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 64 MiB demo · 128 MiB macOS launcher | Build from source · 源码构建 |
+| [UI](https://github.com/leiquan/Quota-OS/tree/UI) | 512 MiB | 685.4 KiB |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 512 MiB | Runtime on disk · 运行时独立盘 |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 512 MiB | Build from source · 源码构建 |
 
 The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
-图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `todo.wap` 为 **2,021 字节**。
+图形版默认分配 512 MiB 虚拟机内存。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 从独立只读卷加载运行时、动态库和字体，示例 `todo.wap` 为 **2,021 字节**。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
@@ -43,7 +43,7 @@ The graphical memory figures describe their listed QEMU launch configurations. C
 
 - **CLI**：在串口运行基础命令，用 C 编译独立 EL0 Test，并在默认 4 MiB 下验证二三级运行与磁盘读回。[启动指南](https://github.com/leiquan/Quota-OS/tree/CLI) · [验收日志](docs/tests/cli-4m/)
 - **UI**：在 `os/kernel/` 开发内核与驱动，在 `os/port/desktop/` 用 C 和 LVGL 实现界面。用 ARM64 工具链执行 `bash tools/build-lvgl-guest.sh`，再用 `QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh` 启动新镜像。在 Apps → Test 检查准入、CPU 配额和仪表提交。
-- **Web UI 系统**：在准备好的 Chromium 142 与 Node 22.21.1 源码上应用分支内的兼容补丁，用 `tools/build-node-web-runtime.py` 联合构建 Blink 和 Node，使二者依赖相同的 `libv8.so`。将 `QUOTA_NODE_WEB_OUT` 指向联合输出，并指定 ARM64 动态加载器、库目录和字体，再执行 `bash tools/build-lvgl-guest.sh`。产物是 `build/quotaos-node-web.bin`。[构建入口](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/build-node-web-runtime.py) · [镜像配置](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/wap-runtime.sh)
+- **Web UI 系统**：在准备好的 Chromium 142 与 Node 22.21.1 源码上应用分支内的兼容补丁，用 `tools/build-node-web-runtime.py` 联合构建 Blink 和 Node，使二者依赖相同的 `libv8.so`。将 `QUOTA_NODE_WEB_OUT` 指向联合输出，并指定 ARM64 动态加载器、库目录和字体，再执行 `bash tools/build-lvgl-guest.sh`。启动需要内核 `build/quotaos-node-web-volume.bin` 和只读运行时卷 `build/runtime.raw`。[构建入口](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/build-node-web-runtime.py) · [镜像配置](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/wap-runtime.sh)
 - **Web UI 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 `todo.wap`。在 Files 双击后，页面通过 `rpc.get('save', tasks)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Todo 即可检查任务清单。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
 ![UI 的二级任务准入检查](docs/screenshots/c-lvgl-admission.png)
@@ -198,9 +198,9 @@ The compiler emits ARM64 instructions inside Quota OS. The program runs in Tier 
 
 ## Verification
 
-The default single-core Cortex-A35 / 64 MiB image passed 100 QEMU `icount` cold boots with the Tier 3 desktop in a busy loop. In every 100-period sample, the guest recorded 100 speedometer commits and 25 dashcam commits, with zero speedometer deadline misses and zero Tier 3 pool crossings. The maximum speedometer commit gap was 10,013 microseconds in each run. This measures guest framebuffer commits. Host presentation and physical scanout remain unverified. [All 100 serial logs and results](docs/tests/cortex-a35/frame-regression.tar.gz)
+The earlier single-core Cortex-A35 / 64 MiB image passed 100 QEMU `icount` cold boots with the Tier 3 desktop in a busy loop. In every 100-period sample, the guest recorded 100 speedometer commits and 25 dashcam commits, with zero speedometer deadline misses and zero Tier 3 pool crossings. The maximum speedometer commit gap was 10,013 microseconds in each run. This measures guest framebuffer commits. Host presentation and physical scanout remain unverified. [All 100 serial logs and results](docs/tests/cortex-a35/frame-regression.tar.gz)
 
-The default Cortex-A35 / 64 MiB guest passed three desktop-stall boots and three ordinary boots in each demo mode. The five System Test scenarios passed through tablet input. Notes saved on the throttled disk and reopened through Files after a cold boot. In the third desktop-stall run, the speedometer committed 100 frames and the dashcam committed 25 over 100 periods, with zero speedometer deadline misses and zero Tier 3 pool crossings. The QEMU CPU model and RAM changed while the virtual instruction budget remained at `icount shift=4`. [Desktop stall](docs/tests/cortex-a35/03-apps-desktop-stall.log) · [System tests](docs/tests/cortex-a35/ui.log) · [Files](docs/tests/cortex-a35/files.log)
+The earlier Cortex-A35 / 64 MiB guest passed three desktop-stall boots and three ordinary boots in each demo mode. The five System Test scenarios passed through tablet input. Notes saved on the throttled disk and reopened through Files after a cold boot. In the third desktop-stall run, the speedometer committed 100 frames and the dashcam committed 25 over 100 periods, with zero speedometer deadline misses and zero Tier 3 pool crossings. The QEMU CPU model and RAM changed while the virtual instruction budget remained at `icount shift=4`. [Desktop stall](docs/tests/cortex-a35/03-apps-desktop-stall.log) · [System tests](docs/tests/cortex-a35/ui.log) · [Files](docs/tests/cortex-a35/files.log)
 
 The earlier Cortex-A72 / 128 MiB release passed 100 desktop-stall boots, 100 lifecycle boots, and 10 boots each with and without the dashcam. The tablet-input replay verified all five scenarios and cancellation before approval. With disk writes limited to 128 B/s, the two measured saves took 16.321 and 16.083 seconds of guest time. The speedometer recorded zero deadline misses and Files reopened the saved note after a cold boot. [Cold boot logs](docs/tests/adaptive-reserve/cold-boots.tar.gz) · [Approval replay](docs/tests/adaptive-reserve/ui.log) · [Save](docs/tests/adaptive-reserve/save.log) · [Reopen](docs/tests/adaptive-reserve/reopen.log)
 
@@ -208,4 +208,4 @@ In the earlier live-checks regression, 100 lifecycle cold boots and 100 desktop-
 
 The UI branch builds the LVGL desktop. The Web UI branch adds Blink, V8 and Node.js for Tier 3 WAP applications. Earlier design notes, build instructions and historical experiments are in the [technical notes](TECHNICAL-NOTES.md). [Apache 2.0 license](LICENSE)
 
-公共内核和 LVGL 桌面的改动先提交到 `UI`。在 `Web-UI` 合并基础版后，分别验证 64 MiB 桌面配额场景和 1 GiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-UI` 维护。
+公共内核和 LVGL 桌面的改动先提交到 `UI`。在 `Web-UI` 合并基础版后，在 512 MiB 下分别验证桌面配额场景和 WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-UI` 维护。
