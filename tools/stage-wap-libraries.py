@@ -105,7 +105,8 @@ def main():
         pack = options.v8_data / "gen/third_party/blink/public/resources/blink_resources.pak"
         libraries["blink_resources.pak"] = pack.resolve(strict=True)
         # Blink calls this factory with its native writePacket and readPacket functions.
-        page_preload.write_bytes(b"(" + core.read_bytes() + b")")
+        touch = port / "wap/touch-page.js"
+        page_preload.write_bytes(b"(" + touch.read_bytes() + b")(" + core.read_bytes() + b")")
         libraries["page-preload.js"] = page_preload.resolve()
 
     if options.electron_assets:
