@@ -171,6 +171,17 @@ void instruments_refresh(void)
 #if defined(SYSTEM_STATUS_ENABLED)
 enum status_field { STATUS_CPU, STATUS_RAM, STATUS_TASKS, STATUS_TIER1, STATUS_TIER2, STATUS_FIELDS };
 static lv_obj_t *status_values[STATUS_FIELDS];
+static lv_font_t status_font;
+
+static bool status_glyph(const lv_font_t *font, lv_font_glyph_dsc_t *glyph,
+                         uint32_t letter, uint32_t next)
+{
+    bool digit = letter >= '0' && letter <= '9';
+    if (!lv_font_montserrat_14.get_glyph_dsc(font, glyph, letter, digit ? 0 : next))
+        return false;
+    if (digit) glyph->adv_w = 10;
+    return true;
+}
 
 void system_status_create(lv_obj_t *screen)
 {
@@ -186,6 +197,8 @@ void system_status_create(lv_obj_t *screen)
     lv_obj_t *title = desk_label(panel, 28, 20, "System status", 0xf4f7fe);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
 
+    status_font = lv_font_montserrat_14;
+    status_font.get_glyph_dsc = status_glyph;
     static const char *const labels[STATUS_FIELDS] = {
         "CPU busy", "Memory reserved / total (KiB)", "Tasks",
         "Tier 1 deadline misses", "Tier 2 quota shortfalls",
@@ -196,7 +209,7 @@ void system_status_create(lv_obj_t *screen)
         status_values[i] = desk_label(panel, 365, y, "--", 0xf4f7fe);
         lv_obj_set_width(status_values[i], DISPLAY_WIDTH - 465);
         lv_obj_set_style_text_align(status_values[i], LV_TEXT_ALIGN_RIGHT, 0);
-        lv_obj_set_style_text_font(status_values[i], &lv_font_unscii_16, 0);
+        lv_obj_set_style_text_font(status_values[i], &status_font, 0);
     }
 }
 

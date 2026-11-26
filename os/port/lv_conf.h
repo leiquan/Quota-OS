@@ -616,11 +616,7 @@ void lvgl_port_assert(void);
 
 /** Pixel perfect monospaced fonts */
 #define LV_FONT_UNSCII_8  0
-#if defined(QUOTA_SYSTEM_STATUS)
-#define LV_FONT_UNSCII_16 1
-#else
 #define LV_FONT_UNSCII_16 0
-#endif
 
 /** Optionally declare custom fonts here.
  *
