@@ -37,6 +37,6 @@ The CLI boot image is 72.25 KiB (73,984 bytes). The QEMU default is 4 MiB. Seria
 
 CLI 启动镜像为 72.25 KiB（73,984 字节），QEMU 默认 4 MiB。3 MiB 和 16 MiB 均通过串口交互及独立 C Test 的二三级短程验证。4 MiB 和 16 MiB 下已验证保存及冷启动读回。
 
-[CLI build and launch · 构建与启动](https://github.com/leiquan/Quota-OS/tree/CLI) · [3 MiB](tests/cli-16m/3M.log) · [16 MiB](tests/cli-16m/16M.log) · [4 MiB save](tests/cli-4m/disk-boot-1.log) · [4 MiB cold readback](tests/cli-4m/disk-boot-2.log)
+[CLI build and launch · 构建与启动](https://github.com/leiquan/Quota-OS/tree/CLI) · [Current macOS QEMU serial transcript · 串口实录](tests/cli-layout/4M.log) · [3 MiB](tests/cli-16m/3M.log) · [16 MiB](tests/cli-16m/16M.log) · [4 MiB save](tests/cli-4m/disk-boot-1.log) · [4 MiB cold readback](tests/cli-4m/disk-boot-2.log)
 
 [Earlier 32 MiB profile · 早期 32 MiB 配置记录](tests/cli/)
