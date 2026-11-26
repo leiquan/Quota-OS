@@ -9,7 +9,7 @@ C++ runtime: kernel/cxxrt.cpp. Guest result in webkit-append.raw:
 42 is a virtual call on an object from operator new. delete does not
 reuse the 64 KB heap. protect-ro -1 is the MMU-off refusal.
 
-OSAllocator: port/quotaos/OSAllocatorQuotaOS.cpp compiled against
+OSAllocator: port/OSAllocatorQuotaOS.cpp compiled against
 WebKit 4d967f4ca7bdd75319e732247e714c2bc634555e. nm -u of that object
 is only wk_os_*. It is not linked into prebuilt: the headers need
 libstdc++ at compile time, and `make` must stay reproducible without

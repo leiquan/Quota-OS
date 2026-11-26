@@ -168,7 +168,7 @@ qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a72 -m 128M \
   -kernel prebuilt/quotaos.bin -append isolate
 ```
 
-和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `kernel/lvgl_boot.c` 和 `port/quotaos/desktop/desktop.c`。显示队列在 `kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。菜单宿主计时错过留给菜单那条分支，这次没有改它。
+和 LVGL 菜单的边界：EL0 应用只通过 `proc_spawn` 和 SVC（让出、退出、提交）进入。它们不调用 LVGL，也不直接写 framebuffer。LVGL 仍留在 `kernel/lvgl_boot.c` 和 `port/desktop/desktop.c`。显示队列在 `kernel/proc.c`。持久化、文件系统和完整 SDK 这次没有做。菜单宿主计时错过留给菜单那条分支，这次没有改它。
 
 
 文档里的 UTM 会删掉 Display，所以只换 `quotaos.bin` 不能承诺屏幕上有画面。UTM 这次没有实测，下面不写新的菜单名。

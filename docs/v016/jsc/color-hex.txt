@@ -36,6 +36,6 @@ System reserve stayed 16384 KB. Tier-1 stayed 13312 KB and 1500 us.
 Image 0x40080000-0x40ecc190. Framebuffer 0x40ed4000-0x41000000.
 The shell task stays tier 3.
 
-Layers: port/quotaos/LAYERS.txt
+Layers: port/LAYERS.txt
 Headers: tools/generate-webcore-derived.sh
 Objects: tools/build-webcore-color.sh
