@@ -31,6 +31,8 @@ The two desktop figures are verified QEMU launch configurations. CLI passed seri
 
 图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `demo.wap` 为 **1,705 字节**。
 
+[Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发)
+
 ### 开发与验证
 
 - **CLI**：在串口运行基础命令，用 C 编译独立 EL0 Test，并在默认 4 MiB 下验证二三级运行与磁盘读回。[启动指南](https://github.com/leiquan/Quota-OS/tree/CLI) · [验收日志](docs/tests/cli-4m/)
