@@ -11,15 +11,15 @@ make
 bash tools/run-cli.sh
 ```
 
-To supply the optional Test executable and a persistent note disk:
+To attach a persistent note disk:
 
 ```sh
 # Use a new disk path for the first boot. Reuse the same file for later boots.
 test -e notes.raw || dd if=/dev/zero of=notes.raw bs=512 count=16
-CLI_TEST=1 CLI_DISK=notes.raw bash tools/run-cli.sh
+CLI_DISK=notes.raw bash tools/run-cli.sh
 ```
 
-At the prompt, use `help`, `mem`, `tasks`, `quota` or `events`. Use `write TEXT` to store one note, wait for `Saved`, and use `cat Note.txt` after reboot. The CLI uses the kernel's Notes block service. `ls` lists the saved note.
+At the prompt, use `help`, `mem`, `tasks`, `quota` or `events`. Use `write TEXT` to store one note, wait for `Saved`, and use `cat Note.txt` after reboot. The CLI uses the kernel's Notes block service. `ls` lists the read-only example `test.c` in the root directory alongside any saved note. Use `cat test.c` to read the source and `run test.c` to execute its compiled counterpart. Set `CLI_TEST=0` at boot to omit the example.
 
 `run Test` starts the external EL0 sample in Tier 3. `run Test t2` requests a 400 µs minimum per 10 ms period and prints observed grants and usage in counter ticks. Edit `cli/test.c` and run `make`. The cross compiler builds ARM64 machine code for QEMU, with no application packaging step. Test executes only when requested.
 

@@ -3,6 +3,7 @@
 
 extern const unsigned char __cli_module[];
 extern const unsigned __cli_module_size;
+extern const char __cli_source[4096];
 /* The process manager uses these queries to classify faults. CLI has no display. */
 int fb_reserved_range(uint64_t *start, uint64_t *bytes)
 {
@@ -50,11 +51,11 @@ static void show_commands(void)
            "         tasks / ps     List active tasks and their tiers\n"
            "         quota / events Show scheduling counters\n"
            "Files    pwd            Show the root directory\n"
-           "         ls             List saved files\n"
-           "         cat Note.txt   Read the saved note\n"
+           "         ls             List files in /\n"
+           "         cat FILE       Read test.c or Note.txt\n"
            "         write TEXT     Save a note to the attached disk\n"
            "         disk           Show disk status and saved note size\n"
-           "Apps     run Test       Run Test in Tier 3\n"
+           "Apps     run test.c     Run the compiled sample in Tier 3\n"
            "         run Test t2    Request a Tier 2 budget for Test\n"
            "Console  echo TEXT      Print text\n"
            "         clear          Clear the terminal screen\n"
@@ -96,7 +97,9 @@ void shell_main(void)
             printf("%s\n", arg);
         } else if (!strcmp(command, "cat")) {
             if (!*arg)
-                printf("Usage: cat Note.txt\n");
+                printf("Usage: cat FILE\n");
+            else if ((!strcmp(arg, "test.c") || !strcmp(arg, "/test.c")) && __cli_source[0])
+                printf("%s", __cli_source);
             else if (strcmp(arg, "Note.txt") || !note_disk_text())
                 printf("File not found: %s\n", arg);
             else
@@ -114,9 +117,9 @@ void shell_main(void)
                 printf("%s\n", note_disk_status());
             }
         } else if (!strcmp(command, "run")) {
-            if (!strcmp(arg, "Test"))
+            if (!strcmp(arg, "Test") || !strcmp(arg, "test.c"))
                 run_test(TIER3);
-            else if (!strcmp(arg, "Test t2"))
+            else if (!strcmp(arg, "Test t2") || !strcmp(arg, "test.c t2"))
                 run_test(TIER2);
             else
                 printf("Usage: run Test [t2]\n");
@@ -151,9 +154,11 @@ void shell_main(void)
             sched_read_system_info(&s);
             printf("period=%lu tier1_misses=%lu tier2_short=%lu tier3_over=%lu\n", s.period,
                    s.tier1_misses, s.tier2_short, s.tier3_over);
-        } else if (!strcmp(command, "ls"))
-            printf("%s\n", note_disk_text() ? "Note.txt" : "No saved files.");
-        else
+        } else if (!strcmp(command, "ls")) {
+            if (__cli_source[0]) printf("test.c\n");
+            if (note_disk_text()) printf("Note.txt\n");
+            else if (!__cli_source[0]) printf("No files.\n");
+        } else
             printf("Unknown command: %s. Type help.\n", command);
     }
 }

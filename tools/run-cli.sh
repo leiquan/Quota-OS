@@ -2,12 +2,16 @@
 set -eu
 cd "$(dirname "$0")/.."
 args=()
-if [[ ${CLI_TEST:-0} == 1 ]]; then
+if [[ ${CLI_TEST:-1} == 1 ]]; then
     image=build/cli/test.bin
     size=$(wc -c < "$image")
     (( size > 0 && size <= 4096 )) || exit 2
+    source_file=build/cli/test.c
+    source_size=$(wc -c < "$source_file")
+    (( source_size > 0 && source_size < 4096 )) || exit 2
     addr=$(cat build/cli/module.addr)
-    args+=(-device "loader,file=$image,addr=$addr,force-raw=on"
+    args+=(-device "loader,file=$source_file,addr=$((addr+4100)),force-raw=on"
+           -device "loader,file=$image,addr=$addr,force-raw=on"
            -device "loader,addr=$((addr+4096)),data=$((size)),data-len=4")
 fi
 if [[ -n ${CLI_DISK:-} ]]; then
