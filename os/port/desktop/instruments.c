@@ -86,9 +86,16 @@ void instruments_refresh(void)
             if (!elapsed) continue;
             unsigned fps = (unsigned)(((uint64_t)frames * 1000000u + elapsed / 2) / elapsed);
             if (i == 2) {
+                int samples[8], scale = 200;
                 for (int j = 0; j < 7; j++)
-                    lv_bar_set_value(music_history[j], lv_bar_get_value(music_history[j + 1]), LV_ANIM_OFF);
-                lv_bar_set_value(music_history[7], fps > 200 ? 200 : (int)fps, LV_ANIM_OFF);
+                    samples[j] = lv_bar_get_value(music_history[j + 1]);
+                samples[7] = (int)fps;
+                for (int j = 0; j < 8; j++)
+                    if (samples[j] > scale) scale = samples[j];
+                for (int j = 0; j < 8; j++) {
+                    lv_bar_set_range(music_history[j], 0, scale);
+                    lv_bar_set_value(music_history[j], samples[j], LV_ANIM_OFF);
+                }
             }
             char rate[32];
             lv_snprintf(rate, sizeof rate, "%u FPS (%s)", fps,

@@ -374,6 +374,7 @@ struct proc {
     uint32_t submits, rej_range, rej_freq, rej_depth;
     uint64_t sub_period;
     uint32_t sub_n;
+    int unpaced_draw;
     int pid;
     uint64_t reap_t0;
     uint64_t reap_pct0;
@@ -725,14 +726,17 @@ static int submit_checked(struct proc *p, uint64_t va, uint64_t bytes,
         p->rej_depth++;
         return 3;
     }
-    period = sched_period_now();
-    if (period != p->sub_period) {
-        p->sub_period = period;
-        p->sub_n = 0;
-    }
-    if (p->sub_n >= EL0_FREQ) {
-        p->rej_freq++;
-        return 2;
+    /* Music relies on normal Tier 3 scheduling and the bounded draw queue. */
+    if (!p->unpaced_draw) {
+        period = sched_period_now();
+        if (period != p->sub_period) {
+            p->sub_period = period;
+            p->sub_n = 0;
+        }
+        if (p->sub_n >= EL0_FREQ) {
+            p->rej_freq++;
+            return 2;
+        }
     }
     free_q = -1;
     for (int i = 0; i < EL0_Q_GLOBAL; i++) {
@@ -754,7 +758,7 @@ static int submit_checked(struct proc *p, uint64_t va, uint64_t bytes,
     qq[free_q].w = (uint16_t)w;
     qq[free_q].h = (uint16_t)h;
     qq[free_q].bytes = (uint32_t)bytes;
-    p->sub_n++;
+    if (!p->unpaced_draw) p->sub_n++;
     p->submits++;
     p->hold++;
     (void)va;
@@ -1827,6 +1831,7 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     p->submits = p->rej_range = p->rej_freq = p->rej_depth = 0;
     p->sub_period = ~0ull;
     p->sub_n = 0;
+    p->unpaced_draw = role == EL0_PAINT_MUSIC;
     p->image_pages = 0;
     build_pt(p);
 #ifdef QUOTA_WAP_FULL_RUNTIME

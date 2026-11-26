@@ -62,6 +62,8 @@ run:
     b.lo    yld
     cmp     x19, #0
     b.eq    yld
+    cmp     x19, #18             // EL0_PAINT_MUSIC: yield after every frame
+    b.eq    yld
     cmp     x19, #2
     b.eq    do_kern
     cmp     x19, #3
