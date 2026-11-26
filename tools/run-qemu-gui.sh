@@ -10,7 +10,9 @@ if [[ $(uname -s) != Darwin ]]; then
 fi
 
 tools_dir=$(cd "$(dirname "$0")" && pwd)
-bundle="$tools_dir/../build/Quota OS.app"
+metadata="$tools_dir/macos/QuotaOS.Info.plist"
+app_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$metadata")
+bundle="$tools_dir/../build/$app_name.app"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 
 install_if_changed() {
@@ -28,5 +30,5 @@ install_if_changed() {
 # Run the installed QEMU with the project's macOS app identity and official mark.
 install_if_changed "$qemu" "$bundle/Contents/MacOS/qemu-system-aarch64"
 install_if_changed "$tools_dir/macos/QuotaOS.icns" "$bundle/Contents/Resources/QuotaOS.icns"
-install_if_changed "$tools_dir/macos/QuotaOS.Info.plist" "$bundle/Contents/Info.plist"
+install_if_changed "$metadata" "$bundle/Contents/Info.plist"
 exec "$bundle/Contents/MacOS/qemu-system-aarch64" "$@"
