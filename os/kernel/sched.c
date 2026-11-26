@@ -853,9 +853,66 @@ static void status_sample(uint64_t release)
 }
 #endif
 
+#ifdef SYSTEM_STATUS_ENABLED
+/* Freeze one row per complete period, and write serial output outside IRQs. */
+static struct {
+    uint64_t first;
+    unsigned count, dropped;
+    struct task *probe;
+    struct {
+        uint64_t seq, start, used, minimum, grant, pool_used, pool_limit;
+        unsigned skipped, runnable, throttled;
+    } rows[1100];
+} volume_pressure;
+
+void sched_volume_pressure_begin(struct task *probe)
+{
+    uint64_t flags = irq_save();
+    volume_pressure.count = volume_pressure.dropped = 0;
+    volume_pressure.first = pk + 1;
+    volume_pressure.probe = probe;
+    irq_restore(flags);
+}
+
+void sched_volume_pressure_end(void)
+{
+    uint64_t flags = irq_save();
+    volume_pressure.probe = NULL;
+    irq_restore(flags);
+}
+
+void sched_volume_pressure_dump(void)
+{
+    for (unsigned i = 0; i < volume_pressure.count; ++i) {
+        const __typeof__(volume_pressure.rows[0]) *row = &volume_pressure.rows[i];
+        printf("[load-period] seq=%lu start=%lu used=%lu min=%lu grant=%lu t3=%lu cap=%lu skipped=%u runnable=%u throttled=%u\n",
+               row->seq, row->start, row->used, row->minimum, row->grant,
+               row->pool_used, row->pool_limit, row->skipped, row->runnable, row->throttled);
+    }
+    printf("[load-end] count=%u dropped=%u\n", volume_pressure.count, volume_pressure.dropped);
+}
+
+static void capture_pressure_period(int skipped)
+{
+    struct task *probe = volume_pressure.probe;
+    if (!probe || pk < volume_pressure.first) return;
+    if (volume_pressure.count == sizeof volume_pressure.rows / sizeof volume_pressure.rows[0]) {
+        ++volume_pressure.dropped;
+        return;
+    }
+    __typeof__(volume_pressure.rows[0]) *row = &volume_pressure.rows[volume_pressure.count++];
+    *row = (__typeof__(*row)){pk, pstart, probe->used_t, probe->min_t, probe->period_grant_t,
+                           t3_used, t3_limit, skipped,
+                           probe->state == TASK_RUNNING || probe->state == TASK_READY, t3_blocked};
+}
+#endif
+
 static void end_period(uint64_t now, int skipped)
 {
     obs_now = now;
+#ifdef SYSTEM_STATUS_ENABLED
+    capture_pressure_period(skipped);
+#endif
     for (int i = 0; i < 3; i++)
         last_tier_ticks[i] = tier_ticks[i];
     last_kernel_ticks = k_this_period;
@@ -1095,15 +1152,15 @@ static uint64_t disp_now, cur_entry;
 static struct task *prev_stint_sc, *prev_stint_srv;
 static int prev_stint_reply;      /* 这一段是回复返回（svc #2 之后） */
 
-static struct task *pick_t2(int sugg)
+static struct task *pick_t2_class(int sugg, int periodic)
 {
-    if (sugg && resource_pressure())
-        return 0;
     for (int n = 1; n <= n2; n++) {
         int i = rr2 + n;
         if (i >= n2)
             i -= n2;
         struct task *t = lst2[i];
+        if (periodic >= 0 && (t->kind == KIND_JOB) != periodic)
+            continue;
         if (!runnable(t))
             continue;
         uint64_t cap = t->min_t + (sugg ? t->sugg_t : 0);
@@ -1131,6 +1188,19 @@ static struct task *pick_t2(int sugg)
         }
     }
     return 0;
+}
+
+static struct task *pick_t2(int sugg)
+{
+    if (sugg && resource_pressure()) return NULL;
+    /* Serve released periodic work before continuously runnable consumers in
+     * the minimum-budget pass. Keep each account's existing cap and rotate
+     * peers within its class; the surplus pass still considers all peers. */
+    if (!sugg) {
+        struct task *job = pick_t2_class(0, 1);
+        if (job) return job;
+    }
+    return pick_t2_class(sugg, sugg ? -1 : 0);
 }
 
 static struct task *pick_t3(void)

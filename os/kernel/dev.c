@@ -173,14 +173,31 @@ void clock_detect(void)
 {
     uint64_t a = loop_ticks(), b = loop_ticks(), c = loop_ticks();
     icount = a == b && b == c && a >= 16384 && a <= 16384 + 64;
+#ifdef SYSTEM_STATUS_ENABLED
+    /* The published volume launcher uses two virtual nanoseconds per
+     * instruction on a 16 ns counter. An endpoint may straddle one tick. */
+    uint64_t lo = a < b ? a : b, hi = a > b ? a : b;
+    if (c < lo) lo = c;
+    if (c > hi) hi = c;
+    if (lo >= 2048 && hi <= 2056 && hi - lo <= 1)
+        icount = 8;
+    printf("[clock-probe] loops=%lu,%lu,%lu instructions_per_tick=%d\n", a, b, c, icount);
+#endif
     printf("[boot] clock: %s\n", icount ? "icount (counter driven by instruction count)"
                                         : "host time (not icount; timings are reference only)");
 }
 
 int clock_is_icount(void)
 {
-    return icount;
+    return icount != 0;
 }
+
+#ifdef SYSTEM_STATUS_ENABLED
+int clock_fractional_icount(void)
+{
+    return icount == 8;
+}
+#endif
 
 const char *clock_tag(void)
 {
