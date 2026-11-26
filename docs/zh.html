@@ -38,7 +38,7 @@
 <tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/UI">UI</a></th><td>64 MiB</td><td>685.4 KiB</td></tr>
 <tr><th scope="row"><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">Web UI</a></th><td>1 GiB</td><td>357.5 MiB</td></tr>
 </tbody></table></div>
-<p>表中为未压缩的 ARM64 启动镜像大小。Web Node Demo 示例应用包为 1,705 字节。</p>
+<p>表中为未压缩的 ARM64 启动镜像大小。Web Node Demo 示例应用包为 1,748 字节。</p>
 <h3>启动、开发与验证</h3><div class="grid editions-grid"><article><h4>CLI</h4><p><strong>启动</strong> · 通过单核 Cortex-A35 QEMU 进入串口命令行。</p><p><strong>开发</strong> · 用 C 编译独立 Test，以二级或三级 EL0 应用运行。</p><p><strong>验证</strong> · 检查配额，并验证笔记在冷启动后能读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/CLI">启动指南</a> · <a href="tests/cli-4m/disk-boot-2.log">验收证据</a></p></article><article><h4>UI</h4><p><strong>启动</strong> · 启动 1280 × 800 的 LVGL 原生桌面。</p><p><strong>开发</strong> · 用 C 和 LVGL 编写原生界面和应用。</p><p><strong>验证</strong> · 在 Apps → Test 检查准入、配额和仪表帧间隔。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/UI">启动指南</a> · <a href="tests/frame-intervals/base.json">验收证据</a></p></article><article><h4>Web UI</h4><p><strong>启动</strong> · 启动带三级 WAP 运行时的 LVGL 桌面。</p><p><strong>开发</strong> · 用 HTML、CSS、JavaScript 和可选的 Node.js 后台编写 WAP 应用。</p><p><strong>验证</strong> · 在 Files 打开示例，保存笔记并在冷启动后读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">启动指南</a> · <a href="screenshots/web-node-cold.png">验收证据</a></p></article></div>
 <h3>发行版示例</h3><div class="edition-pair edition-examples"><div><figure><pre class="cli-transcript" tabindex="0"><code>Quota OS CLI 016 | ARM64 | 4096 KiB RAM
 
