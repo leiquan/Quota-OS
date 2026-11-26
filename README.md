@@ -1,3 +1,5 @@
+**Official website / 官网** · [English](https://www.quotaos.org/) · [简体中文](https://www.quotaos.org/zh.html)
+
 # Quota OS · Web UI 版
 
 **Quick links** · [Run Web UI](#启动本地-web-ui-构建) · [Three editions](#quota-os-editions--三个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
@@ -5,6 +7,8 @@
 UI 版（`UI`）提供 C 应用和 LVGL 桌面。Web UI 版（`Web-UI`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
 
 从 Files 双击 `demo.wap`，Blink 在普通桌面窗口中渲染 HTML/CSS 并执行页面 JS，Node 后台通过本地消息处理保存请求。点击 Rotate 可切换 0° 和 90°，并观察 JavaScript 驱动的 CSS 旋转与颜色过渡。两个来宾进程加载同一份系统 V8。示例只包含 [app.json](examples/demo/app.json)、[app.html](examples/demo/app.html) 和 [app.js](examples/demo/app.js)。
+
+独立的 [Tasks WAP](examples/tasks) 支持添加、完成、筛选和删除任务。示例提供专用数据盘构建脚本，可验证冷启动读回。
 
 | 代码位置 | 职责 |
 |---|---|
@@ -31,7 +35,7 @@ The two desktop figures are verified QEMU launch configurations. CLI passed seri
 
 图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `demo.wap` 为 **2,010 字节**。
 
-[Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发)
+[Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Task List / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/tasks)
 
 ### 开发与验证
 
