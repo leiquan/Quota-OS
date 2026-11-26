@@ -105,6 +105,27 @@ static uint64_t slot_off[MAX_SLOTS], slot_len[MAX_SLOTS];
 static const char *slot_name[MAX_SLOTS];
 static struct task *slot_owner[MAX_SLOTS];
 
+#ifdef SYSTEM_STATUS_ENABLED
+enum { STATUS_PERIODS = 1000000 / PERIOD_US };
+_Static_assert(STATUS_PERIODS * PERIOD_US == 1000000, "System status one-second cadence");
+static struct task *status_task;
+static struct status_page {
+    uint64_t color_owner_marker;
+    uint64_t period_busy[STATUS_PERIODS], busy_sum;
+    struct sched_status_snapshot snapshot;
+} *status_page;
+_Static_assert(sizeof(struct status_page) <= 4096, "one reserved Tier 1 page");
+
+static void status_record_busy(uint64_t busy)
+{
+    if (!status_page) return;
+    if (busy > P) busy = P;
+    uint64_t *cell = &status_page->period_busy[pk % STATUS_PERIODS];
+    status_page->busy_sum = status_page->busy_sum - *cell + busy;
+    *cell = busy;
+}
+#endif
+
 /* 上一段内核停留 */
 static uint64_t prev_entry;
 #ifdef QUOTA_CALLER_ACCOUNTED_SVC
@@ -794,6 +815,44 @@ static void check_slot_ends(uint64_t seen, uint64_t now)
     }
 }
 
+int sched_system_status_read(struct sched_status_snapshot *snapshot)
+{
+#ifdef SYSTEM_STATUS_ENABLED
+    if (status_page) {
+        uint64_t flags = irq_save();
+        *snapshot = status_page->snapshot;
+        snapshot->task_peak_ticks = status_task->used_max_all;
+        snapshot->sample_misses = status_task->misses;
+        irq_restore(flags);
+        return snapshot->generation != 0;
+    }
+#endif
+    (void)snapshot;
+    return 0;
+}
+
+#ifdef SYSTEM_STATUS_ENABLED
+static void status_sample(uint64_t release)
+{
+    struct sched_status_snapshot *s = &status_page->snapshot;
+    uint64_t ram = resource_ram_kb();
+    unsigned active = 0;
+    for (unsigned i = 0; i < MAX_TASKS; ++i)
+        if (&tasks[i] != idle_task && tasks[i].state != TASK_EMPTY && tasks[i].state != TASK_DEAD)
+            ++active;
+    s->busy_ticks = status_page->busy_sum;
+    s->window_ticks = STATUS_PERIODS * P;
+    s->reserved_kb = ram - resource_app_mem_capacity_kb() + resource_mem_min_sum_kb();
+    s->total_kb = ram;
+    s->tier1_misses = ks[0].miss_a + ks[0].miss_b;
+    s->tier2_short = tier2_short_count;
+    s->tasks = active;
+    s->release_ticks = release;
+    s->sample_ticks = ticks_now();
+    ++s->generation;
+}
+#endif
+
 static void end_period(uint64_t now, int skipped)
 {
     obs_now = now;
@@ -804,6 +863,9 @@ static void end_period(uint64_t now, int skipped)
     last_returned = pool_returned;
     uint64_t busy = k_this_period + tier_ticks[0] + tier_ticks[1] + tier_ticks[2];
     if (busy > peak_busy_ticks) peak_busy_ticks = busy;
+#ifdef SYSTEM_STATUS_ENABLED
+    status_record_busy(busy);
+#endif
     sampled_period = pk;
     for (int i = 0; i < MAX_TASKS; i++) {
         struct task *t = &tasks[i];
@@ -990,6 +1052,9 @@ static void begin_period(void)
             continue;
         if (t->tier == TIER1 && t->slot < 0)
             continue;
+#ifdef SYSTEM_STATUS_ENABLED
+        if (t == status_task && pk % STATUS_PERIODS) continue;
+#endif
         t->job_open = 1;
         t->job_started = 0;
         t->job_period = pk;
@@ -1534,6 +1599,12 @@ void job_body(uint64_t start)
                 t->w.start_max = off;
         }
     }
+#ifdef SYSTEM_STATUS_ENABLED
+    if (t == status_task) {
+        status_sample(t->release_ts);
+        return;
+    }
+#endif
     if (t == dashboard_app)
         app_display_core_frame(t->release_ts);
     uint64_t end = start + t->work_t;
@@ -1835,6 +1906,20 @@ void services_start(void)
     t = task_create("timer-server", TIER1, KIND_JOB);
     t->work_t = us_to_ticks(40);
     sched_bind_slot(t, 1);
+#ifdef SYSTEM_STATUS_ENABLED
+    status_page = color_tier1_first_page(SYSTEM_STATUS_TASK);
+    int status_slot = -1;
+    for (int i = 0; i < nslots; ++i)
+        if (!strcmp(slot_name[i], SYSTEM_STATUS_TASK)) status_slot = i;
+    if (!status_page || status_slot < 0) {
+        printf("PANIC: missing System status reservation\n");
+        for (;;) asm volatile("wfi");
+    }
+    memset(status_page->period_busy, 0,
+           sizeof *status_page - offsetof(struct status_page, period_busy));
+    status_task = task_create(SYSTEM_STATUS_TASK, TIER1, KIND_JOB);
+    sched_bind_slot(status_task, status_slot);
+#endif
 }
 
 void sched_start(void (*shell_entry)(void))
@@ -1855,6 +1940,9 @@ void sched_start(void (*shell_entry)(void))
     for (int i = 0; i < MAX_TASKS; i++) {
         struct task *t = &tasks[i];
         if (t->kind == KIND_JOB && t->tier == TIER1 && t->slot >= 0) {
+#ifdef SYSTEM_STATUS_ENABLED
+            if (t == status_task) continue;
+#endif
             t->job_open = 1;
             t->release_ts = pstart + slot_off[t->slot];
             t->state = TASK_READY;

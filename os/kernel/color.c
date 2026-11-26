@@ -83,6 +83,20 @@ void color_init(uint64_t ram_bytes)
     printf("       tier-1 pages in %u own colors, padding %lu KB\n", t1_colors_used, pad_kb);
 }
 
+#ifdef SYSTEM_STATUS_ENABLED
+void *color_tier1_first_page(const char *name)
+{
+    int count;
+    const struct tier1_decl *declarations = resource_tier1(&count);
+    for (uint32_t i = 0; i < n_t1; ++i) {
+        unsigned owner = t1_who[i];
+        if (owner < (unsigned)count && !strcmp(declarations[owner].name, name))
+            return (void *)(uintptr_t)(pool_base + (uint64_t)t1_pages[i] * PAGE);
+    }
+    return NULL;
+}
+#endif
+
 /* 着色补齐：Tier 1 颜色里 Tier 1 用不完、别人也不能用的内存。 */
 uint64_t color_padding_kb(void)
 {

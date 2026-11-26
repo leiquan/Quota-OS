@@ -18,6 +18,9 @@ static const struct tier1_decl tier1_table[] = {
     {"gic-server", "中断路由，只保留槽（空槽）", 300, 6000, 2048},
     {"blk-driver", "存储驱动的槽（失控演示借它）", 400, 8000, 4096},
     {"net-driver", "网络驱动，只占内存", 0, 0, 4096},
+#ifdef SYSTEM_STATUS_ENABLED
+    {SYSTEM_STATUS_TASK, "System status sample", 50, 9000, 4},
+#endif
 };
 
 static const struct app_manifest catalog[] = {
