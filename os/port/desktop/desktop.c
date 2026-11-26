@@ -1,3 +1,4 @@
+#include "touch_ext4.h"
 #include "auth.h"
 #include "wap_app.h"
 #define WAP_TODO_NAME "Todo"
@@ -422,10 +423,33 @@ static void demo_input_event(lv_event_t *e)
     lv_area_t bounds;
     lv_indev_get_point(indev, &point);
     lv_obj_get_coords(demo_image, &bounds);
-    if (code == LV_EVENT_PRESSED) lv_group_focus_obj(demo_image);
-    proc_page_input(demo_handle, code == LV_EVENT_PRESSED ? 1 : 2,
-                    LV_CLAMP(0, point.x - bounds.x1, GUEST_PREVIEW_WIDTH - 1),
-                    LV_CLAMP(0, point.y - bounds.y1, GUEST_PREVIEW_HEIGHT - 1));
+    static int down_x, down_y, scroll_y;
+    static bool touching, scrolling;
+    int x = LV_CLAMP(0, point.x - bounds.x1, GUEST_PREVIEW_WIDTH - 1);
+    int y = LV_CLAMP(0, point.y - bounds.y1, GUEST_PREVIEW_HEIGHT - 1);
+    if (code == LV_EVENT_PRESSED) {
+        lv_group_focus_obj(demo_image);
+        touching = true;
+        scrolling = false;
+        down_x = x;
+        down_y = scroll_y = y;
+    } else if (code == LV_EVENT_PRESS_LOST) {
+        touching = false;
+    } else if (touching && code == LV_EVENT_PRESSING) {
+        int delta = scroll_y - y;
+        if (delta >= 20 || delta <= -20) {
+            scrolling = true;
+            scroll_y = y;
+            if (proc_page_input(demo_handle, 3, delta > 0 ? 0xe000 : 0xe001, 0))
+                touch_ext4_scroll_step();
+        }
+    } else if (touching && code == LV_EVENT_RELEASED) {
+        touching = false;
+        if (!scrolling) {
+            proc_page_input(demo_handle, 1, down_x, down_y);
+            proc_page_input(demo_handle, 2, x, y);
+        }
+    }
 }
 
 static void on_click(lv_event_t *e)
@@ -1996,6 +2020,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_group_add_obj(group, demo_image);
     lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_PRESSED, NULL);
     lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_PRESS_LOST, NULL);
     lv_obj_add_event_cb(demo_image, demo_input_event, LV_EVENT_KEY, NULL);
     lv_obj_align(demo_image, LV_ALIGN_TOP_MID, 0, 80);
     demo_frame.header.magic = LV_IMAGE_HEADER_MAGIC;

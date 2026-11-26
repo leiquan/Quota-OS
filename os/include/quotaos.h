@@ -646,7 +646,7 @@ int c_demo_compile(const char *source);
 int64_t c_demo_run(void);
 int c_demo_compiled(void);
 int64_t proc_spawn_console(const char *code, unsigned bytes);
-void proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y);
+int proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y);
 int proc_backend_output(int64_t handle, char *out, unsigned size);
 const uint32_t *proc_page_surface(int64_t handle, unsigned *frame_number);
 int64_t proc_spawn_wap_elf(const unsigned char *elf, unsigned bytes,

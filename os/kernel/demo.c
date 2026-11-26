@@ -1,3 +1,4 @@
+#include "touch_ext4.h"
 #include "auth.h"
 /*
  * 串口菜单。十个演示，每个对应资源模型里的一条承诺，输出直接给结论。
@@ -1188,7 +1189,7 @@ void shell_main(void)
     }
 #endif
     int stall = !strcmp(args, "apps-desktop-stall");
-    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || stall || !strcmp(args, "apps-lifecycle")) {
+    if (!strcmp(args, "apps") || !strcmp(args, "apps-video") || !strcmp(args, TOUCH_EXT4_BOOTARGS) || stall || !strcmp(args, "apps-lifecycle")) {
         app_demo_run(strcmp(args, "apps") != 0, stall);
         for (;;) asm volatile("wfi");
     }

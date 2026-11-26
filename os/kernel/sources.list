@@ -29,3 +29,8 @@ kernel/proc.c
 kernel/isolate.c
 kernel/auth.c
 third_party/monocypher/monocypher.c
+kernel/drivers/root_disk.c
+kernel/fs/ext4_ro.c
+kernel/fs/ext4_jbd2.c
+kernel/fs/ext4_mutate.c
+kernel/fs/touch_ext4.c

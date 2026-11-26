@@ -110,17 +110,20 @@ static unsigned input_head, input_count;
 static int64_t page_owner;
 static unsigned page_rows;
 
-void proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y)
+int proc_page_input(int64_t handle, unsigned kind, unsigned x, unsigned y)
 {
 #ifdef QUOTA_LINUX_APP_RUNTIME
     uint64_t flags = irq_save();
-    if (handle > 0 && handle == page_owner && input_count < 64) {
+    int queued = handle > 0 && handle == page_owner && input_count < 64;
+    if (queued) {
         window_input[(input_head + input_count) % 64] = (typeof(window_input[0])){kind, x, y};
         ++input_count;
     }
     irq_restore(flags);
+    return queued;
 #else
     (void)handle; (void)kind; (void)x; (void)y;
+    return 0;
 #endif
 }
 
