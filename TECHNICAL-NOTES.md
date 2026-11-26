@@ -1,5 +1,9 @@
 # Quota OS（版本 016）
 
+## Touch UI 竖屏版
+
+[Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) 与 CLI、UI、Web UI 共用 ARM64 配额内核，提供 900 × 1600 LVGL 竖屏和全屏应用。底部 Bar 支持单次返回、双次回主屏并保留应用现场。当前触控证据来自 QEMU 虚拟平板，实体屏和多点触控待验证。[输入链路与验证范围](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui)
+
 基于三级资源声明的微内核：一级固定时间槽、二级准入最低值、三级使用剩余资源。有限测试不等同于无条件的硬实时保证。
 
 A microkernel with fixed Tier-1 slots, admitted Tier-2 minimum reservations, and best-effort Tier-3 work. Real-time guarantees require bounded interrupt latency and execution costs.
