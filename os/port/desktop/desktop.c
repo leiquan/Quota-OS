@@ -1099,6 +1099,7 @@ static void on_group(lv_event_t *e)
         displayed_frame = 0;
         demo_frame.data = NULL;
         lv_label_set_text(demo_status, demo_handle > 0 ? "Loading app.html..."
+            : result == WAP_VOLUME_PENDING ? "Checking WAP runtime volume..."
             : result == WAP_LOAD_FAILED ? "Quota OS could not load the page process."
                     : "Open todo.wap in Touch UI with the Web runtime or in Web UI.");
         show_demo_window();
@@ -2298,6 +2299,13 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             continue;
         }
         wap_install_default_todo();
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+        runtime_volume_poll();
+        int volume_status = wap_volume_prepare_poll(&demo_handle);
+        if (volume_status)
+            lv_label_set_text(demo_status, volume_status > 0 ? "Loading app.html..."
+                : "Runtime volume unavailable or quota insufficient.");
+#endif
         touch_ext4_poll();
         const char *ext4_reply = touch_ext4_shell_poll();
         if (ext4_reply) shell_append(ext4_reply);

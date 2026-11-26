@@ -67,6 +67,10 @@ void note_disk_init(void)
     for (int i = 0; i < n; ++i) {
         if (nodes[i] == ROOT_RW_MMIO && root_disk_write_enabled()) continue;
         if (mmio_rd(nodes[i]+8) == 2 && mmio_rd(nodes[i]+4) == 2) {
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+            mmio_wr(nodes[i] + 0x14, 0);
+            if (mmio_rd(nodes[i] + 0x10) & (1u << 5)) continue;
+#endif
             base = nodes[i];
             break;
         }
