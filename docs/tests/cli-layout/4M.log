@@ -1,0 +1,56 @@
+Quota OS CLI 016 | ARM64 | 4096 KiB RAM
+Common commands: ls, mem, tasks, run test.c. Type help for all commands.
+quota> mem
+RAM 4096 KiB system 2048 KiB tier1 0 KiB app_available 2048 KiB
+quota> tasks
+timer-server tier=1 jobs=1 misses=0
+idle tier=0 jobs=0 misses=0
+shell tier=3 jobs=0 misses=0
+quota> run Test
+[map] pid=3 handle=0x10001 gen=1 asid=1 ttbr=0x100004013e000 draw_pa=0x40130000
+[map] pte code=0x4012efc3 stack=0x6000004012ff43 draw=0x60000040130f43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x4012efc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4012efc3 ap_el0=1
+Test: EL0 completed
+quota> run Test t2
+[map] pid=3 handle=0x20001 gen=2 asid=1 ttbr=0x100004013e000 draw_pa=0x40130000
+[map] pte code=0x4012efc3 stack=0x6000004012ff43 draw=0x60000040130f43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x4012efc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4012efc3 ap_el0=1
+[quota] period=8 grant=0 used=0 minimum=25000
+[quota] period=9 grant=50000 used=49998 minimum=25000
+[quota] period=10 grant=50000 used=49998 minimum=25000
+[quota] period=11 grant=50000 used=49998 minimum=25000
+[quota] period=12 grant=50000 used=49998 minimum=25000
+[quota] period=13 grant=50000 used=49998 minimum=25000
+[quota] period=14 grant=50000 used=49998 minimum=25000
+[quota] period=15 grant=50000 used=49998 minimum=25000
+[quota] period=16 grant=50000 used=49998 minimum=25000
+[quota] period=17 grant=50000 used=49998 minimum=25000
+[quota] period=18 grant=50000 used=49998 minimum=25000
+[quota] period=19 grant=50000 used=49998 minimum=25000
+[quota] period=20 grant=50000 used=49998 minimum=25000
+[quota] period=21 grant=50000 used=49998 minimum=25000
+[quota] period=22 grant=50000 used=49998 minimum=25000
+[quota] period=23 grant=50000 used=49998 minimum=25000
+[quota] period=24 grant=50000 used=49998 minimum=25000
+[quota] period=25 grant=50000 used=49998 minimum=25000
+[quota] period=26 grant=50000 used=49998 minimum=25000
+[quota] period=27 grant=50000 used=49998 minimum=25000
+[quota] period=28 grant=50000 used=49998 minimum=25000
+[quota] period=29 grant=50000 used=49998 minimum=25000
+[quota] period=30 grant=50000 used=49998 minimum=25000
+[quota] period=31 grant=50000 used=49998 minimum=25000
+[quota] period=32 grant=50000 used=49998 minimum=25000
+[quota] period=33 grant=50000 used=49998 minimum=25000
+[quota] period=34 grant=50000 used=49998 minimum=25000
+[quota] period=35 grant=50000 used=49998 minimum=25000
+[quota] period=36 grant=50000 used=49998 minimum=25000
+[quota] period=37 grant=50000 used=49998 minimum=25000
+[quota] period=38 grant=50000 used=49998 minimum=25000
+Test: EL0 completed
+quota> tasks
+timer-server tier=1 jobs=39 misses=0
+idle tier=0 jobs=0 misses=0
+shell tier=3 jobs=0 misses=0
+quota> events
+period=38 tier1_misses=0 tier2_short=0 tier3_over=0
+quota>
