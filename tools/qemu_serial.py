@@ -26,9 +26,9 @@ class Session:
         self.pos = 0
 
     def _pull(self, seconds):
-        deadline = time.time() + seconds
-        while time.time() < deadline:
-            r, _, _ = select.select([self.proc.stdout], [], [], 0.1)
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            r, _, _ = select.select([self.proc.stdout], [], [], min(0.1, max(0, deadline - time.monotonic())))
             if not r:
                 continue
             chunk = os.read(self.proc.stdout.fileno(), 65536)
@@ -39,17 +39,17 @@ class Session:
 
     def wait(self, token, limit):
         token_b = token.encode()
-        deadline = time.time() + limit
-        while time.time() < deadline:
+        deadline = time.monotonic() + limit
+        drained = False
+        while True:
             idx = self.buf.find(token_b, self.pos)
             if idx >= 0:
                 self.pos = idx + len(token_b)
                 return True
-            if self.proc.poll() is not None:
-                self._pull(0.2)
-                return self.buf.find(token_b, self.pos) >= 0
-            self._pull(0.2)
-        return False
+            remaining = deadline - time.monotonic()
+            if drained or remaining <= 0:
+                return False
+            drained = not self._pull(min(remaining, 0.2))
 
     def send(self, text):
         self.proc.stdin.write(text.encode())
