@@ -5,24 +5,32 @@ import argparse
 import os
 from pathlib import Path
 import select
+import secrets
 import shutil
 import struct
 import subprocess
 import time
+import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = "before-ext4-write"
 UPDATED = "atomic-replacement-with-a-new-length"
 CREATED = "new-file-data"
+PASSWORD = secrets.token_hex(16)
 COUNTERS = b"tier1_misses=0 tier2_short=0 tier3_over=0"
 
 
 class Guest:
     def __init__(self, disk, log, notes=None, crash=False, preload=False, writable=True):
         self.log = log
+        self.temporary = tempfile.TemporaryDirectory() if notes is None else None
+        if self.temporary:
+            notes = Path(self.temporary.name) / "notes.raw"
+        if not notes.exists():
+            subprocess.run(["python3", "tools/init-admin-disk.py", str(notes)], cwd=ROOT, check=True)
         environment = dict(
             os.environ, CLI_RAM="4M", CLI_ROOT_RW=str(int(writable)), CLI_ROOT_DISK=str(disk),
-            CLI_DISK=str(notes or ""), CLI_TEST=str(int(preload)),
+            CLI_DISK=str(notes), CLI_TEST=str(int(preload)),
             CLI_ROOT_CRASH_TEST=str(int(crash)),
         )
         self.process = subprocess.Popen(
@@ -32,7 +40,15 @@ class Guest:
 
     def __enter__(self):
         try:
-            self.read(b"quota> ", b"4096 KiB RAM")
+            login = b"admin | Password: "
+            setup = b"admin | Set password: "
+            opening = self.read((login, setup))
+            assert b"quota> " not in opening
+            if setup in opening:
+                confirmation = b"admin | Confirm password: "
+                self.command(PASSWORD, confirmation, end=confirmation)
+                self.command(PASSWORD, login, end=login)
+            self.command(PASSWORD, b"4096 KiB RAM")
         except BaseException:
             self.close()
             raise
@@ -47,23 +63,28 @@ class Guest:
             self.process.wait(timeout=5)
         self.process.stdin.close()
         self.process.stdout.close()
+        if self.temporary:
+            self.temporary.cleanup()
 
-    def read(self, end, expected):
+    def read(self, end, expected=None):
+        markers = end if isinstance(end, tuple) else (end,)
         deadline = time.monotonic() + 20
         data = b""
-        while end not in data:
+        while not any(marker in data for marker in markers):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise AssertionError(("serial timeout", data))
+                raise AssertionError(("serial timeout", markers))
             if not select.select([self.process.stdout], [], [], remaining)[0]:
                 continue
             chunk = os.read(self.process.stdout.fileno(), 4096)
             if not chunk:
-                raise AssertionError(("guest exited", data))
+                raise AssertionError(("guest exited", markers))
             data += chunk
-            self.log.write(chunk)
-            self.log.flush()
-        assert expected in data, (expected, data)
+        assert PASSWORD.encode() not in data, "Password echoed"
+        self.log.write(data)
+        self.log.flush()
+        if expected is not None:
+            assert expected in data, (expected, data)
         return data
 
     def command(self, text, expected, end=b"quota> "):
@@ -102,8 +123,6 @@ def check_fs(disk, e2fsck):
 def check_lifecycle(fixture, output, e2fsck):
     disk = copy_disk(fixture, output, "lifecycle")
     notes = output / "notes.raw"
-    with notes.open("xb") as f:
-        f.truncate(1024 * 1024)
     with (output / "lifecycle.log").open("wb") as log:
         with Guest(disk, log, notes) as guest:
             guest.command("cat scratch.txt", b"\r\n" + BASELINE.encode() + b"\r\n")
