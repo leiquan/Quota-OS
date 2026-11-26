@@ -23,21 +23,21 @@ The three editions share this directory. Each branch's top-level README describe
 
 ## Web UI development · Web UI 开发
 
-Web UI adds a Tier 3 WAP runtime to the native desktop. The package root contains `app.json` (the Tier 3 manifest), `app.html` (HTML, CSS and browser JavaScript) and optional `app.js` (Node.js background logic). Blink renders the page and the demo uses `rpc.get('save', text)` and `rpc.get('load')` to communicate with the Node.js process.
+Web UI adds a Tier 3 WAP runtime to the native desktop. The package root contains `app.json` (the Tier 3 manifest), `app.html` (HTML, CSS and browser JavaScript) and optional `app.js` (Node.js background logic). Blink renders the page and the demo uses `rpc.get('save', tasks)` and `rpc.get('list')` to communicate with the Node.js process.
 
-Web UI 在原生桌面上增加三级 WAP 运行时。包根目录的 `app.json` 声明三级，`app.html` 提供页面、样式和浏览器端 JS，可选的 `app.js` 提供 Node.js 后台逻辑。Blink 渲染界面，示例通过本地消息接口保存和读回笔记。
+Web UI 在原生桌面上增加三级 WAP 运行时。包根目录的 `app.json` 声明三级，`app.html` 提供页面、样式和浏览器端 JS，可选的 `app.js` 提供 Node.js 后台逻辑。Blink 渲染界面，Todo 通过本地消息接口保存和读回任务。
 
 The 1 GiB QEMU profile has separate evidence for WAP cold readback and guest framebuffer timing. / 1 GiB QEMU 配置下，WAP 冷启动读回和虚拟机帧缓冲提交分别有验收记录。
 
-[Build and boot · 构建与启动](https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建) · [Demo source · 示例源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo) · [Cold readback · 冷启动读回](screenshots/web-node-cold.png) · [Frame timing · 帧间隔](tests/frame-intervals/web.json)
+[Build and boot · 构建与启动](https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建) · [Demo source · 示例源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo) · [Cold readback · 冷启动读回](screenshots/web-node-cold.png) · [Frame timing · 帧间隔](tests/frame-intervals/web.json)
 
-### Task List · 任务清单
+### Todo · 任务清单
 
-The standalone Tier 3 WAP supports adding, completing, filtering and deleting tasks. The Node.js backend saves edits. Build with Python 3 and Terser by running `python3 examples/tasks/build.py build/task-list-demo` from Web-UI, using a new output directory. Boot with the generated `tasks.raw`, then open the current `demo.wap` entry in Files. Reuse the same disk on restart.
+The standalone Tier 3 WAP supports adding, completing, filtering and deleting tasks. The Node.js backend saves edits. Build with Python 3 and Terser by running `python3 examples/todo/build.py build/todo-preview` from Web-UI, using a new output directory. Boot with the generated `todo.raw`, then open the current `todo.wap` entry in Files. Reuse the same disk on restart.
 
-独立的三级任务清单支持添加、完成、筛选和删除。Node.js 后台保存修改。按示例说明生成并挂载专用的 `tasks.raw`，在 Files 中打开当前标为 `demo.wap` 的入口。重启时复用同一块盘可恢复列表。
+独立的三级任务清单支持添加、完成、筛选和删除。Node.js 后台保存修改。按示例说明生成并挂载专用的 `todo.raw`，在 Files 中打开 `todo.wap` 的入口。重启时复用同一块盘可恢复列表。
 
-[Source and launch guide · 源码与启动指南](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/tasks) · [Screenshot · 实拍](screenshots/web-ui-task-list.png)
+[Source and launch guide · 源码与启动指南](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo) · [Screenshot · 实拍](screenshots/web-ui-todo.png)
 
 ## CLI validation · CLI 验收
 

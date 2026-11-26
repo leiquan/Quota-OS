@@ -1,4 +1,4 @@
-"""Build Task List and create a fresh, independent Quota OS demonstration disk."""
+"""Build Todo and create a fresh, independent Quota OS demonstration disk."""
 import argparse
 import io
 import re
@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("output", type=Path, help="new directory for tasks.wap and tasks.raw")
+parser.add_argument("output", type=Path, help="new directory for todo.wap and todo.raw")
 parser.add_argument("--terser", default="terser", help="path to the Terser CLI")
 args = parser.parse_args()
 source = Path(__file__).resolve().parent
@@ -38,6 +38,6 @@ record = struct.pack("<4I", 0x51415031, generation, len(payload), checksum) + pa
 disk = bytearray(65536)
 disk[4096:4096 + len(record)] = record
 args.output.mkdir(parents=True, exist_ok=False)
-(args.output / "tasks.wap").write_bytes(payload)
-(args.output / "tasks.raw").write_bytes(disk)
-print(f"Created tasks.wap ({len(payload)} bytes) and tasks.raw")
+(args.output / "todo.wap").write_bytes(payload)
+(args.output / "todo.raw").write_bytes(disk)
+print(f"Created todo.wap ({len(payload)} bytes) and todo.raw")

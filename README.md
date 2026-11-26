@@ -6,9 +6,7 @@
 
 UI 版（`UI`）提供 C 应用和 LVGL 桌面。Web UI 版（`Web-UI`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
 
-从 Files 双击 `demo.wap`，Blink 在普通桌面窗口中渲染 HTML/CSS 并执行页面 JS，Node 后台通过本地消息处理保存请求。点击 Rotate 可切换 0° 和 90°，并观察 JavaScript 驱动的 CSS 旋转与颜色过渡。两个来宾进程加载同一份系统 V8。示例只包含 [app.json](examples/demo/app.json)、[app.html](examples/demo/app.html) 和 [app.js](examples/demo/app.js)。
-
-独立的 [Tasks WAP](examples/tasks) 支持添加、完成、筛选和删除任务。示例提供专用数据盘构建脚本，可验证冷启动读回。
+在 Apps → ZIP 导出 `todo.wap`，再从 Files 打开 **Todo**。示例支持添加、完成、筛选和删除，Node.js 后台保存每次修改。同一应用的页面与后台共用系统 V8。[Todo 源码与构建步骤](examples/todo)
 
 | 代码位置 | 职责 |
 |---|---|
@@ -33,33 +31,33 @@ CLI, UI and Web UI share the ARM64 quota kernel. CLI provides the serial console
 
 The two desktop figures are verified QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
-图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `demo.wap` 为 **2,010 字节**。
+图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `todo.wap` 为 **2,021 字节**。
 
-[Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Task List / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/tasks)
+[Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
 ### 开发与验证
 
 - **CLI**：在串口运行基础命令，用 C 编译独立 EL0 Test，并在默认 4 MiB 下验证二三级运行与磁盘读回。[启动指南](https://github.com/leiquan/Quota-OS/tree/CLI) · [验收日志](docs/tests/cli-4m/)
 - **UI**：在 `kernel/` 开发内核与驱动，在 `port/desktop/` 用 C 和 LVGL 实现界面。用 ARM64 工具链执行 `bash tools/build-lvgl-guest.sh`，再用 `QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh` 启动新镜像。在 Apps → Test 检查准入、CPU 配额和仪表提交。
 - **Web UI 系统**：在准备好的 Chromium 142 与 Node 22.21.1 源码上应用分支内的兼容补丁，用 `tools/build-node-web-runtime.py` 联合构建 Blink 和 Node，使二者依赖相同的 `libv8.so`。将 `QUOTA_NODE_WEB_OUT` 指向联合输出，并指定 ARM64 动态加载器、库目录和字体，再执行 `bash tools/build-lvgl-guest.sh`。产物是 `build/quotaos-node-web.bin`。[构建入口](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/build-node-web-runtime.py) · [镜像配置](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/wap-runtime.sh)
-- **Web UI 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 Web Node Demo。在 Files 双击后，页面通过 `rpc.get('save', text)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Web Node Demo 即可检查原文。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo)
+- **Web UI 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 Todo。在 Files 双击后，页面通过 `rpc.get('save', tasks)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Todo 即可检查任务清单。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
 页面与后台均可用 `await rpc.set(name, handler)` 注册方法，用 `await rpc.get(name, ...args)` 调用对端并接收返回值。每个运行中的 WAP 实例有一张方法名表。注册成功后方法名归注册端所有，直到该实例结束。同端重复、跨端重名以及注册 `set`、`get` 都会拒绝 Promise。并发争用同一名称只有一次注册成功。参数和返回值用 JSON 表示，每个消息最多 1024 个 UTF-8 字节。
 
 ![UI 的二级任务准入检查](docs/screenshots/c-lvgl-admission.png)
 
-![Web UI 示例保存笔记并旋转至 90°](docs/screenshots/web-ui-wap-rotate.png)
+![Web UI Todo 示例](docs/screenshots/web-ui-todo.png)
 
 ### 启动本地 Web UI 构建
 
-在仓库根目录运行。以下命令首次创建专用的 64 KiB 应用数据盘，再次执行会复用这块盘。
+在仓库根目录运行。以下命令首次创建 Todo 专用的 64 KiB 数据盘，再次执行会复用这块盘。旧笔记示例数据盘请单独保留。
 
 ```sh
-test -e build/wap-data.raw || (set -C; umask 077; dd if=/dev/zero bs=1024 count=64 >build/wap-data.raw)
+test -e build/todo-data.raw || (set -C; umask 077; dd if=/dev/zero bs=1024 count=64 >build/todo-data.raw)
 qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 1G -nic none \
   -global virtio-mmio.force-legacy=false -device virtio-rng-device -device ramfb \
   -device virtio-tablet-device -device virtio-keyboard-device \
-  -drive if=none,id=notes,format=raw,file=build/wap-data.raw \
+  -drive if=none,id=notes,format=raw,file=build/todo-data.raw \
   -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES -icount shift=1,sleep=off \
   -kernel build/quotaos-node-web.bin -append apps-video -serial stdio -monitor none
 ```

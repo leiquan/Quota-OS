@@ -10,7 +10,7 @@ The LVGL desktop owns the file picker, windows and input. Files passes an open
 request to wap_open_saved() in port/wap/app.c. That module validates the
 ZIP and manifest, restores an existing app or asks the process service to start
 its tier-3 processes. The desktop displays the published surface. The Demo
-application lives in examples/demo; its HTML and scripts are ordinary app files.
+application lives in examples/todo; its HTML and scripts are ordinary app files.
 
 port/blink implements the Blink embedder, input and software paint.
 port/node provides the Node adapter. Both ends use port/wap/rpc.js

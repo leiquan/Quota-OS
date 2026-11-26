@@ -1,5 +1,6 @@
 #include "wap_app.h"
-#define WAP_DEMO_NAME "Web Node Demo"
+#define WAP_TODO_NAME "Todo"
+#define WAP_TODO_FILENAME "todo.wap"
 #include "shell.h"
 #include "guest_page_services.h"
 /*
@@ -824,7 +825,7 @@ static void on_group(lv_event_t *e)
         return;
     }
     if (id == 239) {
-        int ok = wap_export_demo();
+        int ok = wap_export_todo();
         lv_label_set_text(zip_status, ok ? "Export queued. Open Files to see the saved package."
                                         : "Export unavailable. Check the Notes disk.");
         return;
@@ -1175,7 +1176,7 @@ static const struct app_entry {
     uint32_t color;
     int action;
 } app_entries[] = {
-    [APP_DEMO] = {WAP_DEMO_NAME, LV_SYMBOL_FILE, 0x326e91, 241},
+    [APP_DEMO] = {WAP_TODO_NAME, LV_SYMBOL_FILE, 0x326e91, 241},
     [APP_ZIP] = {"ZIP", LV_SYMBOL_SAVE, 0x45698b, 238},
     [APP_TEST] = {"Test", LV_SYMBOL_OK, 0x426b8f, 204},
     [APP_SYSTEM] = {app_monitor, LV_SYMBOL_SETTINGS, 0x5368af, 202},
@@ -1869,7 +1870,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     select_monitor_tab(SYSTEM_TASK);
 
     demo_window = desktop_window(screen, 150, 130, GUEST_PREVIEW_WIDTH + 24,
-                                 GUEST_PREVIEW_HEIGHT + 96, WAP_DEMO_NAME);
+                                 GUEST_PREVIEW_HEIGHT + 96, WAP_TODO_NAME);
     demo_output = desk_label(demo_window, 12, GUEST_PREVIEW_HEIGHT + 52, "", 0x243650);
     demo_status = desk_label(demo_window, 12, 48, "", 0x536782);
     demo_image = lv_image_create(demo_window);
@@ -1887,17 +1888,17 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     demo_frame.data_size = GUEST_PREVIEW_HEIGHT * GUEST_PREVIEW_WIDTH * 4;
     monitor_visible(demo_window, 0);
     page_zip = desktop_window(screen, 216, 170, 560, 220, "ZIP");
-    desk_label(page_zip, 24, 68, "Export the " WAP_DEMO_NAME " application package", 0x536782);
+    desk_label(page_zip, 24, 68, "Export the " WAP_TODO_NAME " application package", 0x536782);
     zip_status = desk_label(page_zip, 24, 160, "", 0x64748b);
     lv_obj_t *zip_title, *zip_meta;
-    lv_obj_t *export_row = files_row(page_zip, "Export demo.wap", 239, &zip_title, &zip_meta);
+    lv_obj_t *export_row = files_row(page_zip, "Export " WAP_TODO_FILENAME, 239, &zip_title, &zip_meta);
     lv_label_set_text(zip_meta, "Stored ZIP application package");
     monitor_visible(page_zip, 0);
     page_files = desktop_window(screen, 180, 156, 500, 336, "Files");
     desk_label(page_files, 24, 68, "Desktop", 0x536782);
     file_entry = desktop_file(page_files, 20, 94, "Note.txt", "TXT", 213, NULL);
     source_entry = desktop_file(page_files, 116, 94, "", ".c", 233, &source_title);
-    package_entry = desktop_file(page_files, 212, 94, "demo.wap", "WAP", 240, NULL);
+    package_entry = desktop_file(page_files, 212, 94, WAP_TODO_FILENAME, "WAP", 240, NULL);
     lv_obj_set_style_bg_color(package_entry, lv_color_hex(0xd6e8fb), LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(package_entry, LV_OPA_COVER, LV_STATE_CHECKED);
     monitor_visible(package_entry, 0);
@@ -1906,7 +1907,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_add_flag(page_files, LV_OBJ_FLAG_HIDDEN);
     source_icon = desktop_file(screen, 12, 66, "", ".c", 233, &source_caption);
     note_icon = desktop_file(screen, 12, 164, "Note.txt", "TXT", 213, NULL);
-    package_icon = desktop_file(screen, 12, 66, "demo.wap", "WAP", 240, NULL);
+    package_icon = desktop_file(screen, 12, 66, WAP_TODO_FILENAME, "WAP", 240, NULL);
     lv_obj_set_style_bg_color(package_icon, lv_color_hex(0x324a68), LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(package_icon, LV_OPA_COVER, LV_STATE_CHECKED);
     monitor_visible(package_icon, 0);
