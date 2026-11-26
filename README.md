@@ -6,9 +6,9 @@
 
 **Quick links** · [Run UI](#run-the-desktop) · [Four editions](#quota-os-editions--四个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
 
-Quota OS is an experimental single-core ARM64 operating system built around resource quotas. The landscape LVGL desktop runs at 1600 × 900 on QEMU with one Cortex-A35 core and 64 MiB of RAM by default. A speedometer uses a fixed Tier 1 CPU slot, a dashcam demo requests a Tier 2 reservation, and music and desktop interaction share the Tier 3 pool. CPU deadlines are measured against the guest clock. The demos use simulated speed, video frames and playback activity.
+Quota OS is an experimental ARM64 operating system built around resource quotas. The landscape LVGL desktop runs at 1600 × 900 on QEMU with two Cortex-A35 vCPUs and 64 MiB of RAM by default. A speedometer uses a fixed Tier 1 CPU slot, a dashcam demo requests a Tier 2 reservation, and music and desktop interaction share the Tier 3 pool. CPU deadlines are measured against the guest clock. The demos use simulated speed, video frames and playback activity.
 
-Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
+Quota OS 是一个以资源配额为核心的 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 双核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
 
 [Music Player pressure results / 音乐播放器掉帧实测](docs/tests/music-pressure/) · [官网实验截图](https://www.quotaos.org/zh.html#music-pressure)
 
@@ -25,9 +25,9 @@ CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the seri
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 512 MiB | 874.2 KiB + runtime volume · 另附运行时卷 |
 | [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 512 MiB | 825.0 KiB (LVGL) |
 
-The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
+Graphical launchers default to two vCPUs. CLI uses one vCPU. The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
-UI 默认分配 64 MiB，Web UI 和 Touch UI 默认分配 512 MiB 虚拟机内存。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 从独立只读卷加载运行时、动态库和字体，示例 `todo.wap` 为 **2,021 字节**。
+三个图形版默认配置两个虚拟 CPU。UI 默认分配 64 MiB，Web UI 和 Touch UI 默认分配 512 MiB 虚拟机内存。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 从独立只读卷加载运行时、动态库和字体，示例 `todo.wap` 为 **2,021 字节**。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 

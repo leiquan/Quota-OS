@@ -1,6 +1,6 @@
 # Quota OS（版本 016）
 
-三个图形版均以双核为优化目标。每版按自己的默认内存，用同一镜像对比单核与双核的交互延迟，记录第二核执行的任务。三级满载时按原始时钟验证 GPS Speed 10 ms、Flight Camera 40 ms，检查漏帧、超时和二级欠配额。确认响应改善并通过独立验收后，再切换该版默认核数。
+三个图形版默认向 QEMU 配置两个虚拟 CPU（`-smp 2`）。用 `QUOTA_CPUS=1` 可复现单核配置。每版按自己的默认内存，用同一镜像对比单核与双核的交互延迟，记录第二核执行的任务。三级满载时按原始时钟验证 GPS Speed 10 ms、Flight Camera 40 ms，检查漏帧、超时和二级欠配额。双核调度和交互收益按各版独立验收结果记录。
 
 UI uses 64 MiB. Web UI and Touch UI each use 512 MiB of QEMU RAM by default. CLI uses 4 MiB. Web UI loads its runtime from a separate read-only disk. Historical results below retain their original RAM settings.
 
