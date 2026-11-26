@@ -106,18 +106,18 @@ def check_lifecycle(fixture, output, e2fsck):
         f.truncate(1024 * 1024)
     with (output / "lifecycle.log").open("wb") as log:
         with Guest(disk, log, notes) as guest:
-            guest.command("rootcat scratch.txt", b"\r\n" + BASELINE.encode() + b"\r\n")
-            guest.command("rootwrite scratch.txt " + UPDATED, b"ext4 saved")
-            guest.command("rootwrite created.txt " + CREATED, b"ext4 saved")
-            guest.command("rootrm scratch.txt", b"ext4 removed")
-            guest.command("rootrm missing.txt", b"not found")
-            guest.command("write phase-two-notes", b"\r\nSaved\r\n")
+            guest.command("cat scratch.txt", b"\r\n" + BASELINE.encode() + b"\r\n")
+            guest.command("write scratch.txt " + UPDATED, b"ext4 saved")
+            guest.command("write created.txt " + CREATED, b"ext4 saved")
+            guest.command("rm scratch.txt", b"ext4 removed")
+            guest.command("rm missing.txt", b"not found")
+            guest.command("note phase-two-notes", b"\r\nSaved\r\n")
             guest.command("run /Test.elf", b"Test: EL0 completed")
             guest.command("events", COUNTERS)
         with Guest(disk, log, notes, preload=True) as guest:
-            guest.command("cat Note.txt", b"\r\nphase-two-notes\r\n")
-            guest.command("rootcat created.txt", b"\r\n" + CREATED.encode() + b"\r\n")
-            guest.command("rootcat scratch.txt", b"not found")
+            guest.command("note", b"\r\nphase-two-notes\r\n")
+            guest.command("cat created.txt", b"\r\n" + CREATED.encode() + b"\r\n")
+            guest.command("cat scratch.txt", b"not found")
             result = guest.command("run Test t2", b"Test: EL0 completed")
             assert b"minimum=25000" in result
             guest.command("events", COUNTERS)
@@ -135,11 +135,11 @@ def check_cut(fixture, output, e2fsck, kind, operation, point):
         shutil.copyfile(disk, output / (case + "-pre-recovery.ext4"))
         with Guest(disk, log) as guest:
             if kind == "create":
-                command, expected = "rootcat created.txt", CREATED if committed else None
+                command, expected = "cat created.txt", CREATED if committed else None
             elif kind == "remove":
-                command, expected = "rootcat scratch.txt", None if committed else BASELINE
+                command, expected = "cat scratch.txt", None if committed else BASELINE
             else:
-                command, expected = "rootcat scratch.txt", UPDATED if committed else BASELINE
+                command, expected = "cat scratch.txt", UPDATED if committed else BASELINE
             output_bytes = b"not found" if expected is None else b"\r\n" + expected.encode() + b"\r\n"
             guest.command(command, output_bytes)
             guest.command("events", COUNTERS)
@@ -160,14 +160,14 @@ def check_refusal(fixture, output):
     before = disk.read_bytes()
     with (output / "unsupported.log").open("wb") as log:
         with Guest(disk, log) as guest:
-            guest.command("rootwrite scratch.txt " + UPDATED, b"ext4 mount failed")
+            guest.command("write scratch.txt " + UPDATED, b"ext4 mount failed")
             guest.command("events", COUNTERS)
     assert disk.read_bytes() == before
     dirty = output / "replace-commit-pre-recovery.ext4"
     before = dirty.read_bytes()
     with (output / "dirty-read-only.log").open("wb") as log:
         with Guest(dirty, log, writable=False) as guest:
-            guest.command("rootls", b"ext4 mount failed")
+            guest.command("ls", b"ext4 mount failed")
             guest.command("events", COUNTERS)
     assert dirty.read_bytes() == before
     print("mount refusal PASS")
@@ -184,9 +184,9 @@ def main():
     check_lifecycle(fixture, output, args.e2fsck)
     print("lifecycle PASS")
     for kind, operation in (
-        ("replace", "rootwrite scratch.txt " + UPDATED),
-        ("create", "rootwrite created.txt " + CREATED),
-        ("remove", "rootrm scratch.txt"),
+        ("replace", "write scratch.txt " + UPDATED),
+        ("create", "write created.txt " + CREATED),
+        ("remove", "rm scratch.txt"),
     ):
         for point in ("data", "log", "commit", "checkpoint"):
             if kind != "remove" or point != "data":

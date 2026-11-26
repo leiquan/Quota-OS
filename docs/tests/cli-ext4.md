@@ -14,7 +14,7 @@ CLI_TEST=0 CLI_ROOT_DISK="$PWD/build/cli-root.ext4" \
   CLI_DISK="$PWD/build/cli-ext4.notes" bash tools/run-cli.sh --quiet
 ```
 
-Create the scratch Notes disk once. Reuse it for the second boot. At the first prompt, use `ls`, `rootcat /hello.txt`, `run /Test.elf`, `write ext4-note`, and `events`. Shut down QEMU after `Saved`. Run the same launch command again and use `cat Note.txt`, `run /Test.elf`, and `events`. `CLI_TEST=0` disables the existing QEMU Test preload so `Test: EL0 completed` after `run /Test.elf` comes from the disk ELF. With the preload enabled, `run test.c` and `run Test t2` retain their usual paths. Omit `--quiet` to capture the boot memory ledger and use `mem` for application budget. The fixture generator records the installed e2fsprogs version, selected features and image hash. New fixture builds can have different filesystem UUIDs and timestamps.
+Create the scratch Notes disk once. Reuse it for the second boot. At the first prompt, use `ls`, `cat /hello.txt`, `run /Test.elf`, `note ext4-note`, and `events`. Shut down QEMU after `Saved`. Run the same launch command again and use `note`, `run /Test.elf`, and `events`. `CLI_TEST=0` disables the existing QEMU Test preload so `Test: EL0 completed` after `run /Test.elf` comes from the disk ELF. With the preload enabled, `run test.c` and `run Test t2` retain their usual paths. Omit `--quiet` to capture the boot memory ledger and use `mem` for application budget. The fixture generator records the installed e2fsprogs version, selected features and image hash. New fixture builds can have different filesystem UUIDs and timestamps.
 
 ## Supported profile
 
@@ -40,12 +40,12 @@ CLI_RAM=4M CLI_TEST=0 CLI_ROOT_RW=1 CLI_ROOT_DISK="$PWD/build/rw-test.ext4" \
 
 Generate `build/rw-root.ext4` with
 `bash tools/make-cli-root-disk.sh build/rw-root.ext4` if you are building locally.
-At the prompt, run `mem`, `rootcat scratch.txt`,
-`rootwrite scratch.txt after--ext4-write`, `rootcat scratch.txt`,
-`run /Test.elf`, `write rw-notes-marker`, and `events`.
+At the prompt, run `mem`, `cat scratch.txt`,
+`write scratch.txt after--ext4-write`, `cat scratch.txt`,
+`run /Test.elf`, `note rw-notes-marker`, and `events`.
 After both saves report success, stop QEMU and use the same launch command
-with the same disk paths. Check both `rootcat scratch.txt` and
-`cat Note.txt`, then check `events`. Run `e2fsck -fn` on the resulting
+with the same disk paths. Check both `cat scratch.txt` and
+`note`, then check `events`. Run `e2fsck -fn` on the resulting
 root image after QEMU exits.
 
 The writable profile requires a clean, trusted single-group test volume with
@@ -70,8 +70,8 @@ python3 tools/check-cli-ext4-recovery.py build/cli-root-journal.ext4 build/phase
 ```
 
 For manual tests, follow the Phase 1 launch command with a copy of the
-journaled image and `CLI_ROOT_RW=1`. `rootwrite FILE TEXT` creates a file
-or replaces the content of an existing file, and `rootrm FILE` removes
+journaled image and `CLI_ROOT_RW=1`. `write FILE TEXT` creates a file
+or replaces the content of an existing file, and `rm FILE` removes
 it. A successful replacement writes a fresh data block and flushes it
 before publishing the metadata transaction. The shell reports success
 after the journal commit, home-block checkpoint, and retirement flushes.
@@ -113,3 +113,5 @@ that same copy and read the Linux-written file. Repeat the Linux mount
 with a copy of `replace-checkpoint-pre-recovery.ext4` to verify Linux
 replays a Quota OS journal and reads the committed file. Inspect the
 result with `e2fsck -fn` after the guest exits.
+
+With a root disk attached, `ls`, `cat`, `write`, and `rm` operate on ext4. Use `note [TEXT]` for the independent Notes disk. Without a root disk the legacy Notes and built-in file commands continue to work.

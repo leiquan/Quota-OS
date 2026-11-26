@@ -96,18 +96,42 @@ static void run_root(const char *name)
         run_module(root_file, size, TIER3);
 }
 
+static void read_file(const char *name, int allow_missing)
+{
+    if (!*name) {
+        printf("Usage: cat FILE\n");
+        return;
+    }
+    int rc = ensure_root(allow_missing);
+    if (!rc) {
+        size_t bytes;
+        rc = ext4_read_root(&root_volume, name, root_file, sizeof root_file, &bytes);
+        if (rc) printf("ext4 file read failed: %s\n", ext4_result_text(rc));
+        else {
+            for (size_t i = 0; i < bytes; ++i) printf("%c", root_file[i]);
+            if (!bytes || root_file[bytes - 1] != '\n') printf("\n");
+        }
+    } else if (allow_missing && rc == EXT4_NOT_FOUND) {
+        if ((!strcmp(name, "test.c") || !strcmp(name, "/test.c")) && __cli_source[0])
+            printf("%s", __cli_source);
+        else if (!strcmp(name, "Note.txt") && note_disk_text())
+            printf("%s\n", note_disk_text());
+        else
+            printf("File not found: %s\n", name);
+    }
+}
+
 static void overwrite_root(char *arg)
 {
     char *data = arg;
     while (*data && *data != ' ') ++data;
     if (!*arg || !*data) {
-        printf("Usage: rootwrite FILE TEXT\n");
+        printf("Usage: write FILE TEXT\n");
         return;
     }
     *data++ = 0;
     size_t bytes = 0;
     while (data[bytes]) ++bytes;
-    if (ensure_root(0)) return;
     int rc = root_disk_overwrite(&root_volume, arg, data, bytes);
     if (rc)
         printf("ext4 overwrite failed: %s\n", ext4_result_text(rc));
@@ -124,12 +148,11 @@ static void show_commands(void)
            "         quota / events Show scheduling counters\n"
            "Files    pwd            Show the root directory\n"
            "         ls             List the root directory\n"
-           "         cat FILE       Read test.c or Note.txt\n"
-           "         write TEXT     Save a note to the attached disk\n"
+           "         cat FILE       Read a file from the root directory\n"
+           "         write FILE TEXT  Save to a writable root disk\n"
+           "         rm FILE        Remove from a journaled root disk\n"
+           "         note [TEXT]    Read or save the independent Notes file\n"
            "         disk           Show disk status and saved note size\n"
-           "         rootcat FILE   Read a file from the ext4 root\n"
-           "         rootwrite FILE TEXT  Save to an enabled ext4 test disk\n"
-           "         rootrm FILE    Remove a file from a journaled test disk\n"
            "Apps     run test.c     Run the compiled sample in Tier 3\n"
            "         run Test t2    Request a Tier 2 budget for Test\n"
            "         run /FILE      Load an ARM64 console ELF from the root disk\n"
@@ -150,6 +173,18 @@ static void wait_for_notes(void)
     while (!note_disk_power_ready()) {
         note_disk_poll();
         if (!note_disk_power_ready()) asm volatile("wfi");
+    }
+}
+
+static void use_notes(const char *text)
+{
+    if (!*text)
+        printf("%s\n", note_disk_text() ? note_disk_text() : "No saved note.");
+    else if (note_disk_save(text))
+        printf("Cannot save: %s\n", note_disk_status());
+    else {
+        wait_for_notes();
+        printf("%s\n", note_disk_status());
     }
 }
 
@@ -177,51 +212,34 @@ void shell_main(void)
             continue;
         if (!strcmp(command, "echo")) {
             printf("%s\n", arg);
-        } else if (!strcmp(command, "cat")) {
-            if (!*arg)
-                printf("Usage: cat FILE\n");
-            else if ((!strcmp(arg, "test.c") || !strcmp(arg, "/test.c")) && __cli_source[0])
-                printf("%s", __cli_source);
-            else if (strcmp(arg, "Note.txt") || !note_disk_text())
-                printf("File not found: %s\n", arg);
-            else
-                printf("%s\n", note_disk_text());
+        } else if (!strcmp(command, "cat") || !strcmp(command, "rootcat")) {
+            read_file(arg, !strcmp(command, "cat"));
         } else if (!strcmp(command, "rootls") && !*arg) {
             list_files(0);
-        } else if (!strcmp(command, "rootcat") && *arg) {
-            if (!ensure_root(0)) {
-                size_t bytes;
-                int rc = ext4_read_root(&root_volume, arg, root_file, sizeof root_file, &bytes);
-                if (rc) printf("ext4 file read failed: %s\n", ext4_result_text(rc));
-                else {
-                    for (size_t i = 0; i < bytes; ++i) printf("%c", root_file[i]);
-                    printf("\n");
-                }
+        } else if (!strcmp(command, "write") || !strcmp(command, "rootwrite")) {
+            int legacy = !strcmp(command, "write");
+            int rc = ensure_root(legacy);
+            if (!rc)
+                overwrite_root(arg);
+            else if (legacy && rc == EXT4_NOT_FOUND) {
+                if (*arg) use_notes(arg);
+                else printf("Usage: write TEXT\n");
             }
-        } else if (!strcmp(command, "rootwrite")) {
-            overwrite_root(arg);
         } else if (!strcmp(command, "rootcut")) {
             if (root_disk_arm_cut(arg))
                 printf("Usage: rootcut data|log|commit|checkpoint (crash-test boot only)\n");
             else
                 printf("ext4 crash point armed\n");
-        } else if (!strcmp(command, "rootrm")) {
+        } else if (!strcmp(command, "rm") || !strcmp(command, "rootrm")) {
             if (!*arg)
-                printf("Usage: rootrm FILE\n");
+                printf("Usage: rm FILE\n");
             else if (!ensure_root(0)) {
                 int rc = root_disk_remove(&root_volume, arg);
                 if (rc) printf("ext4 remove failed: %s\n", ext4_result_text(rc));
                 else printf("ext4 removed\n");
             }
-        } else if (!strcmp(command, "write")) {
-            if (!*arg)
-                printf("Usage: write TEXT\n");
-            else if (note_disk_save(arg))
-                printf("Cannot save: %s\n", note_disk_status());
-            else {
-                wait_for_notes();
-                printf("%s\n", note_disk_status());
-            }
+        } else if (!strcmp(command, "note")) {
+            use_notes(arg);
         } else if (!strcmp(command, "run")) {
             if (!strcmp(arg, "Test") || !strcmp(arg, "test.c"))
                 run_test(TIER3);
