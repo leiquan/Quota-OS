@@ -28,7 +28,12 @@ static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char
     lv_obj_t *icon = desk_label(card, 332, 18, symbol, accent);
     lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
     lv_obj_t *tier_label = desk_label(card, 0, 0, tier, accent);
-    lv_obj_align(tier_label, LV_ALIGN_TOP_RIGHT, -22, 49);
+    lv_obj_t *badge[] = {icon, tier_label};
+    for (unsigned i = 0; i < 2; ++i) {
+        lv_obj_set_width(badge[i], 60);
+        lv_obj_set_style_text_align(badge[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(badge[i], LV_ALIGN_TOP_RIGHT, -12, i ? 49 : 18);
+    }
     lv_obj_set_style_outline_color(card, lv_color_hex(0x8bf2cb), 0);
     return card;
 }
@@ -57,16 +62,14 @@ static void status_create(lv_obj_t *screen)
     status_panel = app_card(screen, 48, "System status", "", "Tier 1", LV_SYMBOL_SETTINGS, 0x69dfbd);
     lv_obj_set_height(status_panel, 139);
     lv_obj_set_y(lv_obj_get_child(status_panel, 0), 5);
-    lv_obj_set_y(lv_obj_get_child(status_panel, 2), 12);
-    lv_obj_align(lv_obj_get_child(status_panel, 3), LV_ALIGN_TOP_RIGHT, -50, 9);
     static const char *const titles[] = {"CPU busy (%)", "Reserved / total (KiB)", "Tasks",
                                          "Tier 1 misses", "Tier 2 shortfalls"};
     for (unsigned i = 0; i < 5; ++i) {
         int y = 39 + (int)i * 18;
         lv_obj_t *key = desk_label(status_panel, 16, y, titles[i], 0xc7d7e6);
         lv_obj_set_style_text_font(key, &lv_font_montserrat_14, 0);
-        status_values[i] = desk_label(status_panel, 170, y, "--", 0xd8f7ef);
-        lv_obj_set_width(status_values[i], 190);
+        status_values[i] = desk_label(status_panel, 148, y, "--", 0xd8f7ef);
+        lv_obj_set_width(status_values[i], 154);
         lv_obj_set_style_text_font(status_values[i], &status_font, 0);
         lv_obj_set_style_text_align(status_values[i], LV_TEXT_ALIGN_RIGHT, 0);
     }
