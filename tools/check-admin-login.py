@@ -94,6 +94,7 @@ for boot in (1, 2):
         click(150, 607)
         click(150, 607)
         wait("[session] state=4", read().find("[session] state=5"))
+        time.sleep(.6)
         enter(password)
         wait("[session] state=5", read().rfind("[session] state=4"))
     finally:
