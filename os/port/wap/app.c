@@ -47,7 +47,7 @@ _Static_assert(sizeof(struct runtime_elf_header) == 64, "ELF64 header size");
 _Static_assert(sizeof(struct runtime_elf_segment) == 56, "ELF64 program header size");
 
 static unsigned next_component;
-static int volume_pending;
+static int volume_pending, volume_discard;
 #if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
 static struct runtime_volume_elf blink_image, node_image;
 static unsigned pending_package_size;
@@ -215,8 +215,18 @@ static void reset_component(void)
 #endif
 }
 
+void wap_volume_end_session(void)
+{
+    if (volume_pending) {
+        volume_pending = 0;
+        volume_discard = 1;
+        reset_component();
+    }
+}
+
 int wap_volume_prepare_poll(int64_t *handle)
 {
+    if (volume_discard && runtime_volume_trim()) volume_discard = 0;
 #if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
     if (volume_running && !proc_volume_users_active() && runtime_volume_trim())
         volume_running = 0;
@@ -291,6 +301,10 @@ enum wap_open_result wap_open_saved(int64_t *handle)
         if (probe_handle > 0)
             return WAP_VOLUME_PENDING;
 #endif
+        if (volume_discard) {
+            if (!runtime_volume_trim()) return WAP_LOAD_FAILED;
+            volume_discard = 0;
+        }
         if (!volume_pending) {
 #if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
             if (size > sizeof running_package)

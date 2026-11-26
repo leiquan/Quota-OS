@@ -7,4 +7,5 @@ int wap_export_todo(void);
 void wap_install_default_todo(void);
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
 int wap_volume_prepare_poll(int64_t *handle);
+void wap_volume_end_session(void);
 #endif

@@ -70,6 +70,7 @@ int runtime_volume_trim(void)
     mmio_wr(device + 0x70, 0);
     release_cache();
     memset(&available, 0, sizeof available);
+    memset((void *)&used, 0, sizeof used);
     completed = 0;
     replace_from = 0;
     request.sector = 0;

@@ -909,6 +909,9 @@ static void end_session(void)
     }
     memset(&trial, 0, sizeof trial);
     proc_stop_session();
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    wap_volume_end_session();
+#endif
     checks.active = 0;
     if (active_page.view) switch_page((struct desktop_page){0});
     back_count = 0;
@@ -2290,7 +2293,14 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     for (;;) {
         note_disk_poll();
         account_poll();
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+        runtime_volume_poll();
+#endif
         if (auth_state() != AUTH_OPEN) {
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+            proc_finish_pending();
+            wap_volume_prepare_poll(&demo_handle);
+#endif
             take_inputs();
             lv_timer_handler();
             app_desktop_poll();
@@ -2300,7 +2310,6 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         }
         wap_install_default_todo();
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
-        runtime_volume_poll();
         int volume_status = wap_volume_prepare_poll(&demo_handle);
         if (volume_status)
             lv_label_set_text(demo_status, volume_status > 0 ? "Loading app.html..."
