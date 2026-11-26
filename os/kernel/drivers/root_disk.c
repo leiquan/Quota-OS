@@ -1,7 +1,11 @@
 #include "quotaos.h"
 #include "root_disk.h"
 
-enum { QUEUE = 8, SECTOR = 512, READ_ONLY = 1 << 5 };
+enum {
+    QUEUE = 8, SECTOR = 512, BLOCK = 4096, SERIAL_BYTES = 20,
+    READ_ONLY = 1 << 5, FLUSH_FEATURE = 1 << 9,
+    READ = 0, WRITE = 1, FLUSH = 4, GET_ID = 8,
+};
 struct root_desc { uint64_t addr; uint32_t length; uint16_t flags, next; };
 static struct root_desc descriptors[QUEUE] __attribute__((aligned(16)));
 static struct { uint16_t flags, index, ring[QUEUE]; } available __attribute__((aligned(4)));
@@ -10,10 +14,10 @@ static volatile struct {
     struct { uint32_t id, length; } entries[QUEUE];
 } used __attribute__((aligned(4)));
 static struct { uint32_t type, reserved; uint64_t sector; } request;
-static uint8_t sector_data[SECTOR] __attribute__((aligned(64)));
+static uint8_t sector_data[BLOCK] __attribute__((aligned(64)));
 static volatile uint8_t status;
 static uint64_t base, capacity, last_period, cached;
-static int initialized, failed, submitted;
+static int initialized, failed, submitted, writable;
 
 static void address(unsigned offset, uintptr_t pointer)
 {
@@ -21,17 +25,18 @@ static void address(unsigned offset, uintptr_t pointer)
     mmio_wr(base + offset + 4, pointer >> 32);
 }
 
-static int fetch_sector(uint64_t sector)
+static int transfer(unsigned operation, uint64_t sector, unsigned bytes)
 {
-    if (failed || sector >= capacity) return -1;
-    if (cached == sector) return 0;
+    if (failed) return -1;
     while (submitted && last_period == sched_period_now()) asm volatile("wfi");
     last_period = sched_period_now();
     submitted = 1;
+    request.type = operation;
     request.sector = sector;
     status = 0xff;
-    descriptors[0] = (struct root_desc){(uintptr_t)&request, sizeof request, 1, 1};
-    descriptors[1] = (struct root_desc){(uintptr_t)sector_data, SECTOR, 3, 2};
+    unsigned device_writes = operation == READ || operation == GET_ID;
+    descriptors[0] = (struct root_desc){(uintptr_t)&request, sizeof request, 1, bytes ? 1 : 2};
+    descriptors[1] = (struct root_desc){(uintptr_t)sector_data, bytes, device_writes ? 3 : 1, 2};
     descriptors[2] = (struct root_desc){(uintptr_t)&status, 1, 2, 0};
     uint16_t index = available.index;
     available.ring[index % QUEUE] = 0;
@@ -46,11 +51,19 @@ static int fetch_sector(uint64_t sector)
     }
     asm volatile("dsb sy" ::: "memory");
     if (used.index != (uint16_t)(index + 1) || used.entries[index % QUEUE].id ||
-        used.entries[index % QUEUE].length != SECTOR + 1 || status) {
+        used.entries[index % QUEUE].length != (device_writes ? bytes + 1 : 1) || status) {
         failed = 1;
         return -1;
     }
     mmio_wr(base + 0x64, mmio_rd(base + 0x60));
+    return 0;
+}
+
+static int fetch_sector(uint64_t sector)
+{
+    if (failed || sector >= capacity) return -1;
+    if (cached == sector) return 0;
+    if (transfer(READ, sector, SECTOR)) return -1;
     cached = sector;
     return 0;
 }
@@ -77,14 +90,21 @@ static int read_root_disk(void *context, uint64_t offset, void *output, size_t b
 int root_disk_mount(struct ext4_volume *volume)
 {
     if (!initialized) {
+        if (failed) return EXT4_IO;
+        int want_write = !strcmp(dtb_bootargs(), ROOT_RW_BOOTARGS);
         uint64_t nodes[32];
         int count = dtb_find_bases("virtio,mmio", nodes, 32);
         uint64_t device = 0;
         for (int i = 0; i < count; ++i) {
             uint64_t node = nodes[i];
+            if (want_write && node != ROOT_RW_MMIO) continue;
             if (mmio_rd(node + 8) != 2 || mmio_rd(node + 4) != 2) continue;
             mmio_wr(node + 0x14, 0);
-            if (!(mmio_rd(node + 0x10) & READ_ONLY)) continue;
+            uint32_t features = mmio_rd(node + 0x10);
+            if (want_write) {
+                if ((features & READ_ONLY) || !(features & FLUSH_FEATURE))
+                    return EXT4_UNSUPPORTED;
+            } else if (!(features & READ_ONLY)) continue;
             if (device) return EXT4_UNSUPPORTED;
             device = node;
         }
@@ -94,7 +114,7 @@ int root_disk_mount(struct ext4_volume *volume)
         mmio_wr(base + 0x70, 0);
         mmio_wr(base + 0x70, 3);
         mmio_wr(base + 0x24, 0);
-        mmio_wr(base + 0x20, READ_ONLY);
+        mmio_wr(base + 0x20, want_write ? FLUSH_FEATURE : READ_ONLY);
         mmio_wr(base + 0x14, 1);
         if (!(mmio_rd(base + 0x10) & 1)) return EXT4_UNSUPPORTED;
         mmio_wr(base + 0x24, 1);
@@ -112,7 +132,35 @@ int root_disk_mount(struct ext4_volume *volume)
         mmio_wr(base + 0x70, 15);
         capacity = (uint64_t)mmio_rd(base + 0x100) | (uint64_t)mmio_rd(base + 0x104) << 32;
         if (!capacity || capacity > UINT64_MAX / SECTOR) return EXT4_CORRUPT;
+        if (want_write) {
+            if (transfer(GET_ID, 0, SERIAL_BYTES)) return EXT4_IO;
+            sector_data[SERIAL_BYTES] = 0;
+            if (strcmp((const char *)sector_data, "QUOTA-ROOT")) {
+                failed = 1;
+                return EXT4_UNSUPPORTED;
+            }
+            writable = 1;
+        }
         initialized = 1;
     }
     return ext4_mount_ro(volume, read_root_disk, NULL, capacity * SECTOR);
+}
+
+int root_disk_overwrite(const struct ext4_volume *volume, const char *name,
+                        const char *data, size_t bytes)
+{
+    if (!writable) return EXT4_READ_ONLY;
+    if (failed) return EXT4_IO;
+    if (volume->read != read_root_disk || sched_current()->tier != TIER3)
+        return EXT4_UNSUPPORTED;
+
+    uint64_t location;
+    int rc = ext4_overwrite_location(volume, name, bytes, &location);
+    if (rc) return rc;
+    uint64_t sector = location / SECTOR;
+    cached = UINT64_MAX;
+    if (transfer(READ, sector, BLOCK)) return EXT4_IO;
+    memcpy(sector_data, data, bytes);
+    if (transfer(WRITE, sector, BLOCK) || transfer(FLUSH, 0, 0)) return EXT4_IO;
+    return EXT4_OK;
 }

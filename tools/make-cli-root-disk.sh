@@ -13,6 +13,7 @@ trap 'rm -rf "$work"' EXIT
 mkdir "$work/root"
 printf 'quota-ext4-readonly-fixture\n' > "$work/root/hello.txt"
 cp build/cli/test.elf "$work/root/Test.elf"
+printf 'before-ext4-write' > "$work/root/scratch.txt"
 export LC_ALL=C
 mke2fs=${MKE2FS:-mke2fs}
 dumpe2fs=${DUMPE2FS:-dumpe2fs}

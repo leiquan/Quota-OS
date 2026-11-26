@@ -2,6 +2,9 @@
  * Accessed only by the Tier-3 desktop. One request per period, one in flight.
  * Alternate two records so a torn update leaves the prior version readable. */
 #include "quotaos.h"
+#ifdef QUOTA_CLI
+#include "root_disk.h"
+#endif
 
 enum { BLOCK = 512, MAGIC = 0x514e5431, FLUSH_FEATURE = 1u << 9, SOURCE_MAGIC = 0x514e5432, SOURCE_NAME = 32 };
 struct record {
@@ -55,6 +58,10 @@ void note_disk_init(void)
     uint64_t nodes[32];
     int n = dtb_find_bases("virtio,mmio", nodes, 32);
     for (int i = 0; i < n; ++i) {
+#ifdef QUOTA_CLI
+        if (nodes[i] == ROOT_RW_MMIO && !strcmp(dtb_bootargs(), ROOT_RW_BOOTARGS))
+            continue;
+#endif
         if (mmio_rd(nodes[i]+8) == 2 && mmio_rd(nodes[i]+4) == 2) {
             mmio_wr(nodes[i] + 0x14, 0);
             if (mmio_rd(nodes[i] + 0x10) & (1u << 5)) continue;

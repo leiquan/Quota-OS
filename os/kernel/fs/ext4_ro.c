@@ -34,6 +34,7 @@ const char *ext4_result_text(int result)
     case EXT4_UNSUPPORTED: return "unsupported layout or recovery required";
     case EXT4_CORRUPT: return "invalid ext4 metadata";
     case EXT4_IO: return "block read failed";
+    case EXT4_READ_ONLY: return "read-only root disk";
     case EXT4_NOT_FOUND: return "not found";
     default: return "unknown error";
     }
@@ -67,7 +68,9 @@ int ext4_mount_ro(struct ext4_volume *v, ext4_read_fn read, void *context, uint6
         groups * DESCRIPTOR_BYTES > (uint64_t)(blocks - 1) * BLOCK_BYTES)
         return EXT4_CORRUPT;
     *v = (struct ext4_volume){read, context, blocks, blocks_per_group,
-                              inodes, inodes_per_group, inode_size};
+                              inodes, inodes_per_group, inode_size,
+                              groups == 1 && incompatible == (EXTENTS | FILETYPE) &&
+                              !le32(sb + 92) && !le32(sb + 100)};
     int rc = walk_root(v, NULL, NULL, NULL, NULL);
     if (rc) memset(v, 0, sizeof *v);
     return rc;
@@ -201,4 +204,38 @@ int ext4_read_root(const struct ext4_volume *v, const char *name, void *output,
     rc = ext4_read_file(v, &file, 0, output, file.size);
     if (!rc) *bytes = file.size;
     return rc;
+}
+
+/* In-place overwrite for the single-group, no-journal test profile. */
+int ext4_overwrite_location(const struct ext4_volume *v, const char *name, size_t bytes,
+                            uint64_t *location)
+{
+    if (!v->overwrite_supported || !bytes || bytes > BLOCK_BYTES)
+        return EXT4_UNSUPPORTED;
+    struct ext4_file file;
+    int rc = ext4_open_root(v, name, &file);
+    if (rc) return rc;
+    const uint8_t *tree = file.inode + 40;
+    if (file.size != bytes || le32(file.inode + 32) != HAS_EXTENTS ||
+        le16(tree + 2) != 1 || le16(tree + 16) != 1 || le32(tree + 12) != 0)
+        return EXT4_UNSUPPORTED;
+
+    uint32_t block;
+    rc = extent_block(v, file.inode, 0, &block);
+    if (rc) return rc;
+    uint8_t descriptor[DESCRIPTOR_BYTES], allocated;
+    if (v->read(v->context, BLOCK_BYTES, descriptor, sizeof descriptor)) return EXT4_IO;
+    uint32_t bitmap = le32(descriptor), inode_bitmap = le32(descriptor + 4);
+    uint32_t table = le32(descriptor + 8);
+    uint64_t table_end = table + ((uint64_t)v->inodes_per_group * v->inode_size +
+                                  BLOCK_BYTES - 1) / BLOCK_BYTES;
+    if (bitmap < 2 || bitmap >= v->blocks || !table || table_end > v->blocks ||
+        block < 2 || block == bitmap || block == inode_bitmap ||
+        (block >= table && block < table_end))
+        return EXT4_CORRUPT;
+    if (v->read(v->context, (uint64_t)bitmap * BLOCK_BYTES + block / 8, &allocated, 1))
+        return EXT4_IO;
+    if (!(allocated & (1u << (block % 8)))) return EXT4_CORRUPT;
+    *location = (uint64_t)block * BLOCK_BYTES;
+    return EXT4_OK;
 }

@@ -67,7 +67,7 @@ static int ensure_root(void)
 {
     int rc = root_volume.read ? EXT4_OK : root_disk_mount(&root_volume);
     if (rc) printf("ext4 mount failed: %s\n", rc == EXT4_NOT_FOUND ?
-                   "no read-only root disk" : ext4_result_text(rc));
+                   "no ext4 root disk" : ext4_result_text(rc));
     return rc;
 }
 
@@ -82,6 +82,25 @@ static void run_root(const char *name)
         run_module(root_file, size, TIER3);
 }
 
+static void overwrite_root(char *arg)
+{
+    char *data = arg;
+    while (*data && *data != ' ') ++data;
+    if (!*arg || !*data) {
+        printf("Usage: rootwrite FILE TEXT (file must already have the same length)\n");
+        return;
+    }
+    *data++ = 0;
+    size_t bytes = 0;
+    while (data[bytes]) ++bytes;
+    if (ensure_root()) return;
+    int rc = root_disk_overwrite(&root_volume, arg, data, bytes);
+    if (rc)
+        printf("ext4 overwrite failed: %s\n", ext4_result_text(rc));
+    else
+        printf("ext4 saved\n");
+}
+
 static void show_commands(void)
 {
     printf("System   uname          Show kernel version and architecture\n"
@@ -94,8 +113,9 @@ static void show_commands(void)
            "         cat FILE       Read test.c or Note.txt\n"
            "         write TEXT     Save a note to the attached disk\n"
            "         disk           Show disk status and saved note size\n"
-           "         rootls         List the read-only ext4 root\n"
+           "         rootls         List the ext4 root\n"
            "         rootcat FILE   Read a file from the ext4 root\n"
+           "         rootwrite FILE TEXT  Overwrite an equal-length file on an enabled test disk\n"
            "Apps     run test.c     Run the compiled sample in Tier 3\n"
            "         run Test t2    Request a Tier 2 budget for Test\n"
            "         run /FILE      Load an ARM64 console ELF from the root disk\n"
@@ -167,6 +187,8 @@ void shell_main(void)
                     printf("\n");
                 }
             }
+        } else if (!strcmp(command, "rootwrite")) {
+            overwrite_root(arg);
         } else if (!strcmp(command, "write")) {
             if (!*arg)
                 printf("Usage: write TEXT\n");

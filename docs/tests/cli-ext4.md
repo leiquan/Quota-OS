@@ -25,3 +25,35 @@ Create the scratch Notes disk once. Reuse it for the second boot. At the first p
 - Read-only VirtIO transport has a single Tier 3 caller and at most one new sector request per scheduler period. UI integration should use a Tier 3 reader so a device wait cannot block a higher-tier frame callback.
 
 CLI smoke results apply to QEMU virt, one Cortex-A35, 4 MiB, and the runner's `-icount shift=4,sleep=off`. GUI integration and frame deadlines require separate evidence.
+
+## Phase 1 writable test volume
+
+Copy the fixture before enabling writes. The generator adds a preallocated
+17-byte `scratch.txt`. Notes can be attached alongside the root disk.
+
+```sh
+cp build/rw-root.ext4 build/rw-test.ext4 # use a fresh copy for each run
+dd if=/dev/zero of=build/rw-notes.raw bs=1024 count=1024
+CLI_RAM=4M CLI_TEST=0 CLI_ROOT_RW=1 CLI_ROOT_DISK="$PWD/build/rw-test.ext4" \
+  CLI_DISK="$PWD/build/rw-notes.raw" bash tools/run-cli.sh --quiet
+```
+
+Generate `build/rw-root.ext4` with
+`bash tools/make-cli-root-disk.sh build/rw-root.ext4` if you are building locally.
+At the prompt, run `mem`, `rootcat scratch.txt`,
+`rootwrite scratch.txt after--ext4-write`, `rootcat scratch.txt`,
+`run /Test.elf`, `write rw-notes-marker`, and `events`.
+After both saves report success, stop QEMU and use the same launch command
+with the same disk paths. Check both `rootcat scratch.txt` and
+`cat Note.txt`, then check `events`. Run `e2fsck -fn` on the resulting
+root image after QEMU exits.
+
+The writable profile requires a clean, trusted single-group test volume with
+only `filetype,extent`. The existing file must have the same nonzero byte
+length as the text and occupy one initialized 4 KiB block. Shell line length
+also limits the text. Only that block is updated, and `ext4 saved` is printed
+after VirtIO FLUSH succeeds. Creation, resizing, deletion and renaming
+require a later phase. An I/O error disables subsequent root I/O for the
+boot. Data may be partially changed if interrupted or if a write or flush
+fails. Crash recovery and atomic replacement require a journal.
+Without `CLI_ROOT_RW=1` the runner attaches the root drive read-only.
