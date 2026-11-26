@@ -537,8 +537,8 @@ void fb_geometry(uint32_t *w, uint32_t *h);
 
 /* Fixed budgets for the LVGL demo. The heap is LVGL's pool (no expand).
  * The draw buffer and framebuffer are separate and do not grow. */
-#define DISPLAY_WIDTH 1280u
-#define DISPLAY_HEIGHT 800u
+#define DISPLAY_WIDTH 1600u
+#define DISPLAY_HEIGHT 900u
 #define LVGL_HEAP_BYTES (256u * 1024u)
 #define LVGL_DRAW_BYTES (DISPLAY_WIDTH * 48u * 4u)
 #define LVGL_FB_BYTES (DISPLAY_WIDTH * DISPLAY_HEIGHT * 4u)
