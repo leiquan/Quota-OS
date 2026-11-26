@@ -78,22 +78,12 @@ static uint64_t v3_find_redist(uint64_t base, uint64_t size)
     return 0;
 }
 
-static int v3_init(uint64_t gicr_base, uint64_t gicr_size)
-{
-    uint64_t rd = v3_find_redist(gicr_base, gicr_size);
-    if (!rd) {
-        printf("[boot] ERROR: GICv3 redistributor for this CPU not found in 0x%lx+0x%lx\n",
-               gicr_base, gicr_size);
-        return -1;
-    }
-    /* distributor：亲和路由 + Group 1。QEMU 没有 EL3 时 GIC 只有一个安全状态（DS=1）。 */
-    mmio_wr(gicd + GICD_CTLR, 0);
-    while (mmio_rd(gicd + GICD_CTLR) & GICD_CTLR_RWP)
-        ;
-    mmio_wr(gicd + GICD_CTLR, GICD_CTLR_ARE | GICD_CTLR_GRP1);
-    while (mmio_rd(gicd + GICD_CTLR) & GICD_CTLR_RWP)
-        ;
+#ifdef QUOTA_TOUCH_SMP
+static uint64_t secondary_gicr_base, secondary_gicr_size;
+#endif
 
+static int v3_init_cpu(uint64_t rd, uint32_t groups)
+{
     /* 唤醒 redistributor。 */
     uint32_t w = mmio_rd(rd + GICR_WAKER);
     mmio_wr(rd + GICR_WAKER, w & ~(1u << 1));
@@ -101,8 +91,7 @@ static int v3_init(uint64_t gicr_base, uint64_t gicr_size)
         ;
 
     uint64_t sgi = rd + GICR_SGI;
-    gicr_sgi = sgi;
-    mmio_wr(sgi + GICR_IGROUPR0, mmio_rd(sgi + GICR_IGROUPR0) | (1u << TIMER_IRQ) | (1u << DEV_IRQ));
+    mmio_wr(sgi + GICR_IGROUPR0, mmio_rd(sgi + GICR_IGROUPR0) | groups);
     for (int i = 0; i < 8; i++)
         mmio_wr(sgi + GICR_IPRIORITYR + (uint64_t)i * 4, 0xa0a0a0a0u);
     mmio_wr(sgi + GICR_ISENABLER0, 1u << TIMER_IRQ);
@@ -120,6 +109,30 @@ static int v3_init(uint64_t gicr_base, uint64_t gicr_size)
     asm volatile("msr S3_0_C12_C12_3, %0" :: "r"(0ul));       /* ICC_BPR1_EL1 */
     asm volatile("msr S3_0_C12_C12_7, %0; isb" :: "r"(1ul));  /* ICC_IGRPEN1_EL1 */
     return 0;
+}
+
+static int v3_init(uint64_t gicr_base, uint64_t gicr_size)
+{
+    uint64_t rd = v3_find_redist(gicr_base, gicr_size);
+    if (!rd) {
+        printf("[boot] ERROR: GICv3 redistributor for this CPU not found in 0x%lx+0x%lx\n",
+               gicr_base, gicr_size);
+        return -1;
+    }
+    /* distributor：亲和路由 + Group 1。QEMU 没有 EL3 时 GIC 只有一个安全状态（DS=1）。 */
+    mmio_wr(gicd + GICD_CTLR, 0);
+    while (mmio_rd(gicd + GICD_CTLR) & GICD_CTLR_RWP)
+        ;
+    mmio_wr(gicd + GICD_CTLR, GICD_CTLR_ARE | GICD_CTLR_GRP1);
+    while (mmio_rd(gicd + GICD_CTLR) & GICD_CTLR_RWP)
+        ;
+
+    gicr_sgi = rd + GICR_SGI;
+#ifdef QUOTA_TOUCH_SMP
+    secondary_gicr_base = gicr_base;
+    secondary_gicr_size = gicr_size;
+#endif
+    return v3_init_cpu(rd, (1u << TIMER_IRQ) | (1u << DEV_IRQ));
 }
 
 static void halt(void)
@@ -158,6 +171,10 @@ void gic_init(void)
 #ifdef QUOTA_TOUCH_SMP
 int gic_secondary_timer_init(void)
 {
+    if (gic_version == 3) {
+        uint64_t rd = v3_find_redist(secondary_gicr_base, secondary_gicr_size);
+        return rd && v3_init_cpu(rd, 1u << TIMER_IRQ) == 0;
+    }
     if (gic_version != 2) return 0;
     /* Only banked CPU1 registers; the distributor is already live. */
     mmio_wr(gicd + GICD_ISENABLER, 1u << TIMER_IRQ);
