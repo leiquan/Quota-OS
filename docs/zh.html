@@ -36,19 +36,18 @@
 <p>未压缩启动镜像，2026-11-26 实测构建。Web Node 包含共享运行时、动态库、字体和启动数据；Web Node Demo 的 demo.wap 仅 1,653 字节。</p><h3>开发流程</h3><div class="edition-pair"><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="C LVGL · 二级任务准入"></a><figcaption>C LVGL · 二级任务准入</figcaption></figure><p>在 C LVGL 版中，用 C 编写驱动或 LVGL 界面，执行 <code>bash tools/build-lvgl-guest.sh</code>，在 QEMU 的 Apps → Test 检查配额。</p></div><div><figure><a class="capture" href="screenshots/web-node-cold.png"><img loading="lazy" src="screenshots/web-node-cold.png" width="1280" height="800" alt="Web Node Demo · 冷启动读回原文后再次保存"></a><figcaption>Web Node Demo · 冷启动读回原文后再次保存</figcaption></figure><p>Web Node 的系统开发先联合构建 Blink、Node 和共享 V8，再嵌入镜像。应用开发只需将清单、HTML 和可选的后台 JS 打成 WAP，在 Files 双击，保存后用同一磁盘冷启动验证。</p></div></div>
 </section>
 <section class="wrap section" id="compare">
-<h2>系统对比</h2><p>Quota OS 是面向车载仪表和 eVTOL 显示场景的资源隔离原型。关键显示使用固定 CPU 槽，准入应用获得最低配额，普通工作负载共享有上限的总池。</p>
-<div class="compare-scroll" tabindex="0" aria-label="CPU 配额和准入">
-<table class="compare-table"><caption>CPU 配额和准入</caption>
-<thead><tr><th scope="col">系统</th><th scope="col">资源机制</th><th scope="col">与 Quota OS 对比</th></tr></thead>
-<tbody><tr><th scope="row">QNX</th><td>自适应分区为一组线程设置最低 CPU 份额，并共享空闲时间。</td><td>Quota OS 为应用定义三种准入方式，并限制三级共享池总量。 <a href="https://www.qnx.com/developers/docs/7.1/">官方资料</a></td></tr>
-<tr><th scope="row">seL4 MCS</th><td>调度上下文携带预算与周期，可以通过 IPC 转移执行预算。</td><td>系统集成方用这些机制制定策略。Quota OS 在系统中直接定义级别与准入规则。 <a href="https://docs.sel4.systems/Tutorials/mcs.html">官方资料</a></td></tr>
-<tr><th scope="row">Linux</th><td>SCHED_DEADLINE 提供运行预算、截止期、周期、准入控制和可选的带宽回收。</td><td>Linux 可以组合出类似隔离策略。Quota OS 直接把三级规则呈现在应用准入和运行中。 <a href="https://docs.kernel.org/scheduler/sched-deadline.html">官方资料</a></td></tr>
-<tr><th scope="row">VxWorks 653</th><td>ARINC 653 式时间和空间分区将工作负载放入预先配置的分区。</td><td>固定分区的时序接近一级。Quota OS 同时演示用户批准的二级配额和有总上限的三级池。 <a href="https://www.windriver.com/products/vxworks">官方资料</a></td></tr></tbody>
-</table></div>
-<p>已发布的 QEMU icount 测试覆盖 CPU 调度和来宾帧缓冲提交。真实硬件上的对比时延、飞行控制和安全认证均尚未验证。</p>
+<h2>系统对比</h2><p>同样是预留 CPU 时间，给一组线程分配最低份额、给单个线程设置周期预算、为整个分区排定时间窗，解决的是不同的问题。下表从分配对象和运行规则比较五种做法。</p>
+<div class="compare-scroll" tabindex="0" aria-label="系统对比"><table class="compare-table"><thead><tr><th scope="col">系统与机制</th><th scope="col">CPU 时间分给谁</th><th scope="col">预算怎样生效</th></tr></thead><tbody>
+<tr><th scope="row">Quota OS</th><td>按应用级别分配</td><td>GPS Speed 使用固定时间槽。Flight Camera 经用户批准且容量足够时获得周期预算。Music Player 与其他三级应用共享有总上限的剩余时间。 <a href="https://github.com/leiquan/Quota-OS/blob/20671fb/kernel/resource.c">内核配额实现</a></td></tr>
+<tr><th scope="row">QNX APS</th><td>同一分区内的一组线程</td><td>为分区配置最低 CPU 比例。调度器在滑动时间窗口内核算用量；其他分区用不完预算时，有工作可做的分区可以多运行。 <a href="https://www.qnx.com/developers/docs/6.5.0SP1.update/com.qnx.doc.adaptive_partitioning_en_user_guide/faq_ap.html">QNX 调度说明</a></td></tr>
+<tr><th scope="row">seL4 MCS</th><td>可绑定到线程的调度上下文</td><td>每个上下文指定预算和周期。客户端通过同步 IPC 调用被动服务时，可借出自己的调度上下文，服务执行时间计入调用方预算。 <a href="https://docs.sel4.systems/Tutorials/mcs.html">seL4 调度上下文教程</a></td></tr>
+<tr><th scope="row">Linux SCHED_DEADLINE</th><td>申请截止期调度的线程</td><td>线程声明运行预算、相对截止期和周期。内核检查带宽后决定是否准入，按调度截止期安排执行；在默认策略下，预算耗尽的线程须等待补充。 <a href="https://docs.kernel.org/scheduler/sched-deadline.html">Linux 内核调度文档</a></td></tr>
+<tr><th scope="row">VxWorks 653</th><td>预先配置的应用分区</td><td>模块按时间表轮流运行各分区。窗口内由分区调度器按优先级选择任务；窗口结束后，模块切换到表中的下一个分区。 <a href="https://www.windriver.com/resource/safety-critical-software-development-for-integrated-modular-avionics">Wind River 时间分区说明</a></td></tr>
+</tbody></table></div>
+<p>Quota OS 的公开测试在单核 ARM64 QEMU 中记录调度周期和来宾帧缓冲提交。各系统在同一硬件上的显示延迟仍待测量。</p>
 </section>
 <section class="wrap section" id="evidence">
-<h2>桌面忙等时，速度表继续更新</h2>
+<h2>桌面忙等卡顿时，一二级应用不会卡顿</h2>
 <p>从 Apps 打开 Test。第 1–3 项测试二级超额申请、正常启动和 CPU 限额。第 1 项显示申请量、当前可用量和总量。第 4–5 项运行三级普通任务和 10 秒死循环。结果显示 Music Player 实际提交帧数。GPS Speed 的 10 ms 和 Flight Camera 的 40 ms 目标需单独核对最大帧间隔。</p>
 <p>两张关键仪表卡分别显示漏帧和超长间隔。Test 同时报告严格帧时限和配额结果，System → Events 记录最近的异常。</p>
 <div class="evidence-grid"><figure><a class="capture" href="screenshots/system-test.png"><img loading="lazy" width="1280" height="800"  src="screenshots/system-test.png" alt="QEMU 实拍的 Test 应用与三级忙循环测试结果"></a><figcaption>三级忙循环测试显示配额执行结果和仪表最大帧间隔</figcaption></figure><figure><a class="capture" href="screenshots/system-events.png"><img loading="lazy" width="1280" height="800"  src="screenshots/system-events.png" alt="系统事件分组显示帧间隔异常"></a><figcaption>系统事件分组显示帧间隔异常</figcaption></figure><figure><a class="capture" href="screenshots/test-admission.png"><img loading="lazy" width="1280" height="800"  src="screenshots/test-admission.png" alt="二级超额申请显示拒绝原因"></a><figcaption>二级超额申请显示拒绝原因</figcaption></figure><figure><a class="capture" href="screenshots/test-countdown.png"><img loading="lazy" width="1280" height="800"  src="screenshots/test-countdown.png" alt="三级压力测试倒计时与仪表实时帧率"></a><figcaption>三级压力测试倒计时与仪表实时帧率</figcaption></figure><figure ><a class="capture" href="screenshots/vehicle-instruments.png"><img loading="lazy" width="1280" height="800"  src="screenshots/vehicle-instruments.png" alt="桌面实拍：速度表、模拟行车记录仪和音乐播放器"></a><figcaption>速度表显示累计错过的截止期；行车记录仪目标为每秒 25 个模拟画面；音乐播放器的紫色柱条表示最近八次采样的画面提交速率。 <a href="screenshots/instruments-live.gif">查看 QEMU 连续实拍</a> · <a href="https://github.com/leiquan/Quota-OS/tree/7e594c7">运行对应的 LVGL 版本</a></figcaption></figure></div>
