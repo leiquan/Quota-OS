@@ -520,6 +520,46 @@ struct cold_span {
     int task;
 };
 static struct cold_span cold_sync, cold_peak;
+enum { COLD_MAP_STAGES = 8 };
+struct cold_map_span {
+    uint64_t start, end, pc, arg[6], stages[COLD_MAP_STAGES];
+    int task;
+};
+static struct cold_map_span mmap_current, mmap_peak;
+static unsigned mmap_stage = COLD_MAP_STAGES;
+static uint64_t mmap_stage_tick, mmap_reported_end;
+/* Exception-local CPU0 data, enabled only for diagnostic builds. */
+unsigned sched_cold_mmap_stage(unsigned next)
+{
+    unsigned old = mmap_stage;
+    if (old < COLD_MAP_STAGES) {
+        uint64_t now = ticks_now();
+        mmap_current.stages[old] += now - mmap_stage_tick;
+        mmap_stage = next;
+        mmap_stage_tick = now;
+    }
+    return old;
+}
+static void cold_mmap_begin(const struct irq_frame *f, const struct cold_span *span)
+{
+    if (span->op != 222 && span->op != 215 && span->op != 226)
+        return;
+    memset(&mmap_current, 0, sizeof mmap_current);
+    for (unsigned i = 0; i < 6; ++i) mmap_current.arg[i] = f->r[i];
+    mmap_current.start = span->start;
+    mmap_current.pc = span->pc;
+    mmap_current.task = span->task;
+    mmap_stage_tick = span->start;
+    mmap_stage = 0;
+}
+static void cold_mmap_end(uint64_t end)
+{
+    if (mmap_stage == COLD_MAP_STAGES) return;
+    sched_cold_mmap_stage(COLD_MAP_STAGES);
+    mmap_current.end = end;
+    if (end - mmap_current.start > mmap_peak.end - mmap_peak.start)
+        mmap_peak = mmap_current;
+}
 static struct {
     uint64_t tick, address;
     unsigned phase;
@@ -539,6 +579,16 @@ void sched_cold_disk(unsigned phase, uint64_t address)
 }
 void sched_cold_report(void)
 {
+    if (mmap_peak.end != mmap_reported_end && mmap_peak.end - mmap_peak.start > us_to_ticks(80)) {
+        uint64_t irq = irq_save();
+        struct cold_map_span m = mmap_peak;
+        mmap_reported_end = m.end;
+        irq_restore(irq);
+        printf("[cold-map] task=%d pc=%lx start=%lu end=%lu ticks=%lu va=%lx len=%lx prot=%lx flags=%lx fd=%lx off=%lx before=%lu search=%lu check=%lu update=%lu release=%lu alloc=%lu free=%lu tlb=%lu\n",
+               m.task, m.pc, m.start, m.end, m.end-m.start, m.arg[0], m.arg[1], m.arg[2],
+               m.arg[3], m.arg[4], m.arg[5], m.stages[0], m.stages[1], m.stages[2], m.stages[3],
+               m.stages[4], m.stages[5], m.stages[6], m.stages[7]);
+    }
     if (cold_printed < cold_count) {
         const struct cold_miss *m = &cold_misses[cold_printed++];
         printf("[cold-miss] task=%d name=%s prev=%d reason=%d release=%lu start=%lu deadline=%lu seen=%lu entry=%lu timer=%lu disk_phase=%u disk_tick=%lu disk_addr=%lx loss=%u\n",
@@ -565,7 +615,8 @@ static void miss(struct task *t, int reason, uint64_t done)
 #ifdef QUOTA_WEB_COLD_TRACE
     if (cold_count < sizeof cold_misses / sizeof cold_misses[0]) {
         cold_misses[cold_count++] = (struct cold_miss){
-            cold_sync, cold_peak, t->release_ts, t->start_ts, t->release_ts + t->deadline_t,
+            cold_sync, cold_peak, t->release_ts,
+            t->start_ts >= t->release_ts ? t->start_ts : 0, t->release_ts + t->deadline_t,
             done, obs_entry, obs_cval, cold_disk.tick, cold_disk.address, cold_disk.phase,
             t->id, obs_prev ? obs_prev->id : -1, reason,
         };
@@ -2030,9 +2081,13 @@ uint64_t handle_sync(uint64_t frame_sp)
             int caller_work = cur->tier == TIER3 && proc_svc_charges_caller(f);
             uint64_t start = caller_work ? ticks_now() : 0;
 #endif
+#ifdef QUOTA_WEB_COLD_TRACE
+            cold_mmap_begin(f, &span);
+#endif
             proc_el0_svc(f);
 #ifdef QUOTA_WEB_COLD_TRACE
             span.end = ticks_now();
+            cold_mmap_end(span.end);
             cold_sync = span;
             if (span.end - span.start > cold_peak.end - cold_peak.start) cold_peak = span;
 #endif

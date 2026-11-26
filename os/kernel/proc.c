@@ -758,7 +758,13 @@ void proc_last_fault(struct el0_fault *o)
 static void tlb_asid(int asid)
 {
     uint64_t x = (uint64_t)(uint16_t)asid << 48;
+#ifdef QUOTA_WEB_COLD_TRACE
+    unsigned stage = sched_cold_mmap_stage(7);
+#endif
     asm volatile("dsb ish; tlbi aside1, %0; dsb ish; isb" :: "r"(x) : "memory");
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(stage);
+#endif
 }
 
 static uint64_t walk(const struct proc *p, uint64_t va, int *level)
@@ -2081,10 +2087,16 @@ int proc_kill(int64_t handle)
 static int alloc_page(uint64_t *pa)
 {
     static unsigned cursor;
+#ifdef QUOTA_WEB_COLD_TRACE
+    unsigned stage = sched_cold_mmap_stage(5);
+#endif
     for (unsigned scanned = 0; scanned < pool_capacity; ++scanned) {
         uint64_t flags = irq_save();
         if (free_frames <= reserved_frames) {
             irq_restore(flags);
+#ifdef QUOTA_WEB_COLD_TRACE
+            sched_cold_mmap_stage(stage);
+#endif
             return -1;
         }
         unsigned i = cursor++ % pool_capacity;
@@ -2097,8 +2109,14 @@ static int alloc_page(uint64_t *pa)
         irq_restore(flags);
         memset(pool[i], 0, 4096);
         *pa = (uint64_t)(uintptr_t)pool[i];
+#ifdef QUOTA_WEB_COLD_TRACE
+        sched_cold_mmap_stage(stage);
+#endif
         return i;
     }
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(stage);
+#endif
     return -1;
 }
 
@@ -2112,11 +2130,17 @@ static void free_idx(int idx)
         forget_v8_page(idx);
     }
 #endif
+#ifdef QUOTA_WEB_COLD_TRACE
+    unsigned stage = sched_cold_mmap_stage(6);
+#endif
     memset(pool[idx], 0, 4096);
     uint64_t flags = irq_save();
     pool_used[idx] = 0;
     ++free_frames;
     irq_restore(flags);
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(stage);
+#endif
 }
 
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT

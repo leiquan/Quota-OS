@@ -341,6 +341,7 @@ void sched_volume_pressure_dump(void);
 #ifdef QUOTA_WEB_COLD_TRACE
 void sched_cold_disk(unsigned phase, uint64_t address);
 void sched_cold_report(void);
+unsigned sched_cold_mmap_stage(unsigned next);
 #endif
 void app_frame_trace_start(void);
 void app_frame_trace_dump(void);

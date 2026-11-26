@@ -471,6 +471,9 @@ static int64_t protect_high(struct proc *p, struct irq_frame *f, uint64_t va, un
     if (prot > 7 || (prot & 6) == 6) return -22;
     /* Small first commits, including any translation tables, are charged together. */
     p->mapping.va = va;
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(2);
+#endif
     unsigned stop = p->mapping.checked + 128;
     if (stop > pages) stop = pages;
     for (unsigned i = p->mapping.checked; i < stop; ++i) {
@@ -504,6 +507,9 @@ static int64_t protect_high(struct proc *p, struct irq_frame *f, uint64_t va, un
         reserved_frames += p->mapping.reserved;
     }
     uint64_t start = ticks_now();
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(3);
+#endif
     while (p->mapping.next < pages) {
         unsigned i = p->mapping.next++;
         uint64_t at = va + i * 4096ull, pa;
@@ -542,6 +548,9 @@ static int release_mapping_slice(struct proc *p, struct irq_frame *f, uint64_t a
         p->mapping.va = addr;
         p->release_cursor = addr;
     }
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(4);
+#endif
     while (p->release_cursor < end && p->high_frames) {
         uint64_t va = p->release_cursor;
         uint64_t *table = pt_l0[p->slot];
@@ -653,6 +662,9 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     if (p->mapping.va) va = p->mapping.va;
     else if (map && !(flags & 16)) {
         unsigned first = 0;
+#ifdef QUOTA_WEB_COLD_TRACE
+        sched_cold_mmap_stage(1);
+#endif
         while (first + pages <= ELF_DSO_PAGES) {
             unsigned occupied = first_mapped_page(p, first, first + pages);
             if (occupied == first + pages) break;
@@ -695,6 +707,9 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     /* Re-enter the same SVC between bounded slices. No user instruction
      * observes partial updates: the sole address-space owner resumes at svc. */
     p->mapping.va = va;
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(2);
+#endif
     unsigned stop = p->mapping.checked + 128;
     if (stop > pages) stop = pages;
     for (unsigned i = p->mapping.checked; i < stop; ++i) {
@@ -747,6 +762,9 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
         reserved_frames += p->mapping.reserved;
     }
     uint64_t slice_start = ticks_now();
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(3);
+#endif
     while (p->mapping.next < pages) {
         unsigned i = p->mapping.next++;
         unsigned idx = first + i;
@@ -914,6 +932,9 @@ static int64_t runtime_advise(struct proc *p, struct irq_frame *f)
         va - ELF_DSO_BASE > ELF_DSO_PAGES * 4096 - len) return -12;
     unsigned first = (va - ELF_DSO_BASE) / 4096, count = (len + 4095) / 4096;
     p->mapping.va = va;
+#ifdef QUOTA_WEB_COLD_TRACE
+    sched_cold_mmap_stage(2);
+#endif
     unsigned stop = p->mapping.checked + 128;
     if (stop > count) stop = count;
     for (unsigned i = p->mapping.checked; i < stop; i++) {
