@@ -9,6 +9,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#if defined(QUOTA_SYSTEM_STATUS) && !defined(QUOTA_CLI)
+#define SYSTEM_STATUS_ENABLED 1
+#define SYSTEM_STATUS_TASK "system-status"
+#endif
+
+
 /* Nested critical sections must preserve exception-entry IRQ masking. */
 static inline uint64_t irq_save(void)
 {
@@ -314,10 +320,6 @@ void sched_volume_pressure_dump(void);
 void app_frame_trace_start(void);
 void app_frame_trace_dump(void);
 void app_desktop_stall_probe(void);
-#if defined(QUOTA_SYSTEM_STATUS) && !defined(QUOTA_CLI)
-#define SYSTEM_STATUS_ENABLED 1
-#define SYSTEM_STATUS_TASK "system-status"
-#endif
 
 struct sched_status_snapshot {
     uint64_t generation, release_ticks, sample_ticks;
