@@ -2,10 +2,13 @@
 import argparse
 import io
 import re
-import struct
+import sys
 import subprocess
 import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+from wap_disk import seed_new_disk
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("output", type=Path, help="new directory for todo.wap and todo.raw")
@@ -28,15 +31,8 @@ with zipfile.ZipFile(package, "w", zipfile.ZIP_STORED) as archive:
                        ("app.html", html), ("app.js", minify((source / "app.js").read_text()))]:
         archive.writestr(zipfile.ZipInfo(name), data.encode())
 payload = package.getvalue()
-if len(payload) > 2032:
-    raise ValueError(f"{len(payload)} bytes exceed the guest package slot")
-generation = 1
-checksum = ((2166136261 ^ generation) * 16777619) & 0xffffffff
-for byte in payload:
-    checksum = ((checksum ^ byte) * 16777619) & 0xffffffff
-record = struct.pack("<4I", 0x51415031, generation, len(payload), checksum) + payload
 disk = bytearray(65536)
-disk[4096:4096 + len(record)] = record
+seed_new_disk(disk, payload)
 args.output.mkdir(parents=True, exist_ok=False)
 (args.output / "todo.wap").write_bytes(payload)
 (args.output / "todo.raw").write_bytes(disk)

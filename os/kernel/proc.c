@@ -23,12 +23,16 @@
 #endif
 
 #ifdef QUOTA_WAP_FULL_RUNTIME
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+#define EL0_SLOTS 4
+#else
 #define EL0_SLOTS 10
+#endif
 #else
 #define EL0_SLOTS 2
 #endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
-/* Dedicated large-memory build. The static pool is covered by system_reserve_kb. */
+/* Virtual address bounds for sparse V8 reservations. */
 #define HIGH_START (2ull << 30)
 #define HIGH_LIMIT (1ull << 47)
 #define EL0_POOL 65536
@@ -47,7 +51,7 @@
 #define ELF_BRK_PAGES 512u
 #define ELF_WINDOW (ELF_STACK_TOP + ELF_BRK_PAGES * 4096u)
 #else
-#ifdef QUOTA_WAP_INTERPRETER
+#if defined(QUOTA_WAP_INTERPRETER) || defined(QUOTA_RUNTIME_VOLUME_BOOT)
 #define EL0_POOL 128
 #else
 #define EL0_POOL 16
@@ -160,7 +164,7 @@ const uint32_t *proc_page_surface(int64_t handle, unsigned *frame_number)
     *frame_number = 1;
     return page_pixels[0];
 }
-enum console_abi { CONSOLE_NONE, CONSOLE_QUOTA, CONSOLE_LINUX_BOOTSTRAP, CONSOLE_PAGE };
+enum console_abi { CONSOLE_NONE, CONSOLE_QUOTA, CONSOLE_LINUX_BOOTSTRAP, CONSOLE_PAGE, CONSOLE_VOLUME_PROBE };
 #ifdef QUOTA_WAP_FULL_RUNTIME
 #define WAP_THREADS 32
 struct wap_thread {
@@ -287,6 +291,17 @@ static int can_queue_socket(struct packet_socket *socket, struct packet_socket *
 #define SHM_OBJECTS 24
 #endif
 
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+#define DISK_ELF_MAX_SEGMENTS 32
+/* Invalid L3 entries carry the disk catalog index, page position and protection. */
+#define DISK_DSO_PENDING (1ull << 63)
+#define DISK_DSO_POSITION_MASK 0xffffffffffull
+struct disk_elf_segment {
+    uint64_t file_position;
+    unsigned address, file_bytes, memory_bytes, permissions, first_frame;
+};
+#endif
+
 struct proc {
     unsigned session_owned;
 #ifdef QUOTA_WAP_FULL_RUNTIME
@@ -326,6 +341,18 @@ struct proc {
     struct runtime_file package_files[2];
     unsigned char package_contents[2][4096];
     unsigned image_pages;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    struct runtime_volume_file disk_elf;
+    struct disk_elf_segment disk_segments[DISK_ELF_MAX_SEGMENTS];
+    unsigned disk_segment_count, disk_fault_segment, disk_fault_page;
+    int disk_elf_waiting, disk_read_waiting;
+    unsigned v8_shared, page_ins;
+    const char *stop_reason;
+    uint64_t fault_file_offset[2];
+    const char *fault_file_name[2];
+    unsigned clean_cursor, clean_scanned, clean_pages, evicted_pages;
+    uint64_t disk_clean[ELF_DSO_PAGES];
+#endif
     unsigned linux_traces;
 #ifdef QUOTA_WAP_LOADER_TRACE
     unsigned mapping_traces, failed_map_traces, failed_message_traces, ancillary_traces, stream_stall_traces;
@@ -365,6 +392,13 @@ struct proc {
     int fault_pending;
 #ifdef QUOTA_NODE_WEB
     uintptr_t fault_code_pa[2];
+#endif
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    struct runtime_volume_file volume_file;
+    uint64_t volume_offset, volume_data_offset;
+    unsigned volume_data_size;
+    const uint8_t *volume_page;
+    int volume_waiting, volume_exec;
 #endif
     struct el0_fault fault_report;
     int pages[3];
@@ -415,17 +449,70 @@ struct elf_mapping {
     enum wap_role role;
     const unsigned char *backend;
     unsigned backend_size;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    const struct runtime_volume_file *volume_file;
+#endif
     const unsigned char *file;
     unsigned pages;
     unsigned load_bias;
     unsigned phdr_va;
+    const unsigned char *interpreter;
     unsigned interp_entry;
     unsigned interp_phoff;
     unsigned interp_count;
 };
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+static uint8_t *pool[EL0_POOL];
+static unsigned pool_capacity;
+#else
 static uint8_t pool[EL0_POOL][4096] __attribute__((aligned(4096)));
+#define pool_capacity EL0_POOL
+#endif
 static uint8_t pool_used[EL0_POOL];
 static unsigned free_frames = EL0_POOL;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+void proc_bind_color_pool(void)
+{
+    free_frames = pool_capacity = color_bind_process_frames(pool, EL0_POOL);
+    printf("[proc] shared-color frames %u, %u KiB physical capacity\n", pool_capacity, pool_capacity * 4);
+}
+#endif
+#ifdef QUOTA_LINUX_APP_RUNTIME
+static int pool_index(uintptr_t pa)
+{
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    unsigned lo = 0, hi = pool_capacity;
+    while (lo < hi) {
+        unsigned mid = lo + (hi - lo) / 2;
+        if ((uintptr_t)pool[mid] < pa) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo < pool_capacity && (uintptr_t)pool[lo] == pa ? (int)lo : -1;
+#else
+    if (pa < (uintptr_t)pool || pa - (uintptr_t)pool >= sizeof pool)
+        return -1;
+    return (pa - (uintptr_t)pool) / 4096;
+#endif
+}
+#endif
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+/* Index the immutable pages of this runtime's libv8. Read-only mappings
+ * retain references. Writable remaps detach before user access. */
+#define V8_CACHE_PAGES 16384
+static unsigned v8_frame_plus_one[V8_CACHE_PAGES];
+static unsigned v8_first_va[V8_CACHE_PAGES];
+static uint8_t v8_first_slot[V8_CACHE_PAGES];
+static unsigned short v8_page_plus_one[EL0_POOL];
+static unsigned v8_references[EL0_POOL];
+static int volume_v8_index = -1;
+static void forget_v8_page(unsigned frame)
+{
+    unsigned page = v8_page_plus_one[frame];
+    if (page) v8_frame_plus_one[page - 1] = 0;
+    v8_page_plus_one[frame] = 0;
+    v8_references[frame] = 0;
+}
+#endif
 static unsigned reserved_frames;
 static uint64_t kernel_ttbr;
 static struct el0_reap last_reap;
@@ -480,7 +567,7 @@ static int pages_free_n(void)
 
 static int pages_used_n(void)
 {
-    return EL0_POOL - pages_free_n();
+    return pool_capacity - pages_free_n();
 }
 
 int proc_pages_free(void)
@@ -906,6 +993,9 @@ static void reap_timed(struct proc *p, const char *why, uint64_t t0, uint64_t p0
 
     if (!p || !p->alive)
         return;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    p->stop_reason = why;
+#endif
     pct0 = cntpct_now();
     irq_off_begin(&off0);
 
@@ -964,12 +1054,266 @@ static void free_idx(int idx);
 #ifdef QUOTA_WAP_FULL_RUNTIME
 static void release_high(struct proc *, uint64_t, uint64_t);
 #endif
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+#define VOLUME_PROBE_VA 0x3000ull
+static void clean_code(void *p, uint64_t n);
+static void finish_volume_wait(struct proc *p)
+{
+    if (!p->alive || p->draining || !p->volume_waiting || !p->task)
+        return;
+    const uint8_t *page = NULL;
+    int writable = p->volume_waiting == 2;
+    int result = writable
+        ? runtime_volume_fill_segment_page(&p->volume_file, p->volume_data_offset, 0,
+                                            p->volume_data_size, (uint8_t *)(uintptr_t)p->pa[2])
+        : runtime_volume_acquire(p->volume_offset, &page);
+    if (!result)
+        return;
+    if (result > 0 && !writable && p->volume_exec)
+        clean_code((void *)page, 4096);
+    uint64_t flags = irq_save();
+    p->volume_waiting = 0;
+    if (result < 0) {
+        reap_timed(p, "volume-read", ticks_now(), sched_period_now());
+    } else if (writable) {
+        pt_l3[p->slot][DRAW_VA >> 12] = p->pa[2] | PTE_VALID | PTE_PAGE | PTE_AF |
+            SH_INNER | ATTR_NORMAL | PTE_NG | AP_EL0 | PTE_UXN | PTE_PXN;
+        asm volatile("dsb ishst" ::: "memory");
+        tlb_asid(p->asid);
+        task_ready(p->task);
+    } else {
+        p->volume_page = page;
+        pt_l3[p->slot][VOLUME_PROBE_VA >> 12] =
+            (uintptr_t)page | PTE_VALID | PTE_PAGE | PTE_AF | SH_INNER |
+            ATTR_NORMAL | PTE_NG | AP_EL0 | AP_RO | PTE_PXN | (p->volume_exec ? 0 : PTE_UXN);
+        asm volatile("dsb ishst" ::: "memory");
+        tlb_asid(p->asid);
+        task_ready(p->task);
+    }
+    irq_restore(flags);
+    if (result > 0 && writable)
+        printf("[volume-pager] private data mapped pid=%d\n", p->pid);
+    else if (result > 0)
+        printf("[volume-pager] resumed pid=%d asid=%d page=0x%lx\n", p->pid, p->asid,
+               (uintptr_t)page);
+}
+#endif
+
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+static void clean_code(void *p, uint64_t n);
+static uint64_t code_pte(uint64_t pa);
+static uint64_t data_pte(uint64_t pa);
+static int alloc_page(uint64_t *pa);
+static unsigned private_pages_left(const struct proc *p);
+static const struct runtime_volume_file *disk_catalog_extent(unsigned index);
+static const char *disk_extent_name(unsigned index);
+
+static int block_on_disk_elf(struct proc *p, uint64_t far, uint64_t esr)
+{
+    unsigned ec = (esr >> 26) & 0x3f;
+    if (!p || p->task->tier != TIER3 || (esr & 0x3f) != 7 ||
+        (esr & (1u << 10)) || (ec != 0x20 && ec != 0x24) ||
+        far < ELF_BASE || far >= ELF_DSO_BASE + (uint64_t)ELF_DSO_PAGES * 4096)
+        return 0;
+    unsigned page = far & ~4095u;
+    uint64_t entry = image_pt[p->slot][(page - ELF_BASE) >> 12];
+    if (entry & PTE_VALID)
+        return 0;
+    if (page >= ELF_DSO_BASE && (entry & DISK_DSO_PENDING)) {
+        unsigned prot = (entry >> 1) & 7;
+        if (!prot || (ec == 0x20 && !(prot & 4)) ||
+            (ec == 0x24 && (esr & 0x40) && !(prot & 2)) ||
+            (ec == 0x24 && !(esr & 0x40) && !(prot & 1)))
+            return 0;
+        p->disk_fault_page = page;
+        p->disk_elf_waiting = 2;
+        p->task->state = TASK_BLOCKED;
+        return 1;
+    }
+    for (unsigned i = 0; i < p->disk_segment_count; ++i) {
+        const struct disk_elf_segment *segment = &p->disk_segments[i];
+        unsigned first = segment->address & ~4095u;
+        if (page < first || page >= segment->address + segment->memory_bytes)
+            continue;
+        if ((ec == 0x20 && !(segment->permissions & 1)) ||
+            (ec == 0x24 && (esr & 0x40) && !(segment->permissions & 2)))
+            return 0;
+        p->disk_fault_segment = i;
+        p->disk_fault_page = page;
+        p->disk_elf_waiting = 1;
+        p->task->state = TASK_BLOCKED;
+        return 1;
+    }
+    return 0;
+}
+
+/* Issue at most one reclaim per fault and bound the scan per service poll.
+ * Only pristine read-only file mappings can be reconstructed from disk. */
+static int reclaim_disk_page(struct proc *p, unsigned skip, unsigned length)
+{
+    for (unsigned n = 0; n < 256; ++n) {
+        unsigned idx = p->clean_cursor++ % ELF_DSO_PAGES;
+        ++p->clean_scanned;
+        uint64_t pending = p->disk_clean[idx];
+        if (!pending || (idx >= skip && idx - skip < length)) continue;
+        unsigned page = (ELF_DSO_BASE - ELF_BASE) / 4096 + idx;
+        int *slot = &image_frames[p->slot][p->dso_frame + idx];
+        uint64_t irq = irq_save();
+        image_pt[p->slot][page] = pending;
+        tlb_asid(p->asid);
+        int frame = *slot;
+        *slot = -1;
+        p->dso_source[idx] = p->disk_clean[idx] = 0;
+        --p->mapped_dso_pages;
+        --p->clean_pages;
+        ++p->evicted_pages;
+        p->clean_scanned = 0;
+        irq_restore(irq);
+        free_idx(frame);
+        return 1;
+    }
+    return 0;
+}
+
+static void finish_disk_dso_fault(struct proc *p)
+{
+    unsigned page = p->disk_fault_page;
+    unsigned index = (page - ELF_DSO_BASE) >> 12;
+    uint64_t *pte = &image_pt[p->slot][(page - ELF_BASE) >> 12];
+    uint64_t pending = *pte;
+    unsigned protection = (pending >> 1) & 7;
+    unsigned file_index = (pending >> 44) & 1023;
+    uint64_t position = ((pending >> 4) & DISK_DSO_POSITION_MASK) << 12;
+    const struct runtime_volume_file *file = disk_catalog_extent(file_index);
+    uint64_t pa = 0;
+    if (p->clean_pages && p->clean_scanned < ELF_DSO_PAGES &&
+        (private_pages_left(p) < 1024 || free_frames - reserved_frames < 512) &&
+        !reclaim_disk_page(p, 0, 0))
+        return;
+    p->clean_scanned = 0;
+    unsigned number = position / 4096;
+    int eligible = (int)file_index == volume_v8_index && !(protection & 2) &&
+                   position / 4096 < V8_CACHE_PAGES;
+    unsigned cached = eligible ? v8_frame_plus_one[number] : 0;
+    int frame = cached && private_pages_left(p) ? (int)cached - 1 :
+                file && position < file->size && private_pages_left(p)
+        ? alloc_page(&pa) : -1;
+    int result = -1;
+    if (cached && frame >= 0) {
+        ++v8_references[frame];
+        pa = (uintptr_t)pool[frame];
+        result = 1;
+        struct proc *peer = &procs[v8_first_slot[number]];
+        int level;
+        unsigned peer_va = v8_first_va[number];
+        uint64_t peer_pte = walk(peer, peer_va, &level);
+        if (!p->v8_shared && (protection & 4) && p != peer && peer->alive && !peer->draining &&
+            level == 3 && (peer_pte & (PTE_VALID | AP_RO | PTE_UXN)) == (PTE_VALID | AP_RO) &&
+            (peer_pte & 0x0000fffffffff000ull) == pa) {
+            p->v8_shared = 1;
+            printf("[wap-volume] libv8 executable shared pid=%d asid=%u va=%x peer_pid=%d peer_asid=%u peer_va=%x offset=%lu pa=%lx\n",
+                   p->pid, p->asid, page, peer->pid, peer->asid, peer_va, position, pa);
+        }
+    } else if (frame >= 0) {
+        uint64_t bytes = file->size - position;
+        result = runtime_volume_fill_segment_page(file, position, 0,
+                                                  bytes < 4096 ? bytes : 4096,
+                                                  (uint8_t *)(uintptr_t)pa);
+        if (result != 1)
+            free_idx(frame);
+        else if (eligible) {
+            v8_frame_plus_one[number] = frame + 1;
+            v8_first_va[number] = page;
+            v8_first_slot[number] = p->slot;
+            v8_page_plus_one[frame] = number + 1;
+            v8_references[frame] = 1;
+        }
+    }
+    if (!result)
+        return;
+    if (result > 0 && (protection & 4))
+        clean_code((void *)(uintptr_t)pa, 4096);
+    uint64_t irq = irq_save();
+    p->disk_elf_waiting = 0;
+    if (result < 0) {
+        reap_timed(p, "dso-page-read", ticks_now(), sched_period_now());
+    } else {
+        image_frames[p->slot][p->dso_frame + index] = frame;
+        p->mapped_dso_pages++;
+        p->dso_source[index] = pa;
+        ++p->page_ins;
+        if (!(protection & 2)) {
+            p->disk_clean[index] = pending;
+            ++p->clean_pages;
+        }
+        *pte = protection & 4 ? code_pte(pa) | PTE_PXN :
+               data_pte(pa) | ((protection & 2) ? 0 : AP_RO);
+        asm volatile("dsb ishst" ::: "memory");
+        tlb_asid(p->asid);
+        task_ready(p->task);
+    }
+    irq_restore(irq);
+    if (result > 0 && !(p->page_ins % 8192))
+        printf("[wap-volume] pid=%d page_ins=%u clean=%u evicted=%u resident=%u high=%u free=%u\n",
+               p->pid, p->page_ins, p->clean_pages, p->evicted_pages, p->mapped_dso_pages,
+               p->high_frames, free_frames);
+}
+
+static void finish_disk_elf_fault(struct proc *p)
+{
+    if (!p->alive || p->draining || !p->disk_elf_waiting)
+        return;
+    if (p->disk_elf_waiting == 2) {
+        finish_disk_dso_fault(p);
+        return;
+    }
+    const struct disk_elf_segment *segment = &p->disk_segments[p->disk_fault_segment];
+    unsigned page = p->disk_fault_page;
+    unsigned first = segment->address & ~4095u;
+    unsigned frame = segment->first_frame + (page - first) / 4096;
+    uint8_t *destination = pool[image_frames[p->slot][frame]];
+    unsigned start = page < segment->address ? segment->address : page;
+    unsigned end = segment->address + segment->file_bytes;
+    if (end > page + 4096)
+        end = page + 4096;
+    unsigned bytes = end > start ? end - start : 0;
+    uint64_t position = segment->file_position + (bytes ? start - segment->address : 0);
+    int result = runtime_volume_fill_segment_page(&p->disk_elf, position, start - page,
+                                                  bytes, destination);
+    if (!result)
+        return;
+    if (result > 0 && (segment->permissions & 1))
+        clean_code(destination, 4096);
+    uint64_t irq = irq_save();
+    p->disk_elf_waiting = 0;
+    if (result < 0) {
+        reap_timed(p, "elf-page-read", ticks_now(), sched_period_now());
+    } else {
+        uintptr_t pa = (uintptr_t)destination;
+        image_pt[p->slot][(page - ELF_BASE) >> 12] = segment->permissions & 1
+            ? code_pte(pa) | PTE_PXN
+            : data_pte(pa) | ((segment->permissions & 2) ? ELF_PRIVATE_WRITABLE : AP_RO);
+        asm volatile("dsb ishst" ::: "memory");
+        tlb_asid(p->asid);
+        task_ready(p->task);
+    }
+    irq_restore(irq);
+}
+#endif
+
 static void finish_one(struct proc *p)
 {
     int refused = 0;
     uint64_t t1, pct1;
     if (!p->draining || p->active_draws)
         return;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (p->stop_reason) {
+        printf("[wap-volume] process stopped pid=%d reason=%s dso=%u high=%u private_limit=%u\n",
+               p->pid, p->stop_reason, p->mapped_dso_pages, p->high_frames, p->private_page_limit);
+        p->stop_reason = NULL;
+    }
+#endif
     if (p->hold != 0 || slot_entries(p->slot) != 0) {
         refused = 1;
         unmap_refusals++;
@@ -1011,7 +1355,18 @@ static void finish_one(struct proc *p)
         for (int i = 0; i < 3; i++)
             pt_l3[p->slot][i] = 0;
         asm volatile("dsb ish" ::: "memory");
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        pt_l3[p->slot][VOLUME_PROBE_VA >> 12] = 0;
+        asm volatile("dsb ishst" ::: "memory");
+#endif
         tlb_asid(p->asid);
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        if (p->volume_page) {
+            runtime_volume_release(p->volume_page);
+            p->volume_page = NULL;
+        }
+        p->volume_waiting = 0;
+#endif
         while (p->image_pages) {
             int pg = image_frames[p->slot][--p->image_pages];
             if (pg < 0) continue;
@@ -1065,6 +1420,11 @@ static void report_fault(struct proc *p)
            f->ap_el0, f->kind, p->gen - 1, p->gen);
 #ifdef QUOTA_NODE_WEB
     for (unsigned i = 0; i < 2; ++i) {
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+        if (p->fault_file_name[i])
+            printf("[wap-volume] fault %s=%s+%lx\n", i ? "lr" : "pc",
+                   p->fault_file_name[i], p->fault_file_offset[i]);
+#endif
         uintptr_t pa = p->fault_code_pa[i];
         for (const struct runtime_file *file = wap_libs_start; file < wap_libs_end; ++file) {
             if (pa >= (uintptr_t)file->begin && pa < (uintptr_t)file->end) {
@@ -1088,6 +1448,23 @@ void proc_finish_pending(void)
         if (procs[i].draining)
             finish_one(&procs[i]);
         report_fault(&procs[i]);
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        if (sched_current() && sched_current()->tier == TIER3) {
+            struct proc *p = &procs[i];
+            finish_disk_elf_fault(p);
+            if (p->alive && !p->draining && p->disk_read_waiting &&
+                !runtime_volume_io_pending()) {
+                uint64_t irq = irq_save();
+                p->disk_read_waiting = 0;
+                task_ready(p->task);
+                irq_restore(irq);
+            }
+        }
+#endif
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        if (sched_current() && sched_current()->tier == TIER3)
+            finish_volume_wait(&procs[i]);
+#endif
     }
 }
 
@@ -1135,6 +1512,27 @@ void proc_el0_abort(struct irq_frame *f, uint64_t esr)
     uint64_t pte = 0;
 
     asm volatile("mrs %0, far_el1" : "=r"(far));
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (block_on_disk_elf(p, far, esr))
+        return;
+#endif
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    unsigned ec = (esr >> 26) & 0x3f;
+    if (p && p->console == CONSOLE_VOLUME_PROBE && p->task == sched_current() &&
+        p->task->tier == TIER3 && (esr & 0x3f) == 7) {
+        uint64_t target = far & ~4095ull;
+        if (!p->volume_page && ec == (p->volume_exec ? 0x20u : 0x24u) &&
+            !(esr & 0x40) && target == VOLUME_PROBE_VA)
+            p->volume_waiting = 1;
+        else if (p->volume_data_offset && ec == 0x24 && target == DRAW_VA &&
+                 !pt_l3[p->slot][DRAW_VA >> 12])
+            p->volume_waiting = 2;
+        if (p->volume_waiting) {
+            p->task->state = TASK_BLOCKED;
+            return;
+        }
+    }
+#endif
     memset(&last_fault, 0, sizeof last_fault);
     last_fault.valid = 1;
     last_fault.ec = (uint32_t)((esr >> 26) & 0x3f);
@@ -1146,6 +1544,16 @@ void proc_el0_abort(struct irq_frame *f, uint64_t esr)
 #ifdef QUOTA_NODE_WEB
         for (unsigned i = 0; i < 2; ++i) {
             uint64_t pc = i ? f->r[30] : f->elr;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+            p->fault_file_name[i] = NULL;
+            if (pc >= ELF_DSO_BASE && pc < ELF_DSO_BASE + (uint64_t)ELF_DSO_PAGES * 4096) {
+                uint64_t src = p->disk_clean[(pc - ELF_DSO_BASE) / 4096];
+                if (src) {
+                    p->fault_file_name[i] = disk_extent_name((src >> 44) & 1023);
+                    p->fault_file_offset[i] = (((src >> 4) & DISK_DSO_POSITION_MASK) << 12) + (pc & 4095);
+                }
+            }
+#endif
             uint64_t leaf = walk(p, pc, &level);
             p->fault_code_pa[i] = (leaf & 1) ? ((leaf & 0x0000fffffffff000ull) | (pc & 4095)) : 0;
         }
@@ -1349,6 +1757,29 @@ void proc_el0_svc(struct irq_frame *f)
         return;
     }
     op = f->r[8];
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    /* A pathname literal may first be touched by the kernel in openat or
+       stat, before EL0 has issued a load from its file-backed page. */
+    if (p->disk_segment_count && (op == 56 || op == 79 || op == 78 || op == 48)) {
+        uint64_t path = f->r[1];
+        unsigned head = 4096 - (path & 4095);
+        if (block_on_disk_elf(p, path, (0x24u << 26) | 7)) {
+            f->elr -= 4;
+            return;
+        }
+        if (head < 256) {
+            char prefix[256];
+            if (!copy_process_bytes(p, path, prefix, head, 0)) {
+                unsigned i = 0;
+                while (i < head && prefix[i]) ++i;
+                if (i == head && block_on_disk_elf(p, path + head, (0x24u << 26) | 7)) {
+                    f->elr -= 4;
+                    return;
+                }
+            }
+        }
+    }
+#endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
     if (p->vfork_pid) {
         /* The single-threaded parent is suspended. The child uses its own
@@ -1446,7 +1877,15 @@ void proc_el0_svc(struct irq_frame *f)
 #ifdef QUOTA_WAP_FULL_RUNTIME
         uint64_t resume_pc = f->elr;
 #endif
-        int64_t result = p->linux_brk ? runtime_syscall(p, f) : -38;
+        int runtime_abi = p->linux_brk != 0;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB) && defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+        /* The static test image exercises the same file syscalls as ld.so. */
+        if (p->disk_segment_count && (op == 56 || op == 57 || op == 62 ||
+                                     op == 63 || op == 67 || op == 80 || op == 222 ||
+                                     op == 215 || op == 226))
+            runtime_abi = 1;
+#endif
+        int64_t result = runtime_abi ? runtime_syscall(p, f) : -38;
 #if defined(QUOTA_WAP_FULL_RUNTIME) && defined(QUOTA_WAP_LOADER_TRACE)
         if ((op == 19 || op == 20 || op == 21 || op == 59 || op == 199) && result < 0)
             printf("[wap] fd setup pid=%d tid=%u svc=%lu flags=%lx arg1=%lx errno=%ld\n",
@@ -1518,6 +1957,10 @@ void proc_el0_svc(struct irq_frame *f)
         }
 #endif
         f->r[0] = (uint64_t)result;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        if (p->disk_read_waiting)
+            return;
+#endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
         if (p->live_threads > 1 && !p->fork_child && !p->mapping.va && (op == 220 || op == 98 || op == 22 || op == 73 || op == 124 ||
             ((op == 63 || op == 64 || op == 206 || op == 207 || op == 211 || op == 212) && f->elr + 4 == resume_pc)))
@@ -1531,6 +1974,10 @@ void proc_el0_svc(struct irq_frame *f)
     }
     if (op == 1) {
         if (p->console == CONSOLE_QUOTA) printf("[cap] exit=%ld\n", (long)f->r[0]);
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+        if (p->console == CONSOLE_VOLUME_PROBE)
+            printf("[volume-pager] exit pid=%d byte=%lu\n", p->pid, f->r[0]);
+#endif
         reap_timed(p, "exit", ticks_now(), sched_period_now());
         return;
     }
@@ -1585,13 +2032,13 @@ int proc_kill(int64_t handle)
 static int alloc_page(uint64_t *pa)
 {
     static unsigned cursor;
-    for (unsigned scanned = 0; scanned < EL0_POOL; ++scanned) {
+    for (unsigned scanned = 0; scanned < pool_capacity; ++scanned) {
         uint64_t flags = irq_save();
         if (free_frames <= reserved_frames) {
             irq_restore(flags);
             return -1;
         }
-        unsigned i = cursor++ % EL0_POOL;
+        unsigned i = cursor++ % pool_capacity;
         if (pool_used[i]) {
             irq_restore(flags);
             continue;
@@ -1610,12 +2057,34 @@ static void free_idx(int idx)
 {
     if (idx < 0 || idx >= EL0_POOL)
         return;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (v8_page_plus_one[idx]) {
+        if (--v8_references[idx]) return;
+        forget_v8_page(idx);
+    }
+#endif
     memset(pool[idx], 0, 4096);
     uint64_t flags = irq_save();
     pool_used[idx] = 0;
     ++free_frames;
     irq_restore(flags);
 }
+
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+int proc_runtime_cache_alloc(uint8_t **page)
+{
+    uint64_t pa;
+    int frame = alloc_page(&pa);
+    if (frame >= 0)
+        *page = (uint8_t *)(uintptr_t)pa;
+    return frame;
+}
+
+void proc_runtime_cache_free(int frame)
+{
+    free_idx(frame);
+}
+#endif
 
 static uint64_t data_pte(uint64_t pa)
 {
@@ -1718,15 +2187,21 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
         man.mem_min_kb -= (ELF_DSO_PAGES - DSO_PRIVATE_PAGE_LIMIT) * 4;
         man.mem_min_kb += HIGH_FRAME_LIMIT * 4;
         p->private_page_limit = HIGH_FRAME_LIMIT + DSO_PRIVATE_PAGE_LIMIT;
+#ifndef QUOTA_RUNTIME_VOLUME_BOOT
         if (image->role == WAP_BACKEND || image->role == WAP_NODE_ONLY) {
             p->private_page_limit -= 4096;
             man.mem_min_kb -= 4096 * 4;
         }
+#endif
         if (image->role == WAP_FRONTEND || image->role == WAP_PAGE_ONLY) {
 #ifdef QUOTA_NODE_WEB
             /* Blink's component build consumes over 52 MiB of private DSO
              * pages before Oilpan creates its first normal allocation page. */
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+            const unsigned extra_pages = 8192; /* 80 MiB on the external runtime candidate. */
+#else
             const unsigned extra_pages = 12288; /* 96 MiB total private cap */
+#endif
 #else
             const unsigned extra_pages = 2048;
 #endif
@@ -1807,9 +2282,25 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     }
 #endif
     p->console = console;
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    p->volume_offset = console == CONSOLE_VOLUME_PROBE ? role : 0;
+    p->volume_page = NULL;
+    p->volume_waiting = 0;
+    p->volume_exec = console == CONSOLE_VOLUME_PROBE && limit;
+    p->volume_data_offset = p->volume_exec ? foreign_pa : 0;
+    if (p->volume_exec) {
+        p->volume_file = *(const struct runtime_volume_file *)kern_va;
+        p->volume_data_size = vx;
+    }
+#endif
 #ifdef QUOTA_NODE_WEB
     p->page_executable = image && (image->role == WAP_FRONTEND || image->role == WAP_PAGE_ONLY)
                          ? blink_executable() : NULL;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    if (image && image->volume_file &&
+        (image->role == WAP_FRONTEND || image->role == WAP_PAGE_ONLY))
+        p->page_executable = disk_catalog_lookup("quota-blink");
+#endif
 #endif
     p->document_size = console == CONSOLE_PAGE ? data_size : 0;
     memset(p->package_files, 0, sizeof p->package_files);
@@ -1836,7 +2327,19 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     p->sub_n = 0;
     p->unpaced_draw = role == EL0_PAINT_MUSIC;
     p->image_pages = 0;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    p->disk_segment_count = 0;
+    memset(p->disk_clean, 0, sizeof p->disk_clean);
+    p->v8_shared = p->page_ins = 0;
+    p->clean_pages = p->clean_cursor = p->clean_scanned = p->evicted_pages = 0;
+    p->disk_elf_waiting = 0;
+    p->disk_read_waiting = 0;
+#endif
     build_pt(p);
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    if (p->volume_data_offset)
+        pt_l3[p->slot][DRAW_VA >> 12] = 0;
+#endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
     memset(p->threads, 0, sizeof p->threads);
     p->fork_child = NULL;
@@ -1868,10 +2371,28 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     memset(p->signal_actions, 0, sizeof p->signal_actions);
     if (image) {
         memset(image_pt[p->slot], 0, sizeof image_pt[0]);
-        map_image(p, image->file, image->load_bias, headers, header_count);
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        if (image->volume_file)
+            map_disk_image(p, image, headers, header_count);
+        else
+#endif
+            map_image(p, image->file, image->load_bias, headers, header_count);
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB) && defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+        if (image->volume_file && !image->interp_entry) {
+            p->dso_frame = p->image_pages;
+            p->mapped_dso_pages = 0;
+            p->private_page_limit = 16;
+            for (unsigned i = 0; i < ELF_DSO_PAGES; ++i)
+                image_frames[p->slot][p->dso_frame + i] = -1;
+            p->image_pages += ELF_DSO_PAGES;
+            memset(p->dso_source, 0, sizeof p->dso_source);
+            memset(p->dso_used, 0, sizeof p->dso_used);
+            memset(p->dso_anonymous, 0, sizeof p->dso_anonymous);
+        }
+#endif
         if (image->interp_entry) {
-            map_image(p, wap_interp_start, ELF_INTERP_BASE,
-                      wap_interp_start + image->interp_phoff, image->interp_count);
+            map_image(p, image->interpreter, ELF_INTERP_BASE,
+                      image->interpreter + image->interp_phoff, image->interp_count);
             for (unsigned va = ELF_STACK_TOP - ELF_STACK_PAGES * 4096;
                  va < ELF_BRK_BASE + ELF_BRK_PAGES * 4096; va += 4096) {
                 uint64_t pa = p->pa[1];
@@ -1956,6 +2477,22 @@ int64_t proc_spawn_console(const char *code, unsigned bytes)
     return spawn_image(NULL, code, bytes, NULL, 0, NULL, 0, 0, CONSOLE_QUOTA, "hello", 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+int64_t proc_spawn_volume_probe(const char *name, const struct runtime_volume_file *file,
+                                 uint64_t code_offset, uint64_t data_offset, unsigned data_size)
+{
+    /* mov x1,#0x3000; br x1 */
+    static const uint32_t jump[] = { 0xd2860001, 0xd61f0020 };
+    if ((code_offset & 4095) || code_offset > file->size || file->size - code_offset < 4096 ||
+        !data_offset || data_offset > file->size || data_size > 4096 ||
+        data_size > file->size - data_offset)
+        return -1;
+    return spawn_image(NULL, (const char *)jump, sizeof jump, NULL, 0, NULL, 0, 0,
+                       CONSOLE_VOLUME_PROBE, name, file->offset + code_offset, 1,
+                       data_offset, 0, (uintptr_t)file, data_size, 0, 0, 0);
+}
+#endif
+
 /* The existing single RX page process layout supports this ELF subset.
  * Linux runtime executables need a separate mapper and process ABI. */
 static uint64_t elf_number(const unsigned char *bytes, unsigned count)
@@ -1966,12 +2503,9 @@ static uint64_t elf_number(const unsigned char *bytes, unsigned count)
     return value;
 }
 
-static int prepare_interpreter(struct elf_mapping *image)
+static int parse_interpreter(struct elf_mapping *image, const unsigned char *file, size_t bytes)
 {
-    const unsigned char *file = wap_interp_start;
-    uintptr_t start = (uintptr_t)file, end = (uintptr_t)wap_interp_end;
-    if (!start || end < start || end - start < 64) return -1;
-    size_t bytes = end - start;
+    if (!file || bytes < 64) return -1;
     if (elf_number(file, 4) != 0x464c457f || file[4] != 2 || file[5] != 1 ||
         file[6] != 1 || elf_number(file + 16, 2) != 3 || elf_number(file + 18, 2) != 183 ||
         elf_number(file + 20, 4) != 1 || elf_number(file + 52, 2) != 64 ||
@@ -2002,14 +2536,71 @@ static int prepare_interpreter(struct elf_mapping *image)
             valid_entry = 1;
     }
     if (!valid_entry) return -1;
+    image->interpreter = file;
     image->interp_entry = ELF_INTERP_BASE + entry;
     image->interp_phoff = off;
     image->interp_count = count;
     return 0;
 }
 
-static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigned char *document, unsigned size,
-                         const unsigned char *backend, unsigned backend_size, enum wap_role role)
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+/* The desktop loads one page per poll and publishes only a validated ELF.
+ * The published image is immutable for the lifetime of the boot. */
+static unsigned char volume_interpreter[256 * 1024] __attribute__((aligned(4096)));
+static unsigned interpreter_read;
+static int interpreter_ready;
+
+int proc_prepare_volume_interpreter(const struct runtime_volume_file *file)
+{
+    if (interpreter_ready)
+        return 1;
+    if (!file || file->size < 64 || file->size > sizeof volume_interpreter) {
+        interpreter_read = 0;
+        return -1;
+    }
+    unsigned remaining = file->size - interpreter_read;
+    unsigned length = remaining < 4096 ? remaining : 4096;
+    int result = runtime_volume_read_file(file, interpreter_read,
+                                          volume_interpreter + interpreter_read, length);
+    if (result != 1) {
+        if (result < 0)
+            interpreter_read = 0;
+        return result;
+    }
+    interpreter_read += length;
+    if (interpreter_read != file->size)
+        return 0;
+    struct elf_mapping layout = {0};
+    if (parse_interpreter(&layout, volume_interpreter, interpreter_read)) {
+        interpreter_read = 0;
+        return -1;
+    }
+    interpreter_ready = 1;
+    printf("[wap-volume] interpreter ready bytes=%u entry=%x\n",
+           interpreter_read, layout.interp_entry);
+    return 1;
+}
+#endif
+
+static int prepare_interpreter(struct elf_mapping *image)
+{
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (interpreter_ready)
+        return parse_interpreter(image, volume_interpreter, interpreter_read);
+#endif
+    uintptr_t start = (uintptr_t)wap_interp_start, end = (uintptr_t)wap_interp_end;
+    if (end < start)
+        return -1;
+    return parse_interpreter(image, wap_interp_start, end - start);
+}
+
+static int64_t spawn_elf_source(const unsigned char *elf, unsigned bytes, const unsigned char *document, unsigned size,
+                         const unsigned char *backend, unsigned backend_size, enum wap_role role,
+                         const unsigned char *program_headers
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+                         , const struct runtime_volume_file *disk_file
+#endif
+                         )
 {
     if (!elf || bytes < 64 || elf_number(elf, 4) != 0x464c457f ||
         elf[4] != 2 || elf[5] != 1 || elf[6] != 1 || (elf[7] != 0 && elf[7] != 3) ||
@@ -2025,23 +2616,32 @@ static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigne
     unsigned count = elf_number(elf + 56, 2);
     if (!count || count > 32 || phoff < 64 || phoff > bytes || bytes - phoff < count * 56)
         return -1;
+    if (!program_headers)
+        program_headers = elf + phoff;
     if (entry >= ELF_BASE && entry < ELF_BASE + ELF_WINDOW) {
         if (size > sizeof procs[0].package_contents[0] || backend_size > sizeof procs[0].package_contents[1] || (!backend && backend_size)) return -1;
         struct elf_mapping image = { .role = role, .file = elf, .load_bias = bias, .backend = backend, .backend_size = backend_size };
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        image.volume_file = disk_file;
+#endif
         uint64_t next_page = ELF_BASE;
         int executable_entry = 0, interpreter = 0;
         /* WAP roles open private package files; the legacy tile ABI shares
          * document storage with pixel rows in the same page. */
         if ((entry & 3) || (role == WAP_SINGLE && size > GUEST_TILE_OFFSET)) return -1;
         for (unsigned i = 0; i < count; ++i) {
-            const unsigned char *ph = elf + phoff + 56 * i;
+            const unsigned char *ph = program_headers + 56 * i;
             unsigned type = elf_number(ph, 4), flags = elf_number(ph + 4, 4);
             if (type == 3) {
                 static const char name[] = "/lib/ld-linux-aarch64.so.1";
                 uint64_t pos = elf_number(ph + 8, 8);
                 if (interpreter || pos > bytes || sizeof name > bytes - pos ||
-                    elf_number(ph + 32, 8) != sizeof name ||
-                    elf[pos + sizeof name - 1] || strcmp((const char *)elf + pos, name)) return -1;
+                    elf_number(ph + 32, 8) != sizeof name) return -1;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+                /* The volume parser validates PT_INTERP before publishing its headers. */
+                if (!disk_file)
+#endif
+                    if (elf[pos + sizeof name - 1] || strcmp((const char *)elf + pos, name)) return -1;
                 interpreter = 1;
                 continue;
             }
@@ -2061,7 +2661,11 @@ static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigne
             if (phoff >= off && phoff - off <= len && count * 56u <= len - (phoff - off))
                 image.phdr_va = va + (phoff - off);
             next_page = (va + mem + 4095) & ~4095ull;
-            image.pages += ((next_page - (va & ~4095ull)) >> 12) - shared_image_pages(elf, flags, off, va, len);
+            image.pages += (next_page - (va & ~4095ull)) >> 12;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+            if (!disk_file)
+#endif
+                image.pages -= shared_image_pages(elf, flags, off, va, len);
             if (flags == 5 && entry >= va && entry + 4 <= va + len) executable_entry = 1;
         }
         if (bias && !interpreter) return -1;
@@ -2077,10 +2681,13 @@ static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigne
             system_layout.role = WAP_SINGLE;
         }
 #endif
-        return spawn_image(&image, NULL, 0, document, size, elf + phoff, count, entry,
+        return spawn_image(&image, NULL, 0, document, size, program_headers, count, entry,
                            document ? CONSOLE_PAGE : CONSOLE_LINUX_BOOTSTRAP, (role == WAP_BACKEND || role == WAP_NODE_ONLY) ? "wap-backend" : "elf-page",
                            0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (disk_file) return -1;
+#endif
     if (role != WAP_SINGLE) return -1;
     const unsigned char *code = NULL, *data = NULL;
     unsigned code_size = 0, data_size = 0;
@@ -2115,6 +2722,29 @@ static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigne
                        document ? CONSOLE_PAGE : CONSOLE_LINUX_BOOTSTRAP, "elf-bootstrap", 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
+static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigned char *document, unsigned size,
+                         const unsigned char *backend, unsigned backend_size, enum wap_role role)
+{
+    return spawn_elf_source(elf, bytes, document, size, backend, backend_size, role, NULL
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+                            , NULL
+#endif
+                            );
+}
+
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB) && defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+int64_t proc_spawn_disk_elf_test(const struct runtime_volume_file *file,
+                                 const void *header, const void *program_headers)
+{
+    if (file->size > UINT32_MAX)
+        return -1;
+    static const unsigned char document[] = "";
+    return spawn_elf_source(header, file->size, document, 0, NULL, 0,
+                            WAP_PAGE_ONLY, program_headers, file);
+}
+#endif
+
+
 int64_t proc_spawn_bootstrap_elf(const unsigned char *elf, unsigned bytes)
 {
     return spawn_elf(elf, bytes, NULL, 0, NULL, 0, WAP_SINGLE);
@@ -2125,6 +2755,85 @@ int64_t proc_spawn_page_elf(const unsigned char *elf, unsigned bytes,
 {
     return document ? spawn_elf(elf, bytes, document, size, NULL, 0, WAP_SINGLE) : -1;
 }
+
+#ifdef QUOTA_LINUX_APP_RUNTIME
+static int64_t connect_wap_pair(int64_t ui, int64_t js)
+{
+    uint64_t flags = irq_save();
+    struct proc *front = from_handle(ui, 1), *back = from_handle(js, 1);
+    struct packet_socket *ends[2];
+    unsigned n = 0;
+    for (unsigned i = 0; i < WAP_OBJECT_SLOTS && n < 2; ++i)
+        if (!packet_sockets[i].refs) ends[n++] = &packet_sockets[i];
+    if (!front || !back || n != 2) {
+        irq_restore(flags);
+        proc_kill(ui); proc_kill(js);
+        return -1;
+    }
+    struct proc *members[] = {front, back};
+    for (unsigned i = 0; i < 2; ++i) {
+        ends[i]->refs = 1;
+        ends[i]->stream = 0;
+        ends[i]->nonblock = 0x800;
+        ends[i]->passcred = ends[i]->shut = ends[i]->packets = ends[i]->packet_head = 0;
+        ends[i]->peer = ends[i^1];
+        members[i]->files[0].identity = ++next_fd_identity;
+        members[i]->files[0].socket = ends[i];
+        members[i]->files[0].event_flags = FD_PACKET;
+    }
+    backend_owner = js; backend_ui = ui; backend_line_ready = 0;
+    back->files[1].event_flags = FD_WAP_NOTE;
+    back->pending_note = back->note_writer_tid = 0;
+    page_owner = ui;
+    page_rows = 0;
+#ifdef QUOTA_LINUX_APP_RUNTIME
+    electron_generation = input_count = input_head = 0;
+#endif
+    task_ready(front->task);
+    task_ready(back->task);
+    irq_restore(flags);
+    printf("[wap] launched pair frontend=%ld backend=%ld ipc_fd=3\n", ui, js);
+    return ui;
+}
+#endif
+
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+int proc_volume_users_active(void)
+{
+    for (unsigned i = 0; i < EL0_SLOTS; ++i)
+        if ((procs[i].alive || procs[i].draining) && procs[i].disk_segment_count)
+            return 1;
+    return 0;
+}
+
+static int64_t spawn_volume_role(const struct runtime_volume_elf *elf,
+                                 const unsigned char *html, unsigned html_size,
+                                 const unsigned char *backend, unsigned backend_size,
+                                 enum wap_role role)
+{
+    if (elf->file.size > UINT32_MAX)
+        return -1;
+    return spawn_elf_source(elf->header, elf->file.size, html, html_size,
+                            backend, backend_size, role, elf->programs, &elf->file);
+}
+
+int64_t proc_spawn_volume_wap(const struct runtime_volume_elf *blink,
+                              const struct runtime_volume_elf *node,
+                              const unsigned char *html, unsigned html_size,
+                              const unsigned char *backend, unsigned backend_size)
+{
+    int64_t ui = spawn_volume_role(blink, html, html_size, backend, backend_size,
+                                   backend ? WAP_FRONTEND : WAP_PAGE_ONLY);
+    if (ui <= 0 || !backend)
+        return ui;
+    int64_t js = spawn_volume_role(node, html, html_size, backend, backend_size, WAP_BACKEND);
+    if (js <= 0) {
+        proc_kill(ui);
+        return js;
+    }
+    return connect_wap_pair(ui, js);
+}
+#endif
 
 int64_t proc_spawn_wap_elf(const unsigned char *elf, unsigned bytes,
                            const unsigned char *html, unsigned html_size,
@@ -2149,41 +2858,7 @@ int64_t proc_spawn_wap_elf(const unsigned char *elf, unsigned bytes,
         if (ui <= 0) return ui;
         int64_t js = spawn_elf(elf, bytes, html, html_size, backend, backend_size, WAP_BACKEND);
         if (js <= 0) { proc_kill(ui); return js; }
-        uint64_t flags = irq_save();
-        struct proc *front = from_handle(ui, 1), *back = from_handle(js, 1);
-        struct packet_socket *ends[2];
-        unsigned n = 0;
-        for (unsigned i = 0; i < WAP_OBJECT_SLOTS && n < 2; ++i)
-            if (!packet_sockets[i].refs) ends[n++] = &packet_sockets[i];
-        if (!front || !back || n != 2) {
-            irq_restore(flags);
-            proc_kill(ui); proc_kill(js);
-            return -1;
-        }
-        struct proc *members[] = {front, back};
-        for (unsigned i = 0; i < 2; ++i) {
-            ends[i]->refs = 1;
-            ends[i]->stream = 0;
-            ends[i]->nonblock = 0x800;
-            ends[i]->passcred = ends[i]->shut = ends[i]->packets = ends[i]->packet_head = 0;
-            ends[i]->peer = ends[i^1];
-            members[i]->files[0].identity = ++next_fd_identity;
-            members[i]->files[0].socket = ends[i];
-            members[i]->files[0].event_flags = FD_PACKET;
-        }
-        backend_owner = js; backend_ui = ui; backend_line_ready = 0;
-        back->files[1].event_flags = FD_WAP_NOTE;
-        back->pending_note = back->note_writer_tid = 0;
-        page_owner = ui;
-        page_rows = 0;
-#ifdef QUOTA_LINUX_APP_RUNTIME
-        electron_generation = input_count = input_head = 0;
-#endif
-        task_ready(front->task);
-        task_ready(back->task);
-        irq_restore(flags);
-        printf("[wap] launched pair frontend=%ld backend=%ld ipc_fd=3\n", ui, js);
-        return ui;
+        return connect_wap_pair(ui, js);
     }
 #endif
 #ifdef QUOTA_LINUX_APP_RUNTIME
@@ -2273,7 +2948,7 @@ void proc_init(void)
     memset(procs, 0, sizeof procs);
     memset(qq, 0, sizeof qq);
     memset(pool_used, 0, sizeof pool_used);
-    free_frames = EL0_POOL;
+    free_frames = pool_capacity;
     for (int i = 0; i < EL0_SLOTS; i++) {
         procs[i].slot = i;
         for (int k = 0; k < 3; k++)

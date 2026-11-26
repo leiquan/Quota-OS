@@ -173,7 +173,7 @@ void clock_detect(void)
 {
     uint64_t a = loop_ticks(), b = loop_ticks(), c = loop_ticks();
     icount = a == b && b == c && a >= 16384 && a <= 16384 + 64;
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     /* The published volume launcher uses two virtual nanoseconds per
      * instruction on a 16 ns counter. An endpoint may straddle one tick. */
     uint64_t lo = a < b ? a : b, hi = a > b ? a : b;
@@ -192,7 +192,7 @@ int clock_is_icount(void)
     return icount != 0;
 }
 
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
 int clock_fractional_icount(void)
 {
     return icount == 8;

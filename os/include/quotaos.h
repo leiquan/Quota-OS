@@ -314,7 +314,7 @@ struct app_display_stats {
 };
 void app_display_read(struct app_display_stats *stats);
 void app_display_core_frame(uint64_t release);
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
 void sched_volume_pressure_begin(struct task *probe);
 void sched_volume_pressure_end(void);
 void sched_volume_pressure_dump(void);
@@ -462,7 +462,7 @@ void decl_add_t1_app(const char *who, int dev, uint64_t b, int policy);
 uint64_t dev_real_us(const struct sim_dev *d, uint64_t req);
 uint64_t up_us(uint64_t t);
 int clock_is_icount(void);
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
 int clock_fractional_icount(void);
 #endif
 void clock_detect(void);
@@ -509,6 +509,10 @@ uint64_t mmu_kernel_ttbr(void);
 uint64_t mmu_l2_ram_phys(void);
 uint32_t system_reserve_kb(void);
 void color_init(uint64_t ram_bytes);
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+unsigned color_bind_process_frames(uint8_t **frames, unsigned capacity);
+void proc_bind_color_pool(void);
+#endif
 uint64_t color_padding_kb(void);
 uint32_t color_alloc_shared(uint32_t n);
 void color_free_shared(void);
@@ -566,6 +570,57 @@ uint32_t input_drop_count(void);
 void rng_init(void);
 int rng_read(void *dst, unsigned bytes);
 void note_disk_init(void);
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+int proc_runtime_cache_alloc(uint8_t **page);
+void proc_runtime_cache_free(int frame);
+void runtime_volume_init(void);
+int runtime_volume_trim(void);
+void runtime_volume_poll(void);
+struct runtime_volume_file {
+    uint64_t offset;
+    uint64_t size;
+};
+/* 1 = complete, 0 = retry after I/O, -1 = invalid or unavailable. */
+int runtime_volume_find(const char *name, struct runtime_volume_file *file);
+int runtime_volume_read_file(const struct runtime_volume_file *file, uint64_t position,
+                             void *destination, unsigned length);
+/* Materialize one ELF segment page, zero-filling bytes outside file data. */
+int runtime_volume_fill_segment_page(const struct runtime_volume_file *file,
+                                     uint64_t position, unsigned in_page,
+                                     unsigned bytes, uint8_t *page);
+#ifdef QUOTA_NODE_WEB
+#define RUNTIME_VOLUME_MAX_FILES 1024
+#define RUNTIME_VOLUME_NAME_BYTES 112
+unsigned runtime_volume_index_count(void);
+int runtime_volume_io_pending(void);
+int runtime_volume_index_entry(unsigned index, char name[RUNTIME_VOLUME_NAME_BYTES],
+                               struct runtime_volume_file *file);
+int proc_prepare_volume_catalog(void);
+struct runtime_volume_elf {
+    struct runtime_volume_file file;
+    unsigned char header[64];
+    unsigned char programs[32 * 56];
+};
+int64_t proc_spawn_volume_wap(const struct runtime_volume_elf *blink,
+                              const struct runtime_volume_elf *node,
+                              const unsigned char *html, unsigned html_size,
+                              const unsigned char *backend, unsigned backend_size);
+int proc_volume_users_active(void);
+int proc_prepare_volume_interpreter(const struct runtime_volume_file *file);
+#endif
+#ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+#ifdef QUOTA_NODE_WEB
+int64_t proc_spawn_disk_elf_test(const struct runtime_volume_file *file,
+                                 const void *header, const void *program_headers);
+#endif
+int runtime_volume_acquire(uint64_t offset, const uint8_t **data);
+void runtime_volume_release(const uint8_t *data);
+int64_t proc_spawn_volume_probe(const char *name, const struct runtime_volume_file *file,
+                                 uint64_t code_offset, uint64_t data_offset, unsigned data_size);
+#endif
+
+#endif
+
 void note_disk_poll(void);
 int note_disk_power_ready(void);
 int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_t *generation);

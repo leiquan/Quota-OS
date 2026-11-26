@@ -65,6 +65,12 @@ void note_disk_init(void)
     int n = dtb_find_bases("virtio,mmio", nodes, 32);
     for (int i = 0; i < n; ++i) {
         if (mmio_rd(nodes[i]+8) == 2 && mmio_rd(nodes[i]+4) == 2) {
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+            /* The read-only runtime disk has its own Tier 3 driver. */
+            mmio_wr(nodes[i] + 0x14, 0);
+            if (mmio_rd(nodes[i] + 0x10) & (1u << 5))
+                continue;
+#endif
             base = nodes[i];
             break;
         }

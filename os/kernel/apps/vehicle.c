@@ -90,7 +90,7 @@ static struct frame_trace {
 } frame_trace[1536];
 static unsigned trace_count, trace_dropped;
 static volatile int trace_active;
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
 static uint32_t trace_initial_frames[2];
 static uint64_t trace_prev_commit[2], trace_begin_tick;
 #endif
@@ -99,7 +99,7 @@ void app_frame_trace_start(void)
 {
     uint64_t flags = irq_save();
     trace_count = trace_dropped = 0;
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     trace_initial_frames[0] = dashboard_frames;
     trace_initial_frames[1] = video_frames;
     trace_prev_commit[0] = display_commit_tick;
@@ -127,13 +127,13 @@ void app_frame_trace_dump(void)
 {
     uint64_t flags = irq_save();
     trace_active = 0;
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     uint64_t end = ticks_now();
     uint32_t speed = dashboard_frames - trace_initial_frames[0];
     uint32_t camera = video_frames - trace_initial_frames[1];
 #endif
     irq_restore(flags);
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     printf("[frame-window] begin=%lu end=%lu speed=%u camera=%u prev_speed=%lu prev_camera=%lu\n",
            trace_begin_tick, end, speed, camera, trace_prev_commit[0], trace_prev_commit[1]);
 #endif
@@ -164,7 +164,7 @@ static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
     uint32_t *surface = visible ? app_surface + y * app_stride + APP_DRAW_X
                                : &locked_pixels[0][0];
     unsigned stride = visible ? app_stride : APP_METER_W;
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     if (clock_fractional_icount()) {
         /* Eight successive reads span eight instructions. Subtracting
          * 8 * target from their sum gives the first read's displacement

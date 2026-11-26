@@ -463,7 +463,7 @@ static struct {
     struct app_display_stats display;
     struct running_app *reservation, *pressure_memory;
     struct task *task;
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     struct running_app *pressure_probe;
 #endif
     unsigned pressure_kib;
@@ -576,7 +576,7 @@ static void begin_trial(int number, int approved)
             }
         }
     }
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     if (trial.pressure_memory) {
         const struct app_manifest manifest = {"volume-t2", "Continuously runnable", 0, 0, 400, 400};
         struct running_app *app = resource_commit(&manifest);
@@ -645,7 +645,7 @@ static void poll_trial(void)
     int ok = peak && frames + 1 >= elapsed && !misses && !crossings && !shortfalls && !over;
     int combined = trial.pressure_memory != NULL;
     if (combined) {
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
         sched_volume_pressure_end();
         task_kill(trial.pressure_probe->task);
         resource_release(trial.pressure_probe);
@@ -702,7 +702,7 @@ static void poll_trial(void)
     trial.active = 0;
     if (combined) {
         app_frame_trace_dump();
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
         sched_volume_pressure_dump();
 #endif
     }
@@ -1038,6 +1038,7 @@ static void on_group(lv_event_t *e)
         displayed_frame = 0;
         demo_frame.data = NULL;
         lv_label_set_text(demo_status, demo_handle > 0 ? "Loading app.html..."
+            : result == WAP_VOLUME_PENDING ? "Checking WAP runtime volume..."
             : result == WAP_LOAD_FAILED ? "Quota OS could not load the page process."
                     : "The page runtime is missing from this system image.");
         show_demo_window();
@@ -2261,6 +2262,14 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                 lv_label_set_text(login_status,"Account storage unavailable.");
             continue;
         }
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+        runtime_volume_poll();
+        int volume_status = wap_volume_prepare_poll(&demo_handle);
+        if (volume_status)
+            lv_label_set_text(demo_status, volume_status > 0
+                ? (demo_handle > 0 ? "Loading app.html..." : "Runtime volume verified.")
+                : "Runtime volume unavailable or quota insufficient.");
+#endif
         touch_pressure_memory();
         power_poll();
         const char *console = proc_console_text();

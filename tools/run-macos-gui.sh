@@ -1,17 +1,13 @@
 #!/bin/bash
-# Apple Silicon: real host time with native CPU execution, not icount.
+# Use the same authenticated desktop and data disk as the normal launcher.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [[ $(uname -s) != Darwin || $(uname -m) != arm64 ]]; then
     echo 'This launcher requires an Apple Silicon Mac.' >&2
     exit 1
 fi
-kernel=${1:-build/quotaos-lvgl.bin}
-if [[ ! -f "$kernel" ]]; then
-    echo 'Build the image first: bash tools/build-lvgl-macos.sh' >&2
-    exit 1
+if [[ $# -gt 0 && $1 != -* ]]; then
+    export QUOTA_KERNEL=$1
+    shift
 fi
-exec /bin/bash tools/run-qemu-gui.sh -accel hvf -machine virt,gic-version=3 \
-    -cpu host -m 128M -display cocoa -nic none -device ramfb \
-    -device virtio-keyboard-device -device virtio-tablet-device \
-    -kernel "$kernel" -serial stdio -monitor none
+exec /bin/bash tools/run-files.sh -display cocoa "$@"

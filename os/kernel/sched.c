@@ -853,7 +853,7 @@ static void status_sample(uint64_t release)
 }
 #endif
 
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
 /* Freeze one row per complete period, and write serial output outside IRQs. */
 static struct {
     uint64_t first;
@@ -910,7 +910,7 @@ static void capture_pressure_period(int skipped)
 static void end_period(uint64_t now, int skipped)
 {
     obs_now = now;
-#ifdef SYSTEM_STATUS_ENABLED
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     capture_pressure_period(skipped);
 #endif
     for (int i = 0; i < 3; i++)
