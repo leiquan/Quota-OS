@@ -46,6 +46,25 @@ static struct {
     int result;
 } io_trace[sizeof steps / sizeof steps[0]];
 static uint64_t scroll_ticks[1024];
+static unsigned bus_count, bus_dropped, page_count, page_dropped;
+static struct { uint64_t begin, end; unsigned operation, bytes; } bus_trace[512];
+static struct { uint64_t tick; unsigned generation; } page_trace[128];
+
+void touch_ext4_record_io(unsigned op, unsigned bytes, unsigned long begin_tick, unsigned long end_tick)
+{
+    if (!running) return;
+    if (bus_count < sizeof bus_trace / sizeof bus_trace[0])
+        bus_trace[bus_count++] = (typeof(*bus_trace)){begin_tick, end_tick, op, bytes};
+    else ++bus_dropped;
+}
+
+void touch_ext4_record_frame(unsigned generation)
+{
+    if (!running) return;
+    if (page_count < sizeof page_trace / sizeof page_trace[0])
+        page_trace[page_count++] = (typeof(*page_trace)){ticks_now(), generation};
+    else ++page_dropped;
+}
 
 static int starts_with_word(const char *text, const char *word)
 {
@@ -181,6 +200,15 @@ static void finish(int pass, int cold)
                i, steps[i].op, (unsigned long)io_trace[i].submitted,
                (unsigned long)io_trace[i].completed, io_trace[i].result);
     }
+    printf("[touch-ext4] bus-trace count=%u dropped=%u\n", bus_count, bus_dropped);
+    for (unsigned i = 0; i < bus_count; ++i)
+        printf("[touch-ext4] bus-op=%u bytes=%u start=%lu end=%lu\n",
+               bus_trace[i].operation, bus_trace[i].bytes,
+               (unsigned long)bus_trace[i].begin, (unsigned long)bus_trace[i].end);
+    printf("[touch-ext4] page-trace count=%u dropped=%u\n", page_count, page_dropped);
+    for (unsigned i = 0; i < page_count; ++i)
+        printf("[touch-ext4] page-frame generation=%u ticks=%lu\n",
+               page_trace[i].generation, (unsigned long)page_trace[i].tick);
     printf("[touch-ext4] scroll-trace count=%u dropped=%u\n", recorded, dropped);
     for (unsigned i = 0; i < recorded; ++i)
         printf("[touch-ext4] scroll-step ticks=%lu\n", (unsigned long)scroll_ticks[i]);

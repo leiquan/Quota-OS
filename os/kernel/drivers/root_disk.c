@@ -1,5 +1,8 @@
 #include "quotaos.h"
 #include "root_disk.h"
+#ifdef QUOTA_GUI_EXT4
+#include "touch_ext4.h"
+#endif
 #include "ext4_jbd2.h"
 
 enum {
@@ -44,6 +47,9 @@ static int transfer(unsigned operation, uint64_t sector, unsigned bytes)
     asm volatile("dsb sy" ::: "memory");
     available.index = index + 1;
     asm volatile("dsb sy" ::: "memory");
+#ifdef QUOTA_GUI_EXT4
+    uint64_t trace_begin = ticks_now();
+#endif
     mmio_wr(base + 0x50, 0);
     uint64_t deadline = ticks_now() + us_to_ticks(1000000);
     while (used.index == index) {
@@ -57,6 +63,9 @@ static int transfer(unsigned operation, uint64_t sector, unsigned bytes)
         return -1;
     }
     mmio_wr(base + 0x64, mmio_rd(base + 0x60));
+#ifdef QUOTA_GUI_EXT4
+    touch_ext4_record_io(operation, bytes, trace_begin, ticks_now());
+#endif
     return 0;
 }
 

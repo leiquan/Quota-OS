@@ -13,3 +13,6 @@ int touch_ext4_shell_command(const char *command, char *reply, size_t capacity);
 const char *touch_ext4_shell_poll(void);
 int touch_ext4_files_submit(enum root_operation op, const char *name, const char *text, size_t bytes);
 const char *touch_ext4_files_poll(enum root_operation *op, int *result);
+
+void touch_ext4_record_io(unsigned operation, unsigned bytes, unsigned long begin, unsigned long end);
+void touch_ext4_record_frame(unsigned generation);

@@ -2326,6 +2326,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             const uint32_t *surface = proc_page_surface(demo_handle, &frame_number);
             if (surface && displayed_frame != frame_number) {
                 displayed_frame = frame_number;
+                touch_ext4_record_frame(frame_number);
                 demo_frame.data = (const uint8_t *)surface;
                 lv_image_set_src(demo_image, &demo_frame);
                 monitor_visible(demo_status, 0);
