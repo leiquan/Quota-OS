@@ -48,6 +48,6 @@ void kmain(uint64_t dtb)
     }
     printf("[boot] calibration complete; admitting realtime services\n");
     services_start();
-    printf("[boot] tier-1 display-vsync and timer-server bound to their slots\n");
+    printf("[boot] tier-1 services bound to their slots\n");
     sched_start(shell_main);
 }

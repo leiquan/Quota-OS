@@ -13,11 +13,16 @@
 
 /* 槽号按这个顺序分：CPU 不为 0 的依次是 0、1、2、3。 */
 static const struct tier1_decl tier1_table[] = {
+#ifdef QUOTA_CLI
+    /* The timer task and its stack are in the kernel image. */
+    {"timer-server", "periodic timer service", 300, 3500, 0},
+#else
     {"display-vsync", "显示提交，从上电就开始跑", 500, 1000, 2048},
     {"timer-server", "周期时钟，从上电就开始跑", 300, 3500, 1024},
     {"gic-server", "中断路由，只保留槽（空槽）", 300, 6000, 2048},
     {"blk-driver", "存储驱动的槽（失控演示借它）", 400, 8000, 4096},
     {"net-driver", "网络驱动，只占内存", 0, 0, 4096},
+#endif
 };
 
 static const struct app_manifest catalog[] = {

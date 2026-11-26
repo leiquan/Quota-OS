@@ -13,10 +13,10 @@ while IFS= read -r f; do
     objs+=("$obj")
 done < <(cat kernel/sources.list; echo cli/console.c)
 sed '/__image_end =/i\
-    .cli_module (NOLOAD) : ALIGN(4096) { __cli_module = .; . += 4096; } :data
+    .cli_module (NOLOAD) : ALIGN(4096) { __cli_module = .; . += 4096; __cli_module_size = .; . += 4; } :data
 ' boot/linker.ld > "$out/linker.ld"
 "${cc[@]}" "${link_flags[@]}" -Wl,--gc-sections,--build-id=none -T "$out/linker.ld" -o "$out/kernel.elf" "${objs[@]}" $RUNTIME_LIB
 "$OBJCOPY" -O binary "$out/kernel.elf" build/quotaos-cli.bin
-"${cc[@]}" "${link_flags[@]}" -Wl,--build-id=none -T user/user.ld cli/test.S -o "$out/test.elf"
-"$OBJCOPY" -O binary "$out/test.elf" build/Test.cap
+"${cc[@]}" "${link_flags[@]}" -Wl,--build-id=none -O2 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -mgeneral-regs-only -T user/user.ld cli/test.c -o "$out/test.elf"
+"$OBJCOPY" -O binary "$out/test.elf" "$out/test.bin"
 "$NM" "$out/kernel.elf" | awk '$3=="__cli_module" {print "0x"$1}' > "$out/module.addr"

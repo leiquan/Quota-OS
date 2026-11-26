@@ -1826,6 +1826,11 @@ void sched_init(void)
 
 void services_start(void)
 {
+#ifdef QUOTA_CLI
+    struct task *timer = task_create("timer-server", TIER1, KIND_JOB);
+    timer->work_t = us_to_ticks(40);
+    sched_bind_slot(timer, 0);
+#else
     const char *args = dtb_bootargs();
     int dashboard = !strcmp(args, "apps") || !strcmp(args, "apps-video") ||
                     !strcmp(args, "apps-desktop-stall") || !strcmp(args, "apps-lifecycle");
@@ -1837,6 +1842,7 @@ void services_start(void)
     t = task_create("timer-server", TIER1, KIND_JOB);
     t->work_t = us_to_ticks(40);
     sched_bind_slot(t, 1);
+#endif
 }
 
 void sched_start(void (*shell_entry)(void))

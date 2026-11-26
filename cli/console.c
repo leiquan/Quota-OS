@@ -1,6 +1,7 @@
 #include "quotaos.h"
 
 extern const unsigned char __cli_module[];
+extern const unsigned __cli_module_size;
 /* The process manager uses these queries to classify faults. CLI has no display. */
 int fb_reserved_range(uint64_t *start, uint64_t *bytes)
 {
@@ -12,11 +13,9 @@ int64_t proc_spawn_module(const char *code, unsigned bytes, int tier);
 
 static void run_test(int tier)
 {
-    unsigned size;
-    memcpy(&size, __cli_module + 8, sizeof size);
-    if (__cli_module[4] != 'Q' || __cli_module[5] != 'C' || __cli_module[6] != 'A' ||
-        __cli_module[7] != 'P' || size < 12 || size > 4096) {
-        printf("Test.cap unavailable\n");
+    unsigned size = __cli_module_size;
+    if (!size || size > 4096) {
+        printf("Test unavailable (start QEMU with CLI_TEST=1)\n");
         return;
     }
     int64_t h = proc_spawn_module((const char *)__cli_module, size, tier);
