@@ -1,4 +1,3 @@
-#include "touch_ext4.h"
 #include "quotaos.h"
 #include "root_disk.h"
 #include "ext4_jbd2.h"
@@ -120,9 +119,14 @@ static const char *const cut_names[] = {NULL, "data", "log", "commit", "checkpoi
 
 int root_disk_write_enabled(void)
 {
+#ifdef QUOTA_GUI_EXT4
+    /* The graphical launcher reserves this transport and assigns root explicitly.
+     * Keep the existing boot arguments for the desktop and frame probes. */
+    return 1;
+#else
     const char *args = dtb_bootargs();
-    return !strcmp(args, ROOT_RW_BOOTARGS) || !strcmp(args, ROOT_CRASH_BOOTARGS) ||
-           !strcmp(args, TOUCH_EXT4_BOOTARGS);
+    return !strcmp(args, ROOT_RW_BOOTARGS) || !strcmp(args, ROOT_CRASH_BOOTARGS);
+#endif
 }
 
 int root_disk_arm_cut(const char *name)

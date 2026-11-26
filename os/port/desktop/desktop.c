@@ -933,7 +933,7 @@ static void end_session(void)
 
 static void power_poll(void)
 {
-    if (requested_power == POWER_NONE) return;
+    if (requested_power == POWER_NONE || touch_ext4_busy()) return;
     int ready = note_disk_power_ready();
     if (!ready) return;
     enum power_action action = requested_power;
@@ -2196,6 +2196,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                 lv_label_set_text(login_status,"Account storage unavailable.");
             continue;
         }
+        touch_ext4_poll();
         touch_pressure_memory();
         power_poll();
         const char *console = proc_console_text();
