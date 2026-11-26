@@ -281,7 +281,8 @@ static void drain(struct idev *d)
     volatile uint16_t *uidx = (volatile uint16_t *)(d->vring + d->used_off + 2);
     dsb();
     uint16_t idx = *uidx;
-    while (d->last_used != idx) {
+    /* Leave newly published and excess completions for the next service poll. */
+    for (unsigned batch = 0; batch < 8 && d->last_used != idx; ++batch) {
         uint32_t slot = d->last_used & d->qmask;
         uint32_t *elem = (uint32_t *)(d->vring + d->used_off + 4 + slot * 8);
         uint32_t id = elem[0];
@@ -289,8 +290,6 @@ static void drain(struct idev *d)
         if (id < d->qsz)
             take_event(d, &d->events[id]);
         recycle(d, (uint16_t)id);
-        dsb();
-        idx = *uidx;
     }
 }
 

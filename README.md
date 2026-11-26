@@ -34,15 +34,22 @@ make
 bash tools/run-cli.sh
 ```
 
-To attach a persistent note disk:
+On a new installation, set and confirm the `admin` password, then sign in.
+Later boots wait at the password prompt. Run `logout` to lock the shell.
 
-```sh
-# Use a new disk path for the first boot. Reuse the same file for later boots.
-test -e notes.raw || dd if=/dev/zero of=notes.raw bs=512 count=16
-CLI_DISK=notes.raw bash tools/run-cli.sh
-```
+The default launcher attaches a separate read-only ext4 example disk.
+After signing in, `ls` shows `todo.wap`. The package is the same example
+distributed by Web UI and Touch UI. CLI provides the file without a
+Web runtime. To use a different root disk, set `CLI_ROOT_DISK` explicitly.
+Set it to an empty value to start without a root disk.
 
-At the prompt, use `help`, `mem`, `tasks`, `quota` or `events`. Use `write TEXT` to store one note, wait for `Saved`, and use `cat Note.txt` after reboot. The CLI uses the kernel's Notes block service. `ls` lists the read-only example `test.c` in the root directory alongside any saved note. Use `cat test.c` to read the source and `run test.c` to execute its compiled counterpart. Set `CLI_TEST=0` at boot to omit the example.
+The default administrator and Notes disk is `build/cli/admin.raw`.
+Pass `CLI_DISK` for a separate installation disk. To copy an older
+Notes disk into a new installation, run
+`python3 tools/init-admin-disk.py admin.raw --from-legacy notes.raw`
+and boot with `CLI_DISK=admin.raw`. The initializer takes a new output path.
+
+At the prompt, use `help`, `mem`, `tasks`, `quota` or `events`. Use `note TEXT` to store one note, wait for `Saved`, and use `note` after reboot. The CLI uses the kernel's Notes block service. With no ext4 disk attached, use `cat test.c` to read the built-in Test source. Use `run test.c` to execute the compiled sample. Set `CLI_TEST=0` at boot to omit the example.
 
 `run Test` starts the external EL0 sample in Tier 3. `run Test t2` requests a 400 µs minimum per 10 ms period and prints observed grants and usage in counter ticks. Edit `os/cli/test.c` and run `make`. The cross compiler builds ARM64 machine code for QEMU, with no application packaging step. Test executes only when requested.
 

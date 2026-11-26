@@ -1105,3 +1105,10 @@ uint64_t proc_irq_off_max_us(void)
 {
     return ticks_to_us(irq_off_max);
 }
+
+#ifdef QUOTA_CLI
+uint64_t proc_irq_off_max_ticks(void)
+{
+    return irq_off_max;
+}
+#endif

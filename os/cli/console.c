@@ -1,5 +1,7 @@
+#include "auth.h"
 #include "commit.h"
 #include "quotaos.h"
+#include "root_disk.h"
 
 extern const unsigned char __cli_module[];
 extern const unsigned __cli_module_size;
@@ -13,14 +15,12 @@ int fb_reserved_range(uint64_t *start, uint64_t *bytes)
 
 int64_t proc_spawn_module(const char *code, unsigned bytes, int tier);
 
-static void run_test(int tier)
+int cli_read_root_elf(const struct ext4_volume *, const char *, char *, unsigned,
+                      unsigned *);
+
+static void run_module(const char *code, unsigned size, int tier)
 {
-    unsigned size = __cli_module_size;
-    if (!size || size > 4096) {
-        printf("Test unavailable (start QEMU with CLI_TEST=1)\n");
-        return;
-    }
-    int64_t h = proc_spawn_module((const char *)__cli_module, size, tier);
+    int64_t h = proc_spawn_module(code, size, tier);
     if (h < 0) {
         printf("Test admission refused\n");
         return;
@@ -43,6 +43,154 @@ static void run_test(int tier)
     printf("%s\n", result ? result : "Test exited without output");
 }
 
+static struct ext4_volume root_volume;
+static char root_file[4096];
+
+static void run_test(int tier)
+{
+    unsigned size = __cli_module_size;
+    if (!size || size > 4096) {
+        printf("Test unavailable (start QEMU with CLI_TEST=1)\n");
+        return;
+    }
+    run_module((const char *)__cli_module, size, tier);
+}
+
+static int print_root_name(void *context, const char *name, unsigned length)
+{
+    (void)context;
+    for (unsigned i = 0; i < length; ++i) printf("%c", name[i]);
+    printf("\n");
+    return 0;
+}
+
+static int ensure_root(int allow_missing)
+{
+    int rc = root_volume.read ? EXT4_OK : root_disk_mount(&root_volume);
+    if (rc && !(allow_missing && rc == EXT4_NOT_FOUND))
+        printf("ext4 mount failed: %s\n", rc == EXT4_NOT_FOUND ?
+               "no ext4 root disk" : ext4_result_text(rc));
+    return rc;
+}
+
+static void list_files(int allow_missing)
+{
+    int rc = ensure_root(allow_missing);
+    if (!rc) {
+        rc = ext4_list_root(&root_volume, print_root_name, NULL);
+        if (rc) printf("ext4 directory read failed: %s\n", ext4_result_text(rc));
+    } else if (allow_missing && rc == EXT4_NOT_FOUND) {
+        if (__cli_source[0]) printf("test.c\n");
+        if (note_disk_text()) printf("Note.txt\n");
+        else if (!__cli_source[0]) printf("No files.\n");
+    }
+}
+
+static void run_root(const char *name)
+{
+    if (ensure_root(0)) return;
+    unsigned size;
+    int rc = cli_read_root_elf(&root_volume, name, root_file, sizeof root_file, &size);
+    if (rc)
+        printf("ext4 ELF load failed: %s\n", ext4_result_text(rc));
+    else
+        run_module(root_file, size, TIER3);
+}
+
+static void read_file(const char *name, int allow_missing)
+{
+    if (!*name) {
+        printf("Usage: cat FILE\n");
+        return;
+    }
+    int rc = ensure_root(allow_missing);
+    if (!rc) {
+        size_t bytes;
+        rc = ext4_read_root(&root_volume, name, root_file, sizeof root_file, &bytes);
+        if (rc) printf("ext4 file read failed: %s\n", ext4_result_text(rc));
+        else {
+            for (size_t i = 0; i < bytes; ++i) printf("%c", root_file[i]);
+            if (!bytes || root_file[bytes - 1] != '\n') printf("\n");
+        }
+    } else if (allow_missing && rc == EXT4_NOT_FOUND) {
+        if ((!strcmp(name, "test.c") || !strcmp(name, "/test.c")) && __cli_source[0])
+            printf("%s", __cli_source);
+        else if (!strcmp(name, "Note.txt") && note_disk_text())
+            printf("%s\n", note_disk_text());
+        else
+            printf("File not found: %s\n", name);
+    }
+}
+
+static void overwrite_root(char *arg)
+{
+    char *data = arg;
+    while (*data && *data != ' ') ++data;
+    if (!*arg || !*data) {
+        printf("Usage: write FILE TEXT\n");
+        return;
+    }
+    *data++ = 0;
+    size_t bytes = 0;
+    while (data[bytes]) ++bytes;
+    int rc = root_disk_overwrite(&root_volume, arg, data, bytes);
+    if (rc)
+        printf("ext4 overwrite failed: %s\n", ext4_result_text(rc));
+    else
+        printf("ext4 saved\n");
+}
+
+static void trace_wait_periods(uint64_t periods)
+{
+    uint64_t until = sched_period_now() + periods;
+    while (sched_period_now() < until)
+        asm volatile("wfi");
+}
+
+static void trace_timing(const char *mode)
+{
+    int block = !strcmp(mode, "block");
+    int disk = !strcmp(mode, "disk");
+    int overflow = !strcmp(mode, "overflow");
+    if ((*mode && !block && !disk && !overflow) ||
+        ((block || overflow) && strcmp(dtb_bootargs(), "cli timing-test"))) {
+        printf("Usage: timing [disk]; block and overflow require CLI_TIMING_TEST=1\n");
+        return;
+    }
+    if (!__cli_module_size || __cli_module_size > 4096) {
+        printf("Timing probe requires CLI_TEST=1\n");
+        return;
+    }
+    int64_t probe = proc_spawn_module((const char *)__cli_module, __cli_module_size, TIER2);
+    if (probe < 0) {
+        printf("Timing probe admission refused\n");
+        return;
+    }
+
+    sched_trace_begin();
+    trace_wait_periods(4);
+    uint64_t injected = 0;
+    if (block) {
+        uint64_t flags = irq_save();
+        uint64_t start = ticks_now(), end = start + us_to_ticks(22000);
+        while (ticks_now() < end) asm volatile("" ::: "memory");
+        injected = ticks_now() - start;
+        irq_restore(flags);
+    } else if (disk && !ensure_root(0)) {
+        size_t bytes;
+        int rc = ext4_read_root(&root_volume, "hello.txt", root_file, sizeof root_file, &bytes);
+        printf("[timing-disk] result=%s bytes=%lu\n", ext4_result_text(rc), (uint64_t)bytes);
+    }
+    trace_wait_periods(overflow ? 136 : 4);
+    sched_trace_dump(injected);
+    uint64_t root_ticks, root_count, notes_ticks, notes_count;
+    root_disk_timing(&root_ticks, &root_count);
+    note_disk_timing(&notes_ticks, &notes_count);
+    printf("[timing-virtio] root_observed_ticks=%lu root_requests=%lu notes_observed_ticks=%lu notes_requests=%lu max_inflight_per_device=1\n",
+           root_ticks, root_count, notes_ticks, notes_count);
+    while (proc_alive(probe)) asm volatile("wfi");
+}
+
 static void show_commands(void)
 {
     printf("System   uname          Show kernel version and architecture\n"
@@ -50,16 +198,21 @@ static void show_commands(void)
            "         mem / free     Show RAM and available application budget\n"
            "         tasks / ps     List active tasks and their tiers\n"
            "         quota / events Show scheduling counters\n"
+           "         timing [disk] Capture raw job and Tier 2 budget ticks\n"
            "Files    pwd            Show the root directory\n"
-           "         ls             List files in /\n"
-           "         cat FILE       Read test.c or Note.txt\n"
-           "         write TEXT     Save a note to the attached disk\n"
+           "         ls             List the root directory\n"
+           "         cat FILE       Read a file from the root directory\n"
+           "         write FILE TEXT  Save to a writable root disk\n"
+           "         rm FILE        Remove from a journaled root disk\n"
+           "         note [TEXT]    Read or save the independent Notes file\n"
            "         disk           Show disk status and saved note size\n"
            "Apps     run test.c     Run the compiled sample in Tier 3\n"
            "         run Test t2    Request a Tier 2 budget for Test\n"
+           "         run /FILE      Load an ARM64 console ELF from the root disk\n"
            "Console  echo TEXT      Print text\n"
            "         clear          Clear the terminal screen\n"
-           "         help           Show this command guide\n");
+           "         help           Show this command guide\n"
+           "         logout         Lock the console and return to admin login\n");
 }
 
 static void show_welcome(void)
@@ -69,11 +222,33 @@ static void show_welcome(void)
            __cli_module_size ? ", run test.c" : "");
 }
 
+static void wait_for_notes(void)
+{
+    while (!note_disk_power_ready()) {
+        note_disk_poll();
+        if (!note_disk_power_ready()) asm volatile("wfi");
+    }
+}
+
+static void use_notes(const char *text)
+{
+    if (!*text)
+        printf("%s\n", note_disk_text() ? note_disk_text() : "No saved note.");
+    else if (note_disk_save(text))
+        printf("Cannot save: %s\n", note_disk_status());
+    else {
+        wait_for_notes();
+        printf("%s\n", note_disk_status());
+    }
+}
+
 void shell_main(void)
 {
     char line[128];
     klog_flush();
     note_disk_init();
+    wait_for_notes();
+    auth_serial_login();
     show_welcome();
     for (;;) {
         printf("quota> ");
@@ -92,39 +267,55 @@ void shell_main(void)
             continue;
         if (!strcmp(command, "echo")) {
             printf("%s\n", arg);
-        } else if (!strcmp(command, "cat")) {
-            if (!*arg)
-                printf("Usage: cat FILE\n");
-            else if ((!strcmp(arg, "test.c") || !strcmp(arg, "/test.c")) && __cli_source[0])
-                printf("%s", __cli_source);
-            else if (strcmp(arg, "Note.txt") || !note_disk_text())
-                printf("File not found: %s\n", arg);
-            else
-                printf("%s\n", note_disk_text());
-        } else if (!strcmp(command, "write")) {
-            if (!*arg)
-                printf("Usage: write TEXT\n");
-            else if (note_disk_save(arg))
-                printf("Cannot save: %s\n", note_disk_status());
-            else {
-                while (!note_disk_power_ready()) {
-                    note_disk_poll();
-                    asm volatile("wfi");
-                }
-                printf("%s\n", note_disk_status());
+        } else if (!strcmp(command, "cat") || !strcmp(command, "rootcat")) {
+            read_file(arg, !strcmp(command, "cat"));
+        } else if (!strcmp(command, "rootls") && !*arg) {
+            list_files(0);
+        } else if (!strcmp(command, "write") || !strcmp(command, "rootwrite")) {
+            int legacy = !strcmp(command, "write");
+            int rc = ensure_root(legacy);
+            if (!rc)
+                overwrite_root(arg);
+            else if (legacy && rc == EXT4_NOT_FOUND) {
+                if (*arg) use_notes(arg);
+                else printf("Usage: write TEXT\n");
             }
+        } else if (!strcmp(command, "rootcut")) {
+            if (root_disk_arm_cut(arg))
+                printf("Usage: rootcut data|log|commit|checkpoint (crash-test boot only)\n");
+            else
+                printf("ext4 crash point armed\n");
+        } else if (!strcmp(command, "rm") || !strcmp(command, "rootrm")) {
+            if (!*arg)
+                printf("Usage: rm FILE\n");
+            else if (!ensure_root(0)) {
+                int rc = root_disk_remove(&root_volume, arg);
+                if (rc) printf("ext4 remove failed: %s\n", ext4_result_text(rc));
+                else printf("ext4 removed\n");
+            }
+        } else if (!strcmp(command, "note")) {
+            use_notes(arg);
         } else if (!strcmp(command, "run")) {
             if (!strcmp(arg, "Test") || !strcmp(arg, "test.c"))
                 run_test(TIER3);
             else if (!strcmp(arg, "Test t2") || !strcmp(arg, "test.c t2"))
                 run_test(TIER2);
+            else if (*arg == '/' && arg[1])
+                run_root(arg);
             else
-                printf("Usage: run Test [t2]\n");
+                printf("Usage: run Test [t2] or run /FILE\n");
+        } else if (!strcmp(command, "timing")) {
+            trace_timing(arg);
         } else if (*arg)
             printf("Unexpected arguments. Type help for usage.\n");
         else if (!strcmp(command, "help"))
             show_commands();
-        else if (!strcmp(command, "clear"))
+        else if (!strcmp(command, "logout")) {
+            auth_logout();
+            printf("\033[2J\033[H");
+            auth_serial_login();
+            show_welcome();
+        } else if (!strcmp(command, "clear"))
             printf("\033[2J\033[H");
         else if (!strcmp(command, "uname"))
             printf("Quota OS CLI %s (%s) aarch64\n", QUOTAOS_VERSION, QUOTAOS_COMMIT);
@@ -152,9 +343,7 @@ void shell_main(void)
             printf("period=%lu tier1_misses=%lu tier2_short=%lu tier3_over=%lu\n", s.period,
                    s.tier1_misses, s.tier2_short, s.tier3_over);
         } else if (!strcmp(command, "ls")) {
-            if (__cli_source[0]) printf("test.c\n");
-            if (note_disk_text()) printf("Note.txt\n");
-            else if (!__cli_source[0]) printf("No files.\n");
+            list_files(1);
         } else
             printf("Unknown command: %s. Type help.\n", command);
     }

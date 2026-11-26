@@ -326,8 +326,88 @@ static void chain_note(struct task *t, int reason, uint64_t seen)
     c->jump_n = n;
 }
 
+#ifdef QUOTA_CLI
+enum trace_kind { TRACE_JOB, TRACE_NO_COMMIT, TRACE_QUOTA };
+static struct timing_record {
+    uint64_t period, release, start, end, deadline, grant, used, minimum;
+    unsigned task, kind, short_cpu;
+} timing_trace[128];
+static unsigned timing_count, timing_dropped;
+static int timing_enabled;
+
+static void timing_add(struct timing_record record)
+{
+    if (!timing_enabled) return;
+    if (timing_count < sizeof timing_trace / sizeof timing_trace[0])
+        timing_trace[timing_count++] = record;
+    else
+        ++timing_dropped;
+}
+
+static void timing_job(const struct task *t, uint64_t commit, unsigned kind)
+{
+    if (t->tier != TIER1) return;
+    timing_add((struct timing_record){
+        .task = t->id, .kind = kind, .period = t->job_period,
+        .release = t->release_ts, .start = t->start_ts, .end = commit,
+        .deadline = t->release_ts + t->deadline_t,
+    });
+}
+
+void sched_trace_begin(void)
+{
+    uint64_t flags = irq_save();
+    timing_count = timing_dropped = 0;
+    timing_enabled = 1;
+    irq_restore(flags);
+}
+
+void sched_trace_dump(uint64_t injected_ticks)
+{
+    uint64_t flags = irq_save();
+    timing_enabled = 0;
+    uint64_t irq_late = ks[0].irq_lat_max, scheduler = ks[0].sw_max;
+    uint64_t proc_irq = proc_irq_off_max_ticks();
+    irq_restore(flags);
+    printf("[timing] hz=%lu period_ticks=%lu count=%u dropped=%u complete=%u\n",
+           timer_freq(), P, timing_count, timing_dropped, timing_dropped == 0);
+    uint64_t prior_commit = 0, gap_max = 0;
+    unsigned missing = 0, late = 0, gaps = 0, short_cpu = 0;
+    for (unsigned i = 0; i < timing_count; ++i) {
+        const struct timing_record *r = &timing_trace[i];
+        if (r->kind == TRACE_QUOTA) {
+            printf("[period] task=%u period=%lu grant=%lu used=%lu minimum=%lu short=%u\n",
+                   r->task, r->period, r->grant, r->used, r->minimum, r->short_cpu);
+            short_cpu += r->short_cpu;
+            continue;
+        }
+        printf("[job] task=%u period=%lu release=%lu start=%lu commit=%lu deadline=%lu\n",
+               r->task, r->period, r->release, r->start, r->end, r->deadline);
+        if (r->kind == TRACE_NO_COMMIT) {
+            ++missing;
+            continue;
+        }
+        late += r->end > r->deadline;
+        /* The CLI has one fixed Tier 1 slot and one observed job stream. */
+        if (prior_commit) {
+            uint64_t gap = r->end - prior_commit;
+            if (gap > gap_max) gap_max = gap;
+            gaps += gap > P;
+        }
+        prior_commit = r->end;
+    }
+    printf("[timing-result] no_commit=%u late=%u gap_over_period=%u gap_max_ticks=%lu quota_short=%u\n",
+           missing, late, gaps, gap_max, short_cpu);
+    printf("[timing-peaks] irq_late_ticks=%lu scheduler_ticks=%lu proc_irq_off_ticks=%lu injected_irq_off_ticks=%lu guard_ticks=%lu admission_guard_us=%u\n",
+           irq_late, scheduler, proc_irq, injected_ticks, G, resource_guard_us());
+}
+#endif
+
 static void miss(struct task *t, int reason, uint64_t done)
 {
+#ifdef QUOTA_CLI
+    if (reason && timing_enabled) timing_job(t, 0, TRACE_NO_COMMIT);
+#endif
     t->misses++;
     t->w.misses += rec;
     if (t->tier != TIER1)
@@ -763,6 +843,9 @@ static void job_done(struct task *t, uint64_t at)
 {
     if (!t->job_open)
         return;
+#ifdef QUOTA_CLI
+    if (timing_enabled) timing_job(t, at, TRACE_JOB);
+#endif
     t->job_open = 0;
     t->jobs++;
     t->w.jobs += rec;
@@ -825,6 +908,16 @@ static void end_period(uint64_t now, int skipped)
         int short_cpu = t->tier == TIER2 && t->kind == KIND_SPIN &&
                         (t->state == TASK_RUNNING || t->state == TASK_READY) &&
                         t->used_t < t->min_t;
+#ifdef QUOTA_CLI
+        if (timing_enabled && t->tier == TIER2 && t->kind == KIND_SPIN &&
+            (t->used_t || t->state == TASK_READY || t->state == TASK_RUNNING)) {
+            timing_add((struct timing_record){
+                .task = t->id, .kind = TRACE_QUOTA, .period = pk,
+                .grant = t->period_grant_t, .used = t->used_t, .minimum = t->min_t,
+                .short_cpu = short_cpu,
+            });
+        }
+#endif
         if (short_cpu)
             tier2_short_count++;
         if (rec) {
@@ -992,6 +1085,9 @@ static void begin_period(void)
             continue;
         t->job_open = 1;
         t->job_started = 0;
+#ifdef QUOTA_CLI
+        t->start_ts = 0;
+#endif
         t->job_period = pk;
         t->release_ts = pstart + (t->tier == TIER1 ? slot_off[t->slot] : 0);
         if (t->state == TASK_BLOCKED)

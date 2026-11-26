@@ -479,6 +479,12 @@ void dev_slot(int in_slot);
 int dev_busy(void);
 void dev_period(void);
 uint64_t sched_period_now(void);
+#ifdef QUOTA_CLI
+void sched_trace_begin(void);
+void sched_trace_dump(uint64_t injected_ticks);
+uint64_t proc_irq_off_max_ticks(void);
+void note_disk_timing(uint64_t *latency, uint64_t *requests);
+#endif
 uint64_t sched_period_release(uint64_t period);
 int sched_in_t1_window(uint64_t now);
 void gic_ppi_enable(uint32_t id, int on);
