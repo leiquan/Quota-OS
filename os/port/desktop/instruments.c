@@ -56,7 +56,8 @@ void instruments_create(lv_obj_t *screen, int apps, int bottom_inset)
     for (int i = 0; i < 3; i++) {
         lv_obj_t *page = lv_obj_create(screen);
         app_pages[i] = page;
-        lv_obj_set_size(page, DISPLAY_WIDTH, DISPLAY_HEIGHT - bottom_inset);
+        lv_obj_set_pos(page, 0, STATUS_BAR_HEIGHT);
+        lv_obj_set_size(page, DISPLAY_WIDTH, DISPLAY_HEIGHT - STATUS_BAR_HEIGHT - bottom_inset);
         lv_obj_set_style_bg_color(page, lv_color_hex(0x101a2b), 0);
         lv_obj_set_style_border_width(page, 0, 0);
         lv_obj_set_style_pad_all(page, 0, 0);

@@ -21,7 +21,7 @@ static uint8_t draw_buf[LVGL_DRAW_BYTES] __attribute__((aligned(64)));
 static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *field;
-static lv_obj_t *power_menu, *power_status, *power_backdrop;
+static lv_obj_t *notification_label;
 enum power_action { POWER_NONE, POWER_OFF, POWER_RESET };
 static enum power_action requested_power;
 static lv_obj_t *menu_list;
@@ -755,31 +755,6 @@ static void select_package_view(lv_obj_t *view)
         lv_obj_add_state(view, LV_STATE_CHECKED);
 }
 
-static void power_dismiss(lv_event_t *e)
-{
-    (void)e;
-    monitor_visible(power_menu, 0);
-    monitor_visible(power_backdrop, 0);
-}
-
-static void power_click(lv_event_t *e)
-{
-    if (requested_power != POWER_NONE) return;
-    enum power_action action = (uintptr_t)lv_event_get_user_data(e);
-    if (action != POWER_NONE) {
-        requested_power = action;
-        lv_obj_set_height(power_menu, 124);
-        lv_label_set_text(power_status, "Waiting for disk...");
-        return;
-    }
-    lv_obj_set_height(power_menu, 86);
-    lv_label_set_text(power_status, "");
-    monitor_visible(power_backdrop, 1);
-    monitor_visible(power_menu, 1);
-    lv_obj_move_foreground(power_backdrop);
-    lv_obj_move_foreground(power_menu);
-}
-
 static void power_poll(void)
 {
     if (requested_power == POWER_NONE) return;
@@ -788,13 +763,13 @@ static void power_poll(void)
     enum power_action action = requested_power;
     requested_power = POWER_NONE;
     if (ready < 0) {
-        lv_label_set_text(power_status, "Disk error. Power action canceled.");
+        lv_label_set_text(notification_label, "Disk error. Power action canceled.");
         return;
     }
     printf("[power] %s after disk ready\n", action == POWER_RESET ? "reset" : "off");
     register uint64_t function asm("x0") = action == POWER_RESET ? 0x84000009u : 0x84000008u;
     asm volatile("dsb sy; hvc #0" : "+r"(function) :: "memory");
-    lv_label_set_text(power_status, "Power action unavailable.");
+    lv_label_set_text(notification_label, "Power action unavailable.");
 }
 
 static void on_group(lv_event_t *e)
@@ -1121,7 +1096,8 @@ static lv_obj_t *desktop_file(lv_obj_t *screen, int x, int y, const char *name,
 static lv_obj_t *desktop_page_create(lv_obj_t *screen, const char *title)
 {
     lv_obj_t *page = lv_obj_create(screen);
-    lv_obj_set_size(page, (int)fb_w, (int)fb_h - BAR_HEIGHT);
+    lv_obj_set_pos(page, 0, STATUS_BAR_HEIGHT);
+    lv_obj_set_size(page, (int)fb_w, (int)fb_h - STATUS_BAR_HEIGHT - BAR_HEIGHT);
     lv_obj_set_style_pad_all(page, 0, 0);
     lv_obj_set_style_radius(page, 0, 0);
     lv_obj_set_style_bg_color(page, lv_color_hex(0xf7f9fc), 0);
@@ -1208,37 +1184,15 @@ static lv_obj_t *app_icon(lv_obj_t *parent, enum app_key key, int x, int y, int 
     return button;
 }
 
-static int leap_year(unsigned year)
-{
-    return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-}
-
 static void refresh_clock(void)
 {
-    static uint32_t last = UINT32_MAX;
-    if (!rtc_base)
+    static unsigned last = UINT32_MAX;
+    /* PL031 supplies UTC. Show the time in Asia/Shanghai. */
+    unsigned minute = (mmio_rd(rtc_base) / 60u + 8u * 60u) % (24u * 60u);
+    if (minute == last)
         return;
-    uint32_t seconds = mmio_rd(rtc_base);
-    if (seconds == last)
-        return;
-    last = seconds;
-    /* PL031 supplies UTC. This image uses the Asia/Shanghai display zone. */
-    uint64_t local = (uint64_t)seconds + 8u * 3600u;
-    unsigned days = (unsigned)(local / 86400u), year = 1970, month = 0;
-    while (days >= 365u + leap_year(year))
-        days -= 365u + leap_year(year++);
-    static const unsigned month_days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
-    while (month < 11) {
-        unsigned n = month_days[month] + (month == 1 && leap_year(year));
-        if (days < n)
-            break;
-        days -= n;
-        month++;
-    }
-    unsigned time = (unsigned)(local % 86400u);
-    lv_label_set_text_fmt(clock_label, "%04u-%02u-%02u  %02u:%02u:%02u",
-                          year, month + 1, days + 1, time / 3600,
-                          time / 60 % 60, time % 60);
+    last = minute;
+    lv_label_set_text_fmt(clock_label, "%02u:%02u", minute / 60u, minute % 60u);
 }
 
 static void refresh_system_info(void)
@@ -1299,6 +1253,7 @@ static void refresh_system_events(void)
             next = (next + 1) % EVENT_ROWS;
             if (used < EVENT_ROWS) used++;
             dirty = 1;
+            lv_label_set_text(notification_label, names[i]);
         }
         previous[i] = totals[i];
     }
@@ -1561,7 +1516,6 @@ static void bar_navigate(void)
     if (bar_input.go_home) {
         bar_input.go_home = bar_input.go_back = false;
         if (context_layer) dismiss_context(NULL);
-        power_dismiss(NULL);
         if (active_page.view) switch_page((struct desktop_page){0});
         back_count = 0;
         printf("[touch] home\n");
@@ -1569,8 +1523,6 @@ static void bar_navigate(void)
         bar_input.go_back = false;
         if (context_layer && !lv_obj_has_flag(context_layer, LV_OBJ_FLAG_HIDDEN)) {
             dismiss_context(NULL);
-        } else if (!lv_obj_has_flag(power_menu, LV_OBJ_FLAG_HIDDEN)) {
-            power_dismiss(NULL);
         } else if (active_page.view == page_input && !lv_obj_has_flag(source_dialog, LV_OBJ_FLAG_HIDDEN)) {
             monitor_visible(source_dialog, 0);
             lv_group_focus_obj(field);
@@ -1624,33 +1576,23 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     }
     lv_obj_t *top = lv_obj_create(screen);
     lv_obj_set_pos(top, 0, 0);
-    lv_obj_set_size(top, (int)w, 40);
+    lv_obj_set_size(top, (int)w, STATUS_BAR_HEIGHT);
     lv_obj_set_style_pad_all(top, 0, 0);
     lv_obj_set_style_radius(top, 0, 0);
     lv_obj_set_style_border_width(top, 0, 0);
     lv_obj_set_style_bg_color(top, lv_color_hex(0x152641), 0);
     lv_obj_set_style_bg_opa(top, LV_OPA_70, 0);
-    lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *power_button = lv_button_create(top);
-    lv_obj_set_pos(power_button, 10, 0);
-    lv_obj_set_size(power_button, 44, 40);
-    lv_obj_set_style_bg_opa(power_button, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_opa(power_button, LV_OPA_20, LV_STATE_PRESSED);
-    lv_obj_set_style_shadow_width(power_button, 0, 0);
-    lv_obj_center(desk_label(power_button, 0, 0, LV_SYMBOL_POWER, 0xffffff));
-    lv_obj_t *about_button = lv_button_create(top);
-    lv_obj_set_size(about_button, 108, 40);
-    lv_obj_center(about_button);
-    lv_obj_set_style_bg_opa(about_button, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_shadow_width(about_button, 0, 0);
-    lv_obj_center(desk_label(about_button, 0, 0, "Quota OS", 0xffffff));
-    lv_obj_add_event_cb(about_button, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)201);
-    lv_obj_add_event_cb(power_button, power_click, LV_EVENT_CLICKED, NULL);
+    lv_obj_remove_flag(top, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    notification_label = desk_label(top, 0, 0, "", 0xdce8ff);
+    lv_obj_set_width(notification_label, (int)w - 260);
+    lv_obj_set_style_text_align(notification_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(notification_label, LV_LABEL_LONG_DOT);
+    lv_obj_center(notification_label);
 
     lv_obj_t *network_icon = desk_label(top, 0, 0, LV_SYMBOL_WIFI, 0x94a3b8);
     lv_obj_t *volume_icon = desk_label(top, 0, 0, LV_SYMBOL_VOLUME_MAX, 0x94a3b8);
-    lv_obj_align(network_icon, LV_ALIGN_LEFT_MID, 60, 0);
-    lv_obj_align(volume_icon, LV_ALIGN_LEFT_MID, 98, 0);
+    lv_obj_align(network_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_align(volume_icon, LV_ALIGN_LEFT_MID, 56, 0);
     static const lv_point_precise_t outer_wave[] = {
         {0, 0}, {2, 3}, {3, 7}, {3, 11}, {2, 15}, {0, 18}
     };
@@ -1658,7 +1600,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_line_set_points(volume_wave, outer_wave, sizeof outer_wave / sizeof outer_wave[0]);
     lv_obj_set_style_line_width(volume_wave, 1, 0);
     lv_obj_set_style_line_color(volume_wave, lv_color_hex(0x94a3b8), 0);
-    lv_obj_align(volume_wave, LV_ALIGN_LEFT_MID, 114, 0);
+    lv_obj_align(volume_wave, LV_ALIGN_LEFT_MID, 72, 0);
     if (dtb_find_bases("arm,pl031", &rtc_base, 1) > 0) {
         clock_label = desk_label(top, 0, 0, "", 0xdce8ff);
         lv_obj_align(clock_label, LV_ALIGN_RIGHT_MID, -26, 0);
@@ -1668,6 +1610,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     int apps = app_desktop_mode();
     if (apps) instruments_create(screen, apps, BAR_HEIGHT);
     page_home = desktop_page_create(screen, app_monitor);
+    lv_obj_t *about_button = add_row(page_home, 55, 0xffffff, 0xc5d9fa, "About", 201);
+    lv_obj_set_pos(about_button, 447, 55);
+    lv_obj_set_width(about_button, 136);
     page_test = desktop_page_create(screen, "Test");
     menu_list = lv_obj_create(page_test);
     lv_obj_set_pos(menu_list, 0, 100);
@@ -1749,14 +1694,14 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     field = lv_textarea_create(page_input);
     lv_obj_set_style_anim_duration(field, 700, LV_PART_CURSOR);
     lv_obj_set_pos(field, 28, 108);
-    lv_obj_set_size(field, (int)w - 56, (int)h - BAR_HEIGHT - 216);
+    lv_obj_set_size(field, (int)w - 56, (int)h - STATUS_BAR_HEIGHT - BAR_HEIGHT - 216);
     lv_textarea_set_one_line(field, false);
     lv_textarea_set_placeholder_text(field, "Start typing...");
     lv_obj_set_style_radius(field, 8, 0);
     lv_obj_set_style_border_color(field, lv_color_hex(0xd9e1ee), 0);
     lv_obj_set_style_border_width(field, 1, 0);
     lv_obj_set_style_text_color(field, lv_color_hex(0x263552), 0);
-    int note_actions_y = (int)h - BAR_HEIGHT - 84;
+    int note_actions_y = (int)h - STATUS_BAR_HEIGHT - BAR_HEIGHT - 84;
     lv_obj_t *save = add_row(page_input, note_actions_y, 0xdcebf6, 0xc5d9fa, "Save", 214);
     lv_obj_set_pos(save, (int)w - 140, note_actions_y);
     lv_obj_set_size(save, 112, 56);
@@ -1920,7 +1865,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     page_shell = desktop_page_create(screen, "Shell");
     shell_history = lv_obj_create(page_shell);
     lv_obj_set_pos(shell_history, 10, 54);
-    lv_obj_set_size(shell_history, (int)w - 20, (int)h - BAR_HEIGHT - 66);
+    lv_obj_set_size(shell_history, (int)w - 20, (int)h - STATUS_BAR_HEIGHT - BAR_HEIGHT - 66);
     lv_obj_set_style_bg_color(shell_history, lv_color_hex(0x101216), 0);
     lv_obj_set_style_border_width(shell_history, 0, 0);
     lv_obj_set_style_radius(shell_history, 4, 0);
@@ -2035,49 +1980,6 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                (int)(box.x2 - box.x1 + 1), (int)(box.y2 - box.y1 + 1));
     }
     printf("[menu] serial 6 10 13 14 15 16 18 stay on the coverage page\n");
-    power_backdrop = lv_obj_create(screen);
-    lv_obj_remove_style_all(power_backdrop);
-    lv_obj_set_size(power_backdrop, lv_pct(100), lv_pct(100));
-    lv_obj_remove_flag(power_backdrop, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(power_backdrop, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(power_backdrop, power_dismiss, LV_EVENT_CLICKED, NULL);
-    monitor_visible(power_backdrop, 0);
-    power_menu = lv_obj_create(screen);
-    lv_obj_set_pos(power_menu, 10, 43);
-    lv_obj_set_size(power_menu, 196, 86);
-    lv_obj_set_style_pad_all(power_menu, 8, 0);
-    lv_obj_set_style_radius(power_menu, 11, 0);
-    lv_obj_set_style_border_width(power_menu, 1, 0);
-    lv_obj_set_style_shadow_width(power_menu, 18, 0);
-    lv_obj_set_style_shadow_ofs_y(power_menu, 5, 0);
-    lv_obj_set_style_shadow_opa(power_menu, LV_OPA_40, 0);
-    lv_obj_set_style_bg_color(power_menu, lv_color_hex(0x152641), 0);
-    lv_obj_set_style_border_color(power_menu, lv_color_hex(0x415674), 0);
-    lv_obj_remove_flag(power_menu, LV_OBJ_FLAG_SCROLLABLE);
-    for (unsigned i = 0; i < 2; i++) {
-        lv_obj_t *button = lv_button_create(power_menu);
-        lv_obj_set_pos(button, 0, i * 35);
-        lv_obj_set_size(button, lv_pct(100), 32);
-        lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_HOVERED);
-        lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_PRESSED);
-        lv_obj_set_style_bg_color(button, lv_color_hex(0x293f5c), LV_STATE_HOVERED);
-        lv_obj_set_style_bg_color(button, lv_color_hex(0x355375), LV_STATE_PRESSED);
-        lv_obj_set_style_shadow_width(button, 0, 0);
-        lv_obj_t *icon = desk_label(button, 0, 0, i ? LV_SYMBOL_REFRESH : LV_SYMBOL_POWER,
-                                   i ? 0xaecaf1 : 0xf4b6bd);
-        lv_obj_t *label = desk_label(button, 0, 0, i ? "Restart" : "Shut Down", 0xf5f8ff);
-        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 10, 0);
-        lv_obj_align(label, LV_ALIGN_LEFT_MID, 36, 0);
-        lv_obj_add_event_cb(button, power_click, LV_EVENT_CLICKED,
-                            (void *)(uintptr_t)(i ? POWER_RESET : POWER_OFF));
-    }
-    power_status = lv_label_create(power_menu);
-    lv_obj_set_pos(power_status, 0, 73);
-    lv_obj_set_width(power_status, lv_pct(100));
-    lv_obj_set_style_text_color(power_status, lv_color_hex(0xdce8ff), 0);
-    lv_label_set_text(power_status, "");
-    monitor_visible(power_menu, 0);
     printf("[lvgl] ready\n");
 
     /* The shell stack is 8 KB. These stay off that stack. */
