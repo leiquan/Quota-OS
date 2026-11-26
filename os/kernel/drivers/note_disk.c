@@ -1,5 +1,5 @@
 #include "auth.h"
-#ifdef QUOTA_CLI
+#if defined(QUOTA_CLI) || defined(QUOTA_GUI_EXT4)
 #include "root_disk.h"
 #endif
 /* Dedicated virtio-blk note volume on QEMU virt, modern MMIO transport.
@@ -67,7 +67,7 @@ void note_disk_init(void)
     uint64_t nodes[32];
     int n = dtb_find_bases("virtio,mmio", nodes, 32);
     for (int i = 0; i < n; ++i) {
-#ifdef QUOTA_CLI
+#if defined(QUOTA_CLI) || defined(QUOTA_GUI_EXT4)
         if (nodes[i] == ROOT_RW_MMIO && root_disk_write_enabled())
             continue;
 #endif
