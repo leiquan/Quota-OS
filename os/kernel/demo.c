@@ -1,3 +1,4 @@
+#include "auth.h"
 /*
  * 串口菜单。十个演示，每个对应资源模型里的一条承诺，输出直接给结论。
  *
@@ -1223,6 +1224,8 @@ void shell_main(void)
         for (;;)
             asm volatile("wfi");
     }
+    note_disk_init();
+    auth_serial_login();
     printf("[boot] serial menu\n");
     cmd_help();
     for (;;) {
