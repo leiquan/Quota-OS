@@ -10,6 +10,19 @@ static lv_image_dsc_t app_images[3];
 static lv_obj_t *music_history[8];
 static lv_obj_t *app_rate[3], *app_status[3];
 
+static void instrument_badge(lv_obj_t *card, const char *symbol, const char *tier, uint32_t accent)
+{
+    lv_obj_t *icon = desk_label(card, 0, 0, symbol, accent);
+    lv_obj_t *label = desk_label(card, 0, 0, tier, accent);
+    lv_obj_set_width(icon, 72);
+    lv_obj_set_width(label, 72);
+    lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
+    lv_obj_align(icon, LV_ALIGN_TOP_RIGHT, -22, 16);
+    lv_obj_align(label, LV_ALIGN_TOP_RIGHT, -22, 49);
+}
+
 static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char *detail, const char *tier, const char *symbol, uint32_t accent)
 {
     lv_obj_t *card = lv_obj_create(screen);
@@ -26,10 +39,7 @@ static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char
     lv_obj_t *heading = desk_label(card, 30, 16, title, 0xf5f8fd);
     lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
     desk_label(card, 30, 49, detail, 0xb8cadd);
-    lv_obj_t *icon = desk_label(card, 332, 18, symbol, accent);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
-    lv_obj_t *tier_label = desk_label(card, 0, 0, tier, accent);
-    lv_obj_align(tier_label, LV_ALIGN_TOP_RIGHT, -22, 49);
+    instrument_badge(card, symbol, tier, accent);
     return card;
 }
 
@@ -186,7 +196,7 @@ static bool status_glyph(const lv_font_t *font, lv_font_glyph_dsc_t *glyph,
 void system_status_create(lv_obj_t *screen)
 {
     lv_obj_t *panel = lv_obj_create(screen);
-    lv_obj_set_size(panel, DISPLAY_WIDTH - 72, 248);
+    lv_obj_set_size(panel, DISPLAY_WIDTH - 72, 270);
     lv_obj_align(panel, LV_ALIGN_TOP_MID, 0, STATUS_BAR_HEIGHT + 26);
     lv_obj_set_style_radius(panel, 20, 0);
     lv_obj_set_style_bg_color(panel, lv_color_hex(0x162640), 0);
@@ -196,6 +206,7 @@ void system_status_create(lv_obj_t *screen)
     lv_obj_remove_flag(panel, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *title = desk_label(panel, 28, 20, "System status", 0xf4f7fe);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    instrument_badge(panel, LV_SYMBOL_SETTINGS, "Tier 1", 0x69dfbd);
 
     status_font = lv_font_montserrat_14;
     status_font.get_glyph_dsc = status_glyph;
@@ -204,7 +215,7 @@ void system_status_create(lv_obj_t *screen)
         "Tier 1 deadline misses", "Tier 2 quota shortfalls",
     };
     for (unsigned i = 0; i < STATUS_FIELDS; i++) {
-        int y = 63 + (int)i * 34;
+        int y = 86 + (int)i * 34;
         desk_label(panel, 28, y, labels[i], 0xc3d0e4);
         status_values[i] = desk_label(panel, 365, y, "--", 0xf4f7fe);
         lv_obj_set_width(status_values[i], DISPLAY_WIDTH - 465);
