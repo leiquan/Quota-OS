@@ -29,7 +29,7 @@ CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the seri
 |---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 72.3 KiB |
 | [UI](https://github.com/leiquan/Quota-OS/tree/UI) | 64 MiB | 685.4 KiB |
-| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 1 GiB | 357.5 MiB |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 256 MiB | 内核与只读运行时卷分开装载 |
 | [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 64 MiB demo · 128 MiB macOS launcher | Build from source · 源码构建 |
 
 The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
@@ -61,17 +61,16 @@ The graphical memory figures describe their listed QEMU launch configurations. C
 
 ### 启动本地 Web UI 构建
 
-在仓库根目录运行。以下命令首次创建 Todo 专用的 64 KiB 数据盘，再次执行会复用这块盘。旧笔记示例数据盘请单独保留。
+Web UI 的按需加载配置默认使用 256 MiB 来宾内存。Blink、Node.js 和共享 V8 放在单独的只读运行时卷。若已有暂存好的 ARM64 运行时，可用 `python3 tools/pack-runtime-volume.py STAGING_DIR build/runtime.raw` 生成该卷。用户文件和登录凭据保存在独立数据盘中。
 
 ```sh
-test -e build/todo-data.raw || (set -C; umask 077; dd if=/dev/zero bs=1024 count=64 >build/todo-data.raw)
-bash tools/run-qemu-gui.sh -machine virt,gic-version=2 -cpu cortex-a35 -m 1G -nic none \
-  -global virtio-mmio.force-legacy=false -device virtio-rng-device -device ramfb \
-  -device virtio-tablet-device -device virtio-keyboard-device \
-  -drive if=none,id=notes,format=raw,file=build/todo-data.raw \
-  -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES -icount shift=1,sleep=off \
-  -kernel build/quotaos-node-web.bin -append apps-video -serial stdio -monitor none
+bash tools/build-lvgl-guest.sh
+python3 examples/todo/build.py build/todo-example
+python3 tools/init-admin-disk.py build/todo-data.raw --from-legacy build/todo-example/todo.raw
+QUOTA_NOTES_DISK=build/todo-data.raw bash tools/run-files.sh
 ```
+
+首次启动设置 admin 密码并登录，再打开桌面上的 todo.wap。再次启动只需执行最后一行，复用原数据盘。若运行时卷在其他位置，设置 `QUOTA_RUNTIME_VOLUME` 指向该文件。
 
 ## LVGL desktop baseline
 
@@ -258,4 +257,4 @@ Change the heading in the file and launch again to see the new text. This is a s
 
 For the cross-platform transport check use `--page-bytes FILE`; the serial console reports the file length and checksum. Run `python3 tools/webkit-document-check.py` for all five boundary cases. With no argument the launcher boots the separate in-guest JSC and WebCore CSS color test.
 
-公共内核和 LVGL 桌面的改动先提交到 `UI`。在 `Web-UI` 合并基础版后，分别验证 64 MiB 桌面配额场景和 1 GiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-UI` 维护。
+公共内核和 LVGL 桌面的改动先提交到 `UI`。在 `Web-UI` 合并基础版后，分别验证 64 MiB 桌面配额场景和 256 MiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-UI` 维护。

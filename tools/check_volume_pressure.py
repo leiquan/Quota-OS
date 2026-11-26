@@ -39,7 +39,7 @@ def verify(text):
             'missing reserved-memory saturation or inconsistent working set')
     require(0 < pressure['disk_completed'] <= pressure['disk_submitted'],
             'invalid completed disk work')
-    require('[quota-test] 5 PASS'  in text and 'Strict frame timing: PASS' in text, 'guest trial verdict')
+    require('[quota-test] 5 PASS' in text and 'Strict frame timing: PASS' in text, 'guest trial verdict')
     for i, p in enumerate(periods):
         require(not p['skipped'] and p['runnable'] and 0 < p['min'] <= p['used'] <= p['grant']
                 and p['t3'] <= p['cap'], f"budget in period {p['seq']}")

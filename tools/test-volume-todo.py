@@ -3,6 +3,8 @@
 import argparse
 import hashlib
 import json
+import os
+import re
 from pathlib import Path
 import secrets
 import shutil
@@ -20,13 +22,22 @@ parser.add_argument("output", type=Path, help="new evidence directory")
 parser.add_argument("--shift", type=int, choices=(1, 4), default=1)
 parser.add_argument("--pressure-rounds", type=int, default=0,
                     help="run 1 to 100 pressure trials after cold readback (QA runtime required)")
+parser.add_argument("--system-launch", action="store_true",
+                    help="exercise the normal authenticated Web UI launcher at its default RAM")
 args = parser.parse_args()
 if not 0 <= args.pressure_rounds <= 100:
     parser.error("--pressure-rounds must be 0 to 100")
 out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=False)
 disk = out / "todo.raw"
-shutil.copyfile(args.seed, disk)
+root = Path(__file__).resolve().parents[1]
+width, height = (1600, 900) if args.system_launch else (1280, 800)
+password = secrets.token_hex(6)
+if args.system_launch:
+    subprocess.run(["python3", str(root / "tools/init-admin-disk.py"), str(disk),
+                    "--from-legacy", str(args.seed)], check=True)
+else:
+    shutil.copyfile(args.seed, disk)
 text = "todo" + secrets.token_hex(3)
 hashes = {}
 for name, path in (("kernel", args.kernel), ("runtime", args.runtime), ("seed", args.seed)):
@@ -74,8 +85,14 @@ def boot(number):
            "-device", "virtio-blk-device,drive=runtime,serial=QUOTA-RUNTIME", "-icount",
            f"shift={args.shift},sleep=off", "-kernel", str(args.kernel.resolve()), "-append", "apps-video",
            "-serial", f"file:{serial}", "-qmp", "stdio"]
+    env = os.environ.copy()
+    if args.system_launch:
+        env.pop("QUOTA_RAM", None)
+        env.update(QUOTA_KERNEL=str(args.kernel.resolve()), QUOTA_RUNTIME_VOLUME=str(args.runtime.resolve()),
+                   QUOTA_NOTES_DISK=str(disk), QUOTA_SERIAL=f"file:{serial}")
+        cmd = ["/bin/bash", str(root / "tools/run-files.sh"), "-display", "none", "-qmp", "stdio"]
     (out / f"command-{number}.json").write_text(json.dumps(cmd))
-    vm = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    vm = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=env)
     def qmp(name, parameters=None):
         msg = dict(execute=name, id=1)
         if parameters is not None:
@@ -91,7 +108,7 @@ def boot(number):
         raise RuntimeError("QEMU exited")
     def click(x, y):
         events = [{"type": "abs", "data": {"axis": axis, "value": round(value*32767/span)}}
-                  for axis, value, span in (("x", x, 1279), ("y", y, 799))]
+                  for axis, value, span in (("x", x, width-1), ("y", y, height-1))]
         qmp("input-send-event", {"events": events})
         for down in (True, False):
             time.sleep(.16)
@@ -100,7 +117,7 @@ def boot(number):
     def screenshot(label):
         dest = out / f"{number}-{label}.ppm"
         qmp("screendump", {"filename": str(dest)})
-        signature = b"P6\n1280 800\n255\n"
+        signature = f"P6\n{width} {height}\n255\n".encode()
         data = dest.read_bytes()
         if not data.startswith(signature):
             raise RuntimeError("Unexpected framebuffer size or format")
@@ -109,7 +126,7 @@ def boot(number):
         pixels = screenshot("ready")
         at = pixels.find(bytes.fromhex("177768") * 14)
         if at >= 0 and at % 3 == 0:
-            return at//3 % 1280, at//3 //1280
+            return at//3 % width, at//3 //width
         if "process stopped" in serial.read_text(errors="replace"):
             raise RuntimeError("Guest process exited before Todo became usable")
     def pressure_rounds(x, y):
@@ -120,7 +137,12 @@ def boot(number):
             time.sleep(.8)
         click(x+10, y+8)
         until(lambda: "[v8-major]" in serial.read_text(errors="replace"), 180, "major GC")
-        click(376, 742)
+        if args.system_launch:
+            box = re.search(r"launcher box (\d+),(\d+) (\d+)x(\d+)", serial.read_text())
+            x0, y0, w, h = map(int, box.groups())
+            click(x0+w//2, y0+h//2)
+        else:
+            click(376, 742)
         until(lambda: "[desktop] Apps opened" in serial.read_text(errors="replace"), 60, "Apps")
         click(404, 457)
         until(lambda: "[desktop] Test opened" in serial.read_text(errors="replace"), 60, "Test")
@@ -150,12 +172,29 @@ def boot(number):
     try:
         json.loads(vm.stdout.readline())
         qmp("qmp_capabilities")
+        ram = qmp("query-memory-size-summary")["base-memory"]
+        if ram != 256 << 20:
+            raise AssertionError(f"Expected 256 MiB, got {ram} bytes")
+        if args.system_launch:
+            def state(value):
+                until(lambda: serial.exists() and f"[session] state={value} " in serial.read_text(), 120, "session " + str(value))
+            def enter_password():
+                for char in (*password, "ret"):
+                    qmp("send-key", {"keys":[{"type":"qcode","data":char}], "hold-time":45})
+                    time.sleep(.22)
+            if number == 1:
+                state(1); enter_password(); state(2); enter_password()
+            state(4)
+            screenshot("locked")
+            enter_password()
+            state(5)
         until(lambda: serial.exists() and "[files] mounted" in serial.read_text(errors="replace"), 60, "desktop")
         devices = qmp("query-blockstats")
         reads = next(d["stats"]["rd_bytes"] for d in devices if d["device"] == "runtime")
         if reads:
             raise AssertionError(f"Runtime volume read {reads} bytes before launch")
-        click(116, 150)
+        if not args.system_launch:
+            click(116, 150)
         click(45, 138)
         time.sleep(.55)
         click(45, 138)
@@ -172,7 +211,7 @@ def boot(number):
             click(193, y+40)
         generation = until(lambda: record([[text, number == 2]]), 90, "committed Todo record")
         screenshot("committed")
-        result = dict(boot=number, pid=vm.pid, prelaunch_runtime_read_bytes=reads, generation=generation)
+        result = dict(boot=number, pid=vm.pid, ram_bytes=ram, prelaunch_runtime_read_bytes=reads, generation=generation)
         (out / f"cold-{number}.json").write_text(json.dumps(result, indent=2))
         if number == 2 and args.pressure_rounds:
             pressure_rounds(x, y)
