@@ -440,6 +440,9 @@ void decl_add_t1_app(const char *who, int dev, uint64_t b, int policy);
 uint64_t dev_real_us(const struct sim_dev *d, uint64_t req);
 uint64_t up_us(uint64_t t);
 int clock_is_icount(void);
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+int clock_fractional_icount(void);
+#endif
 void clock_detect(void);
 const char *clock_tag(void);
 void klog(const char *s);

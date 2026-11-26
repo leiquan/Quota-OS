@@ -155,6 +155,45 @@ static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
                                    unsigned height, unsigned y, uint64_t target,
                                    uint64_t *copy_start)
 {
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    if (clock_fractional_icount()) {
+        /* Eight successive reads span eight instructions. Subtracting
+         * 8 * target from their sum gives the first read's displacement
+         * in instructions, including its position within the counter tick.
+         * Skip that many NOPs before starting the real framebuffer copy. */
+        uint64_t a, b, c, d, e, f, g, h;
+        asm volatile(
+            "1: mrs %[a], cntvct_el0\n"
+            "cmp %[a], %[target]\n"
+            "b.lo 1b\n"
+            "mrs %[a], cntvct_el0\n"
+            "mrs %[b], cntvct_el0\n"
+            "mrs %[c], cntvct_el0\n"
+            "mrs %[d], cntvct_el0\n"
+            "mrs %[e], cntvct_el0\n"
+            "mrs %[f], cntvct_el0\n"
+            "mrs %[g], cntvct_el0\n"
+            "mrs %[h], cntvct_el0\n"
+            "add %[a], %[a], %[b]\n"
+            "add %[c], %[c], %[d]\n"
+            "add %[e], %[e], %[f]\n"
+            "add %[g], %[g], %[h]\n"
+            "add %[a], %[a], %[c]\n"
+            "add %[e], %[e], %[g]\n"
+            "add %[a], %[a], %[e]\n"
+            "sub %[a], %[a], %[target], lsl #3\n"
+            "cmp %[a], #8\n"
+            "b.hi 3f\n"
+            "adr %[b], 2f\n"
+            "add %[b], %[b], %[a], lsl #2\n"
+            "br %[b]\n"
+            "2: .rept 8\n nop\n .endr\n"
+            "3:"
+            : [a] "=&r"(a), [b] "=&r"(b), [c] "=&r"(c), [d] "=&r"(d),
+              [e] "=&r"(e), [f] "=&r"(f), [g] "=&r"(g), [h] "=&r"(h)
+            : [target] "r"(target) : "cc", "memory");
+    } else
+#endif
     if (clock_is_icount()) {
         /* The boot calibration verified one counter tick per instruction.
          * This poll samples every three ticks. Spend the unused part of the
