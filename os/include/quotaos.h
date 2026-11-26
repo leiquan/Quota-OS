@@ -543,6 +543,8 @@ void runtime_volume_init(void);
 int runtime_volume_trim(void);
 void runtime_volume_poll(void);
 int runtime_volume_find(const char *name, uint64_t *offset, uint64_t *size);
+int runtime_volume_read(uint64_t offset, void *destination, unsigned length);
+
 #endif
 
 void note_disk_poll(void);

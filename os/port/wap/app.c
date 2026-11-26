@@ -19,23 +19,111 @@ static int same_package(const unsigned char *data, unsigned size)
 
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
 static const char *const runtime_components[] = {"quota-blink", "libv8.so", "node"};
+/* ELF64 little-endian records from the ARM64 runtime volume. */
+struct runtime_elf_header {
+    uint8_t ident[16];
+    uint16_t type, machine;
+    uint32_t version;
+    uint64_t entry, phoff, shoff;
+    uint32_t flags;
+    uint16_t ehsize, phentsize, phnum, shentsize, shnum, shstrndx;
+};
+
+struct runtime_elf_segment {
+    uint32_t type, flags;
+    uint64_t offset, vaddr, paddr, filesz, memsz, align;
+};
+
+_Static_assert(sizeof(struct runtime_elf_header) == 64, "ELF64 header size");
+_Static_assert(sizeof(struct runtime_elf_segment) == 56, "ELF64 program header size");
+
 static unsigned next_component;
 static int volume_pending;
+static uint64_t file_offset, file_size, text_offset;
+static struct runtime_elf_header header;
+static unsigned next_segment, load_segments;
+
+static int prepare_component(void)
+{
+    if (!file_size) {
+        int result = runtime_volume_find(runtime_components[next_component], &file_offset, &file_size);
+        if (result != 1)
+            return result;
+    }
+    if (!next_segment) {
+        if (file_size < sizeof header)
+            return -1;
+        int result = runtime_volume_read(file_offset, &header, sizeof header);
+        if (result != 1)
+            return result;
+        static const uint8_t ident[] = {0x7f, 'E', 'L', 'F', 2, 1, 1};
+        for (unsigned i = 0; i < sizeof ident; ++i)
+            if (header.ident[i] != ident[i])
+                return -1;
+        if (header.machine != 183 ||
+            header.version != 1 || (header.type != 2 && header.type != 3) ||
+            header.ehsize != sizeof header || header.phentsize != sizeof(struct runtime_elf_segment) ||
+            !header.phnum || header.phnum > 32 || header.phoff < sizeof header ||
+            header.phoff > file_size || header.phnum * sizeof(struct runtime_elf_segment) > file_size - header.phoff ||
+            (header.entry & 3) || (!header.entry && next_component != 1))
+            return -1;
+    }
+    if (next_segment < header.phnum) {
+        struct runtime_elf_segment segment;
+        uint64_t position = file_offset + header.phoff + next_segment * sizeof segment;
+        int result = runtime_volume_read(position, &segment, sizeof segment);
+        if (result != 1)
+            return result;
+        if (segment.type == 1) {
+            if (segment.offset > file_size || segment.filesz > file_size - segment.offset ||
+                segment.filesz > segment.memsz || segment.memsz > UINT64_MAX - segment.vaddr ||
+                (segment.flags != 4 && segment.flags != 5 && segment.flags != 6) ||
+                (segment.align > 1 && ((segment.align & (segment.align - 1)) ||
+                                      ((segment.offset ^ segment.vaddr) & (segment.align - 1)))))
+                return -1;
+            ++load_segments;
+            if (segment.flags == 5 && segment.filesz >= 4) {
+                if (!header.entry)
+                    text_offset = segment.offset + 1;
+                else if (header.entry >= segment.vaddr &&
+                         header.entry - segment.vaddr <= segment.filesz - 4)
+                    text_offset = segment.offset + (header.entry - segment.vaddr) + 1;
+            }
+        }
+        ++next_segment;
+        return 0;
+    }
+
+    if (!text_offset)
+        return -1;
+    uint32_t instruction;
+    int result = runtime_volume_read(file_offset + (text_offset - 1), &instruction, sizeof instruction);
+    if (result == 1)
+        printf("[wap-volume] ELF %s bytes=%lu entry=%lx loads=%u text=%lx sample=%x\n",
+               runtime_components[next_component], file_size, header.entry, load_segments,
+               text_offset - 1, instruction);
+    return result;
+}
+
+static void reset_component(void)
+{
+    file_size = 0;
+    text_offset = 0;
+    next_segment = 0;
+    load_segments = 0;
+}
 
 int wap_volume_prepare_poll(void)
 {
     if (!volume_pending)
         return 0;
 
-    uint64_t offset, size;
-    int result = runtime_volume_find(runtime_components[next_component], &offset, &size);
+    int result = prepare_component();
     if (!result)
         return 0;
-    if (result > 0) {
-        printf("[wap-volume] found %s bytes=%lu\n", runtime_components[next_component], size);
-        if (++next_component < sizeof runtime_components / sizeof runtime_components[0])
-            return 0;
-    }
+    reset_component();
+    if (result > 0 && ++next_component < sizeof runtime_components / sizeof runtime_components[0])
+        return 0;
     volume_pending = 0;
     runtime_volume_trim();
     return result;
