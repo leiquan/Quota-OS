@@ -27,10 +27,14 @@
 #define EL0_SLOTS 2
 #endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
-/* Dedicated large-memory build. The static pool is covered by system_reserve_kb. */
+/* The static pool is covered by system_reserve_kb. */
 #define HIGH_START (2ull << 30)
 #define HIGH_LIMIT (1ull << 47)
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+#define EL0_POOL 14336 /* 56 MiB for the experimental external runtime. */
+#else
 #define EL0_POOL 65536
+#endif
 #define ELF_INTERP_BASE 0x10000000u
 #define ELF_DSO_BASE 0x10200000u
 /* Component builds of Blink map many shared ELF segments. Reserve virtual

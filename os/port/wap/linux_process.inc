@@ -13,7 +13,8 @@ int proc_svc_charges_caller(const struct irq_frame *f)
 #else
 #define SYSTEM_RUNTIME_PATH "/usr/lib/quota-runtime/electron"
 #endif
-extern const unsigned char wap_worker_start[], wap_worker_end[];
+extern const unsigned char wap_worker_start[] __attribute__((weak));
+extern const unsigned char wap_worker_end[] __attribute__((weak));
 static const struct runtime_file note_path = { .name = "/app/data/note.txt" };
 static const struct runtime_file window_device = { .name = "/dev/quota-window" };
 static const struct runtime_file system_executable = { SYSTEM_RUNTIME_PATH, wap_worker_start, wap_worker_end };

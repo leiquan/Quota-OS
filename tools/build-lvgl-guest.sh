@@ -15,6 +15,10 @@ source_lists+=(os/port/wap/sources.list)
 if [[ "${QUOTA_RUNTIME_VOLUME_BOOT:-0}" == 1 ]]; then
     image_name=quotaos-node-web-volume
     EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_RUNTIME_VOLUME_BOOT"
+    if [[ "${QUOTA_RUNTIME_VOLUME_LINUX_ABI:-0}" == 1 ]]; then
+        # Compile process support without emitting embedded ELF or DSO blobs.
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DQUOTA_NODE_WEB -DQUOTA_WAP_FULL_RUNTIME -DQUOTA_CALLER_ACCOUNTED_SVC"
+    fi
 elif [[ -n "${QUOTA_NODE_WEB_OUT:-}${QUOTA_WAP_PAGE_ELF:-}${QUOTA_WAP_INTERPRETER:-}" ]]; then
     source tools/wap-runtime.sh
     configure_wap_runtime
