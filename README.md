@@ -17,6 +17,8 @@ UI 版（`UI`）提供 C 应用和 LVGL 桌面。Web UI 版（`Web-UI`）在同�
 
 ARM64 运行时的联合构建入口是 [build-node-web-runtime.py](tools/build-node-web-runtime.py)，输入为准备好的 Chromium 142 源码、已应用兼容补丁的 Node 22.21.1 源码和目标 sysroot。镜像构建入口是 [build-lvgl-guest.sh](tools/build-lvgl-guest.sh)。配置 `QUOTA_NODE_WEB_OUT` 后，构建器从联合输出收集两个可执行文件、共享库和运行数据。[扩展运行时构建配置](tools/wap-runtime.sh)
 
+[Music Player pressure results / 音乐播放器掉帧实测](docs/tests/music-pressure/) · [官网实验截图](https://www.quotaos.org/zh.html#music-pressure)
+
 ## Quota OS editions · 三个发行版
 
 CLI, UI and Web UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. UI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js.
