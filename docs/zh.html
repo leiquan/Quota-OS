@@ -47,7 +47,7 @@ quota&gt; run Test t2
 Test: EL0 completed
 
 quota&gt; events
-period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI · Mac 上运行 QEMU 的串口实录 · <a href="tests/cli-layout/4M.log">完整串口日志</a></figcaption></figure></div><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="UI · 二级任务准入"></a><figcaption>UI · 二级任务准入</figcaption></figure></div><div><figure><a class="capture" href="screenshots/web-ui-todo.png"><img loading="lazy" src="screenshots/web-ui-todo.png" width="1280" height="800" alt="Web UI · Todo 任务清单"></a><figcaption>Web UI · Todo 任务清单</figcaption></figure></div></div>
+period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI · Mac 上运行 QEMU 的串口实录 · <a href="tests/cli-layout/4M.log">完整串口日志</a></figcaption></figure></div><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="GUI · 二级任务准入"></a><figcaption>GUI · 二级任务准入</figcaption></figure></div><div><figure><a class="capture" href="screenshots/web-ui-todo.png"><img loading="lazy" src="screenshots/web-ui-todo.png" width="1280" height="800" alt="Web UI · Todo 任务清单"></a><figcaption>Web UI · Todo 任务清单</figcaption></figure></div></div>
 </section>
 <section class="wrap section" id="compare">
 <h2>系统对比</h2><p>同样是预留 CPU 时间，给一组线程分配最低份额、给单个线程设置周期预算、为整个分区排定时间窗，解决的是不同的问题。下表从分配对象和运行规则比较五种做法。</p>
@@ -63,13 +63,13 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <section class="wrap section" id="evidence">
 <h2>桌面忙等卡顿时，一二级应用不会卡顿</h2>
 <p>在单核 ARM64 QEMU 中，两版各独立启动 100 次。每轮让三级任务忙等 10 秒，同时施加内存和磁盘压力，记录 GPS Speed 和 Flight Camera 每次写完来宾帧缓冲的时刻。</p>
-<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">发行版</th><th scope="col">通过轮数</th><th scope="col">GPS Speed 帧数 / 最大间隔</th><th scope="col">Flight Camera 帧数 / 最大间隔</th></tr></thead><tbody><tr><th scope="row">UI · 64 MiB</th><td>100 / 100</td><td>100,359 / 10.000 ms</td><td>25,091 / 40.000 ms</td></tr><tr><th scope="row">Web UI · 1 GiB</th><td>100 / 100</td><td>100,755 / 10.000 ms</td><td>25,184 / 40.000 ms</td></tr></tbody></table></div>
+<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">发行版</th><th scope="col">通过轮数</th><th scope="col">GPS Speed 帧数 / 最大间隔</th><th scope="col">Flight Camera 帧数 / 最大间隔</th></tr></thead><tbody><tr><th scope="row">GUI · 64 MiB</th><td>100 / 100</td><td>100,359 / 10.000 ms</td><td>25,091 / 40.000 ms</td></tr><tr><th scope="row">Web UI · 1 GiB</th><td>100 / 100</td><td>100,755 / 10.000 ms</td><td>25,184 / 40.000 ms</td></tr></tbody></table></div>
 <p>按 QEMU icount 虚拟时钟的原始 tick 比较，200 轮中没有一次相邻提交间隔超过对应的 10 ms 或 40 ms 门限。两版均无提交截止期漏期、二级预算欠付或三级总池超限。测量终点是来宾帧缓冲写入完成，宿主窗口呈现和物理屏幕刷新延迟仍待测量。</p>
-<div class="evidence-grid"><figure><a class="capture" href="screenshots/base-frame-pass.png"><img loading="lazy" width="1280" height="800" src="screenshots/base-frame-pass.png" alt="UI 第 1 轮：严格帧间隔检查通过"></a><figcaption>UI 第 1 轮：严格帧间隔检查通过。 <a href="tests/frame-intervals/base-001.log">本轮串口日志</a> · <a href="tests/frame-intervals/base.json">100 轮记录</a></figcaption></figure><figure><a class="capture" href="screenshots/web-frame-pass.png"><img loading="lazy" width="1280" height="800" src="screenshots/web-frame-pass.png" alt="Web UI 第 1 轮：严格帧间隔检查通过"></a><figcaption>Web UI 第 1 轮：严格帧间隔检查通过。 <a href="tests/frame-intervals/web-001.log">本轮串口日志</a> · <a href="tests/frame-intervals/web.json">100 轮记录</a></figcaption></figure></div>
+<div class="evidence-grid"><figure><a class="capture" href="screenshots/base-frame-pass.png"><img loading="lazy" width="1280" height="800" src="screenshots/base-frame-pass.png" alt="GUI 第 1 轮：严格帧间隔检查通过"></a><figcaption>GUI 第 1 轮：严格帧间隔检查通过。 <a href="tests/frame-intervals/base-001.log">本轮串口日志</a> · <a href="tests/frame-intervals/base.json">100 轮记录</a></figcaption></figure><figure><a class="capture" href="screenshots/web-frame-pass.png"><img loading="lazy" width="1280" height="800" src="screenshots/web-frame-pass.png" alt="Web UI 第 1 轮：严格帧间隔检查通过"></a><figcaption>Web UI 第 1 轮：严格帧间隔检查通过。 <a href="tests/frame-intervals/web-001.log">本轮串口日志</a> · <a href="tests/frame-intervals/web.json">100 轮记录</a></figcaption></figure></div>
 <h3 id="music-pressure">Music Player 空闲与受压实测</h3>
 <p>空闲时，Music Player 用三级剩余算力尽快提交。三级 CPU、内存、磁盘同时受压后，两版的整段平均分别降到 204.5 FPS 和 198.9 FPS。两版均记录到一级零遗漏、二级零欠配额，GPS Speed 和 Flight Camera 最大提交间隔为 10 ms 和 40 ms。</p>
-<div class="evidence-grid"><figure><a class="capture" href="screenshots/music-pressure-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-ui.png" alt="UI · 左：空闲 480 FPS。右：受压采样 80 FPS。"></a><figcaption>UI · 左：空闲 480 FPS。右：受压采样 80 FPS。</figcaption></figure><figure><a class="capture" href="screenshots/music-pressure-web-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-web-ui.png" alt="Web UI · 左：空闲 448 FPS。右：受压采样 197 FPS。"></a><figcaption>Web UI · 左：空闲 448 FPS。右：受压采样 197 FPS。</figcaption></figure></div>
-<p>FPS 为来宾提交速率。<a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/docs/tests/music-pressure">完整结果与复现步骤</a> · <a href="tests/music-pressure/ui.log">UI 日志</a> · <a href="tests/music-pressure/web-ui.log">Web UI 日志</a></p>
+<div class="evidence-grid"><figure><a class="capture" href="screenshots/music-pressure-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-ui.png" alt="GUI · 左：空闲 480 FPS。右：受压采样 80 FPS。"></a><figcaption>GUI · 左：空闲 480 FPS。右：受压采样 80 FPS。</figcaption></figure><figure><a class="capture" href="screenshots/music-pressure-web-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-web-ui.png" alt="Web UI · 左：空闲 448 FPS。右：受压采样 197 FPS。"></a><figcaption>Web UI · 左：空闲 448 FPS。右：受压采样 197 FPS。</figcaption></figure></div>
+<p>FPS 为来宾提交速率。<a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/docs/tests/music-pressure">完整结果与复现步骤</a> · <a href="tests/music-pressure/ui.log">GUI 日志</a> · <a href="tests/music-pressure/web-ui.log">Web UI 日志</a></p>
 </section>
 <section class="wrap section" id="run">
 <h2>启动模拟器</h2>
@@ -116,6 +116,6 @@ bash tools/run-files.sh</code></pre>
 QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh</code></pre>
 </section>
 </main>
-<footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/UI/LICENSE">Apache 2.0</a></footer>
+<footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/GUI/LICENSE">Apache 2.0</a></footer>
 </body>
 </html>

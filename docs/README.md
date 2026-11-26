@@ -10,7 +10,7 @@ The four editions share this directory. Each branch's top-level README describes
 | Official website · 官网 | [English](index.html) · [简体中文](zh.html) · [CSS](site.css) · [JavaScript](site.js) |
 | Screenshots · 截图 | [screenshots/](screenshots/) |
 | Music Player under pressure · 音乐播放器压力实测 | [Screenshots, data and logs · 实拍、数据与日志](tests/music-pressure/) |
-| Current desktop frame evidence · 桌面帧间隔证据 | [UI summary](tests/frame-intervals/base.json) · [Web UI summary](tests/frame-intervals/web.json) · [serial logs](tests/frame-intervals/) |
+| Current desktop frame evidence · 桌面帧间隔证据 | [GUI summary](tests/frame-intervals/base.json) · [Web UI summary](tests/frame-intervals/web.json) · [serial logs](tests/frame-intervals/) |
 | Quota and persistence evidence · 配额与持久化证据 | [Quota scenarios](tests/quota-scenarios/) · [Cortex-A35 runs](tests/cortex-a35/) · [C workflow](tests/c-workflow/) |
 | Historical notes · 历史技术记录 | [Technical notes](../TECHNICAL-NOTES.md) · [Older acceptance runs](accept-v008/) · [v016 records](v016/) |
 | Earlier WebKit experiments · 早期 WebKit 原型 | [Page experiment](tests/webkit-page/) · [Runtime experiment](tests/webkit-stack/) · [Archived HTML sample](archive/webkit/hello.html) |
