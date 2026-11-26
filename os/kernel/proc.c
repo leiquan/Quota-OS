@@ -292,6 +292,9 @@ static int can_queue_socket(struct packet_socket *socket, struct packet_socket *
 
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
 #define DISK_ELF_MAX_SEGMENTS 32
+/* Invalid L3 entries carry the disk catalog index, page position and protection. */
+#define DISK_DSO_PENDING (1ull << 63)
+#define DISK_DSO_POSITION_MASK 0xffffffffffull
 struct disk_elf_segment {
     uint64_t file_position;
     unsigned address, file_bytes, memory_bytes, permissions, first_frame;
@@ -1039,17 +1042,32 @@ static void finish_volume_wait(struct proc *p)
 static void clean_code(void *p, uint64_t n);
 static uint64_t code_pte(uint64_t pa);
 static uint64_t data_pte(uint64_t pa);
+static int alloc_page(uint64_t *pa);
+static unsigned private_pages_left(const struct proc *p);
+static const struct runtime_volume_file *disk_catalog_extent(unsigned index);
 
 static int block_on_disk_elf(struct proc *p, uint64_t far, uint64_t esr)
 {
     unsigned ec = (esr >> 26) & 0x3f;
     if (!p || p->task->tier != TIER3 || (esr & 0x3f) != 7 ||
         (esr & (1u << 10)) || (ec != 0x20 && ec != 0x24) ||
-        far < ELF_BASE || far >= ELF_INTERP_BASE)
+        far < ELF_BASE || far >= ELF_DSO_BASE + (uint64_t)ELF_DSO_PAGES * 4096)
         return 0;
     unsigned page = far & ~4095u;
-    if (image_pt[p->slot][(page - ELF_BASE) >> 12] & PTE_VALID)
+    uint64_t entry = image_pt[p->slot][(page - ELF_BASE) >> 12];
+    if (entry & PTE_VALID)
         return 0;
+    if (page >= ELF_DSO_BASE && (entry & DISK_DSO_PENDING)) {
+        unsigned prot = (entry >> 1) & 7;
+        if (!prot || (ec == 0x20 && !(prot & 4)) ||
+            (ec == 0x24 && (esr & 0x40) && !(prot & 2)) ||
+            (ec == 0x24 && !(esr & 0x40) && !(prot & 1)))
+            return 0;
+        p->disk_fault_page = page;
+        p->disk_elf_waiting = 2;
+        p->task->state = TASK_BLOCKED;
+        return 1;
+    }
     for (unsigned i = 0; i < p->disk_segment_count; ++i) {
         const struct disk_elf_segment *segment = &p->disk_segments[i];
         unsigned first = segment->address & ~4095u;
@@ -1067,10 +1085,57 @@ static int block_on_disk_elf(struct proc *p, uint64_t far, uint64_t esr)
     return 0;
 }
 
+static void finish_disk_dso_fault(struct proc *p)
+{
+    unsigned page = p->disk_fault_page;
+    unsigned index = (page - ELF_DSO_BASE) >> 12;
+    uint64_t *pte = &image_pt[p->slot][(page - ELF_BASE) >> 12];
+    uint64_t pending = *pte;
+    unsigned protection = (pending >> 1) & 7;
+    unsigned file_index = (pending >> 44) & 1023;
+    uint64_t position = ((pending >> 4) & DISK_DSO_POSITION_MASK) << 12;
+    const struct runtime_volume_file *file = disk_catalog_extent(file_index);
+    uint64_t pa = 0;
+    int frame = file && position < file->size && private_pages_left(p)
+        ? alloc_page(&pa) : -1;
+    int result = -1;
+    if (frame >= 0) {
+        uint64_t bytes = file->size - position;
+        result = runtime_volume_fill_segment_page(file, position, 0,
+                                                  bytes < 4096 ? bytes : 4096,
+                                                  (uint8_t *)(uintptr_t)pa);
+        if (result != 1)
+            free_idx(frame);
+    }
+    if (!result)
+        return;
+    if (result > 0 && (protection & 4))
+        clean_code((void *)(uintptr_t)pa, 4096);
+    uint64_t irq = irq_save();
+    p->disk_elf_waiting = 0;
+    if (result < 0) {
+        reap_timed(p, "dso-page-read", ticks_now(), sched_period_now());
+    } else {
+        image_frames[p->slot][p->dso_frame + index] = frame;
+        p->mapped_dso_pages++;
+        p->dso_source[index] = pa;
+        *pte = protection & 4 ? code_pte(pa) | PTE_PXN :
+               data_pte(pa) | ((protection & 2) ? 0 : AP_RO);
+        asm volatile("dsb ishst" ::: "memory");
+        tlb_asid(p->asid);
+        task_ready(p->task);
+    }
+    irq_restore(irq);
+}
+
 static void finish_disk_elf_fault(struct proc *p)
 {
     if (!p->alive || p->draining || !p->disk_elf_waiting)
         return;
+    if (p->disk_elf_waiting == 2) {
+        finish_disk_dso_fault(p);
+        return;
+    }
     const struct disk_elf_segment *segment = &p->disk_segments[p->disk_fault_segment];
     unsigned page = p->disk_fault_page;
     unsigned first = segment->address & ~4095u;
@@ -1640,7 +1705,8 @@ void proc_el0_svc(struct irq_frame *f)
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB) && defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
         /* The static test image exercises the same file syscalls as ld.so. */
         if (p->disk_segment_count && (op == 56 || op == 57 || op == 62 ||
-                                     op == 63 || op == 67 || op == 80))
+                                     op == 63 || op == 67 || op == 80 || op == 222 ||
+                                     op == 215 || op == 226))
             runtime_abi = 1;
 #endif
         int64_t result = runtime_abi ? runtime_syscall(p, f) : -38;
@@ -2115,6 +2181,19 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
         else
 #endif
             map_image(p, image->file, image->load_bias, headers, header_count);
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB) && defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+        if (image->volume_file && !image->interp_entry) {
+            p->dso_frame = p->image_pages;
+            p->mapped_dso_pages = 0;
+            p->private_page_limit = 16;
+            for (unsigned i = 0; i < ELF_DSO_PAGES; ++i)
+                image_frames[p->slot][p->dso_frame + i] = -1;
+            p->image_pages += ELF_DSO_PAGES;
+            memset(p->dso_source, 0, sizeof p->dso_source);
+            memset(p->dso_used, 0, sizeof p->dso_used);
+            memset(p->dso_anonymous, 0, sizeof p->dso_anonymous);
+        }
+#endif
         if (image->interp_entry) {
             map_image(p, image->interpreter, ELF_INTERP_BASE,
                       image->interpreter + image->interp_phoff, image->interp_count);

@@ -246,6 +246,11 @@ static const struct runtime_file *disk_catalog_lookup(const char *name)
     return NULL;
 }
 
+static const struct runtime_volume_file *disk_catalog_extent(unsigned index)
+{
+    return index < disk_catalog_count ? &disk_extents[index] : NULL;
+}
+
 static const struct runtime_volume_file *disk_file_extent(const struct runtime_file *file)
 {
     uintptr_t address = (uintptr_t)file, base = (uintptr_t)disk_catalog;
@@ -601,7 +606,11 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
 #endif
     if (map && (((flags & 3) != 2 && !shared_readonly && !share_writable) || (!(flags & 32) && !file) || (off & 4095))) return -22;
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
-    if (map && disk_file_extent(file)) return -95;
+    const struct runtime_volume_file *disk_file = map && !(flags & 32) ? disk_file_extent(file) : NULL;
+    if (disk_file && (off >= disk_file->size ||
+                      pages > ((disk_file->size - off - 1) >> 12) + 1 ||
+                      (off >> 12) > DISK_DSO_POSITION_MASK - (pages - 1)))
+        return -22;
 #endif
     if (p->mapping.va) va = p->mapping.va;
     else if (map && !(flags & 16)) {
@@ -656,6 +665,11 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
             memset(&p->mapping, 0, sizeof p->mapping);
             return -12;
         }
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        uint64_t old = image_pt[p->slot][(va - ELF_BASE) / 4096 + i];
+        if (disk_file || (op == 226 && (old & DISK_DSO_PENDING)))
+            continue;
+#endif
         const uint8_t *source = map ? NULL : (const uint8_t *)p->dso_source[idx];
         if (map && !(flags & 32) && off <= (uint64_t)(file->end - file->begin) &&
             i * 4096ull + 4096 <= (uint64_t)(file->end - file->begin) - off)
@@ -689,6 +703,33 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
         unsigned i = p->mapping.next++;
         unsigned idx = first + i;
         int *slot = &image_frames[p->slot][p->dso_frame + idx];
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        uint64_t *pending_pte = &image_pt[p->slot][(va - ELF_BASE) / 4096 + i];
+        if (disk_file || (op == 226 && (*pending_pte & DISK_DSO_PENDING))) {
+            if (disk_file) {
+                uint64_t disk_index = disk_file - disk_extents;
+                *pending_pte = DISK_DSO_PENDING | (disk_index << 44) |
+                               ((off / 4096 + i) << 4);
+                if (*slot >= 0) {
+                    tlb_asid(p->asid);
+                    free_idx(*slot);
+                    *slot = -1;
+                    p->mapped_dso_pages--;
+                }
+                shm_account(p, p->dso_source[idx], 0);
+                p->dso_source[idx] = 0;
+                p->dso_used[idx / 64] |= 1ull << (idx % 64);
+                p->dso_anonymous[idx / 64] &= ~(1ull << (idx % 64));
+            }
+            *pending_pte = (*pending_pte & ~14ull) | (prot << 1);
+            if (p->mapping.next < pages && ticks_now() - slice_start >= us_to_ticks(40)) {
+                tlb_asid(p->asid);
+                f->elr -= 4;
+                return f->r[0];
+            }
+            continue;
+        }
+#endif
         uintptr_t pa = 0;
         if (op != 215) {
             const uint8_t *src = (const uint8_t *)p->dso_source[idx];
@@ -754,6 +795,9 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     memset(&p->mapping, 0, sizeof p->mapping);
     tlb_asid(p->asid);
 #ifdef QUOTA_NODE_WEB
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT)
+    if (!disk_file)
+#endif
     if (map && !(flags & 32) && (prot & 4) && file && !strcmp(file->name, "libv8.so")) {
         /* Emit only after every PTE in this segment has been installed. */
         uint64_t pte = image_pt[p->slot][(va - ELF_BASE) / 4096];
