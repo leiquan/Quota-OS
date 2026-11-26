@@ -14,6 +14,9 @@ static int result;
 static int list_entry(void *context, const char *name, unsigned bytes)
 {
     (void)context;
+    if ((bytes == 1 && name[0] == '.') ||
+        (bytes == 2 && name[0] == '.' && name[1] == '.'))
+        return 0;
     if (bytes + 1 > sizeof data - length) {
         result = EXT4_NO_SPACE;
         return 1;
