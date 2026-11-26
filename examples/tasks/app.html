@@ -1,0 +1,67 @@
+<!doctype html><meta charset=utf-8><title>Task List</title>
+<style>
+body{font:15px sans-serif;color:#193234;margin:12px}#add{background:#177768;color:white}small,section button{margin-left:8px}section{border-top:1px solid #ddd;padding:3px}
+</style>
+<b>Tasks</b><small id=count></small><br>
+<input id=entry maxlength=36 placeholder="New task"><button id=add>Add</button>
+<label><input id=open type=checkbox>Open only</label>
+<main id=rows></main><output id=message></output>
+<script>
+(async () => {
+  const byId = id => document.getElementById(id);
+  const input = byId('entry');
+  const filter = byId('open');
+  const list = byId('rows');
+  const status = byId('message');
+  const add = byId('add');
+  let tasks, busy = false;
+
+  function render() {
+    list.replaceChildren();
+    byId('count').textContent = tasks.filter(task => !task[1]).length + ' open / ' + tasks.length;
+    tasks.forEach(([text, done], index) => {
+      if (done && filter.checked) return;
+      const create = tag => document.createElement(tag);
+      const row = create('section');
+      const toggle = create('input');
+      toggle.type = 'checkbox';
+      toggle.checked = done;
+      toggle.onclick = () => save(tasks.map((task, i) => i === index ? [text, !done] : task));
+      const remove = create('button');
+      remove.textContent = 'Delete';
+      remove.onclick = () => save(tasks.filter((_, i) => i !== index));
+      row.append(toggle, text, remove);
+      list.append(row);
+    });
+  }
+
+  async function save(next) {
+    if (busy) { render(); return; }
+    busy = true;
+    try {
+      await rpc.get('save', next);
+      tasks = next;
+      status.textContent = 'Saved';
+      return true;
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  try {
+    tasks = await rpc.get('list');
+    render();
+    filter.onchange = render;
+    add.onclick = async () => {
+      const text = input.value.trim();
+      if (text && await save([...tasks, [text, false]])) input.value = '';
+    };
+    input.onkeydown = event => { if (event.key === 'Enter') add.click(); };
+  } catch (error) {
+    status.textContent = error.message;
+  }
+})();
+</script>
