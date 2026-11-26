@@ -550,13 +550,18 @@ struct runtime_volume_file {
 int runtime_volume_find(const char *name, struct runtime_volume_file *file);
 int runtime_volume_read_file(const struct runtime_volume_file *file, uint64_t position,
                              void *destination, unsigned length);
+/* Materialize one ELF segment page, zero-filling bytes outside file data. */
+int runtime_volume_fill_segment_page(const struct runtime_volume_file *file,
+                                     uint64_t position, unsigned in_page,
+                                     unsigned bytes, uint8_t *page);
 #ifdef QUOTA_NODE_WEB
 int proc_prepare_volume_interpreter(const struct runtime_volume_file *file);
 #endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
 int runtime_volume_acquire(uint64_t offset, const uint8_t **data);
 void runtime_volume_release(const uint8_t *data);
-int64_t proc_spawn_volume_probe(const char *name, uint64_t offset, uint64_t data_offset, int execute);
+int64_t proc_spawn_volume_probe(const char *name, const struct runtime_volume_file *file,
+                                 uint64_t code_offset, uint64_t data_offset, unsigned data_size);
 #endif
 
 #endif

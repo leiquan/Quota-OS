@@ -51,6 +51,7 @@ static unsigned next_segment, load_segments;
 static int interpreter_seen;
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
 static uint64_t probe_data_offset;
+static unsigned probe_data_size;
 static int64_t probe_handle;
 #endif
 
@@ -110,13 +111,15 @@ static int prepare_component(void)
             ++load_segments;
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
             if (!strcmp(runtime_components[next_component], "quota-pager-test")) {
-                if (segment.filesz != 4096 || segment.memsz != 4096 ||
-                    (segment.offset & 4095) ||
-                    !((segment.flags == 5 && segment.vaddr == 0x3000) ||
+                if (segment.memsz != 4096 ||
+                    !((segment.flags == 5 && segment.vaddr == 0x3000 &&
+                       segment.filesz == 4096 && !(segment.offset & 4095)) ||
                       (segment.flags == 6 && segment.vaddr == 0x2000 && segment.offset)))
                     return -1;
-                if (segment.flags == 6)
+                if (segment.flags == 6) {
                     probe_data_offset = segment.offset;
+                    probe_data_size = segment.filesz;
+                }
             }
 #endif
             if (segment.flags == 5 && segment.filesz >= 4) {
@@ -138,8 +141,8 @@ static int prepare_component(void)
     if (!strcmp(runtime_components[next_component], "quota-pager-test")) {
         if (load_segments != 2 || header.entry != 0x3000 || !probe_data_offset)
             return -1;
-        probe_handle = proc_spawn_volume_probe("volume-elf-test", file.offset + text_offset - 1,
-                                              file.offset + probe_data_offset, 1);
+        probe_handle = proc_spawn_volume_probe("volume-elf-test", &file, text_offset - 1,
+                                              probe_data_offset, probe_data_size);
         return probe_handle > 0 ? 1 : -1;
     }
 #endif
@@ -165,6 +168,7 @@ static void reset_component(void)
     interpreter_seen = 0;
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
     probe_data_offset = 0;
+    probe_data_size = 0;
 #endif
 }
 

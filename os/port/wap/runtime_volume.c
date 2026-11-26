@@ -258,6 +258,23 @@ int runtime_volume_read_file(const struct runtime_volume_file *file, uint64_t po
     return read_volume(file->offset + position, destination, length);
 }
 
+int runtime_volume_fill_segment_page(const struct runtime_volume_file *file,
+                                     uint64_t position, unsigned in_page,
+                                     unsigned bytes, uint8_t *page)
+{
+    if (in_page >= PAGE_BYTES || bytes > PAGE_BYTES - in_page ||
+        position > file->size || bytes > file->size - position)
+        return -1;
+    if (bytes) {
+        int result = runtime_volume_read_file(file, position, page + in_page, bytes);
+        if (result != 1)
+            return result;
+    }
+    memset(page, 0, in_page);
+    memset(page + in_page + bytes, 0, PAGE_BYTES - in_page - bytes);
+    return 1;
+}
+
 /* Binary search the sorted index without retaining index pages across calls. */
 int runtime_volume_find(const char *name, struct runtime_volume_file *file)
 {

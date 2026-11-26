@@ -369,7 +369,9 @@ struct proc {
     uintptr_t fault_code_pa[2];
 #endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
+    struct runtime_volume_file volume_file;
     uint64_t volume_offset, volume_data_offset;
+    unsigned volume_data_size;
     const uint8_t *volume_page;
     int volume_waiting, volume_exec;
 #endif
@@ -978,13 +980,14 @@ static void finish_volume_wait(struct proc *p)
 {
     if (!p->alive || p->draining || !p->volume_waiting || !p->task)
         return;
-    const uint8_t *page;
+    const uint8_t *page = NULL;
     int writable = p->volume_waiting == 2;
-    int result = runtime_volume_acquire(writable ? p->volume_data_offset : p->volume_offset, &page);
+    int result = writable
+        ? runtime_volume_fill_segment_page(&p->volume_file, p->volume_data_offset, 0,
+                                            p->volume_data_size, (uint8_t *)(uintptr_t)p->pa[2])
+        : runtime_volume_acquire(p->volume_offset, &page);
     if (!result)
         return;
-    if (result > 0 && writable)
-        memcpy((void *)(uintptr_t)p->pa[2], page, 4096);
     if (result > 0 && !writable && p->volume_exec)
         clean_code((void *)page, 4096);
     uint64_t flags = irq_save();
@@ -1007,10 +1010,9 @@ static void finish_volume_wait(struct proc *p)
         task_ready(p->task);
     }
     irq_restore(flags);
-    if (result > 0 && writable) {
-        runtime_volume_release(page);
+    if (result > 0 && writable)
         printf("[volume-pager] private data mapped pid=%d\n", p->pid);
-    } else if (result > 0)
+    else if (result > 0)
         printf("[volume-pager] resumed pid=%d asid=%d page=0x%lx\n", p->pid, p->asid,
                (uintptr_t)page);
 }
@@ -1917,6 +1919,10 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     p->volume_waiting = 0;
     p->volume_exec = console == CONSOLE_VOLUME_PROBE && limit;
     p->volume_data_offset = p->volume_exec ? foreign_pa : 0;
+    if (p->volume_exec) {
+        p->volume_file = *(const struct runtime_volume_file *)kern_va;
+        p->volume_data_size = vx;
+    }
 #endif
 #ifdef QUOTA_NODE_WEB
     p->page_executable = image && (image->role == WAP_FRONTEND || image->role == WAP_PAGE_ONLY)
@@ -2071,17 +2077,18 @@ int64_t proc_spawn_console(const char *code, unsigned bytes)
 }
 
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
-int64_t proc_spawn_volume_probe(const char *name, uint64_t offset, uint64_t data_offset, int execute)
+int64_t proc_spawn_volume_probe(const char *name, const struct runtime_volume_file *file,
+                                 uint64_t code_offset, uint64_t data_offset, unsigned data_size)
 {
-    /* mov x1,#0x3000; ldrb w0,[x1]; mov x8,#1; svc #0 */
-    static const uint32_t code[] = { 0xd2860001, 0x39400020, 0xd2800028, 0xd4000001 };
     /* mov x1,#0x3000; br x1 */
     static const uint32_t jump[] = { 0xd2860001, 0xd61f0020 };
-    if (offset & 4095)
+    if ((code_offset & 4095) || code_offset > file->size || file->size - code_offset < 4096 ||
+        !data_offset || data_offset > file->size || data_size > 4096 ||
+        data_size > file->size - data_offset)
         return -1;
-    return spawn_image(NULL, (const char *)(execute ? jump : code), execute ? sizeof jump : sizeof code, NULL, 0, NULL, 0, 0,
-                       CONSOLE_VOLUME_PROBE, name, offset,
-                       execute, data_offset, 0, 0, 0, 0, 0, 0);
+    return spawn_image(NULL, (const char *)jump, sizeof jump, NULL, 0, NULL, 0, 0,
+                       CONSOLE_VOLUME_PROBE, name, file->offset + code_offset, 1,
+                       data_offset, 0, (uintptr_t)file, data_size, 0, 0, 0);
 }
 #endif
 
