@@ -1,101 +1,65 @@
 **Official website / 官网** · [English](https://www.quotaos.org/) · [简体中文](https://www.quotaos.org/zh.html)
 
-# Quota OS · Web UI 版
+# Quota OS · Touch UI
 
-**Quick links** · [Run Web UI](#启动本地-web-ui-构建) · [Three editions](#quota-os-editions--三个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
+Touch UI is the 900 × 1600 portrait edition of Quota OS. Applications open full screen. Use the bottom bar to go back or return to the home screen while keeping the current app state.
 
-UI 版（`UI`）提供 C 应用和 LVGL 桌面。Web UI 版（`Web-UI`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
+Touch UI 是 Quota OS 的 900 × 1600 竖屏版。应用全屏打开，底部 Bar 负责返回和回主屏，切回应用时保留现场。
 
-在 Apps → ZIP 导出 `todo.wap`，再从 Files 打开 **Todo**。示例支持添加、完成、筛选和删除，Node.js 后台保存每次修改。同一应用的页面与后台共用系统 V8。[Todo 源码与构建步骤](examples/todo)
+[Run Touch UI · 启动](#run-touch-ui) · [Technical notes · 技术说明](TECHNICAL-NOTES.md#touch-ui) · [Documentation · 文档导航](docs/README.md)
 
-| 代码位置 | 职责 |
-|---|---|
-| `os/kernel/`、`os/boot/` | 配额、调度、内存保护、进程、设备和文件服务 |
-| `os/port/desktop/` | LVGL 桌面、Files、窗口与输入 |
-| `os/port/wap/` | 应用包启动、窗口恢复、前后台共享的 RPC |
-| `os/port/blink/`、`os/port/node/` | 页面绘制、输入以及 Node 文件描述符上的消息传输 |
+![Touch UI 的全屏 Notes、底部手势栏和圆形指针](docs/screenshots/touch-ui-portrait.png)
 
-ARM64 运行时的联合构建入口是 [build-node-web-runtime.py](tools/build-node-web-runtime.py)，输入为准备好的 Chromium 142 源码、已应用兼容补丁的 Node 22.21.1 源码和目标 sysroot。镜像构建入口是 [build-lvgl-guest.sh](tools/build-lvgl-guest.sh)。配置 `QUOTA_NODE_WEB_OUT` 后，构建器从联合输出收集两个可执行文件、共享库和运行数据。[扩展运行时构建配置](tools/wap-runtime.sh)
+## Quota OS editions · 四个发行版
 
-## Quota OS editions · 三个发行版
+CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. UI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js. Touch UI provides a 900 × 1600 portrait desktop with full-screen applications and a bottom gesture bar.
 
-CLI, UI and Web UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. UI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js.
-
-三个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。
+四个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。Touch UI 提供 900 × 1600 竖屏、全屏应用和底部手势栏。
 
 | Edition · 发行版 | Default QEMU RAM · 默认内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 72.3 KiB |
 | [UI](https://github.com/leiquan/Quota-OS/tree/UI) | 64 MiB | 685.4 KiB |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 1 GiB | 357.5 MiB |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 64 MiB demo · 128 MiB macOS launcher | Build from source · 源码构建 |
 
-The two desktop figures are verified QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
+The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
 图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `todo.wap` 为 **2,021 字节**。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
-### 开发与验证
+## Run Touch UI
 
-- **CLI**：在串口运行基础命令，用 C 编译独立 EL0 Test，并在默认 4 MiB 下验证二三级运行与磁盘读回。[启动指南](https://github.com/leiquan/Quota-OS/tree/CLI) · [验收日志](docs/tests/cli-4m/)
-- **UI**：在 `os/kernel/` 开发内核与驱动，在 `os/port/desktop/` 用 C 和 LVGL 实现界面。用 ARM64 工具链执行 `bash tools/build-lvgl-guest.sh`，再用 `QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh` 启动新镜像。在 Apps → Test 检查准入、CPU 配额和仪表提交。
-- **Web UI 系统**：在准备好的 Chromium 142 与 Node 22.21.1 源码上应用分支内的兼容补丁，用 `tools/build-node-web-runtime.py` 联合构建 Blink 和 Node，使二者依赖相同的 `libv8.so`。将 `QUOTA_NODE_WEB_OUT` 指向联合输出，并指定 ARM64 动态加载器、库目录和字体，再执行 `bash tools/build-lvgl-guest.sh`。产物是 `build/quotaos-node-web.bin`。[构建入口](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/build-node-web-runtime.py) · [镜像配置](https://github.com/leiquan/Quota-OS/blob/Web-UI/tools/wap-runtime.sh)
-- **Web UI 应用**：将 `app.json`、`app.html` 和可选的后台 `app.js` 放在 ZIP 根目录，使用存储模式，扩展名为 `.wap`。系统内的 ZIP App 可以导出 Todo。在 Files 双击后，页面通过 `rpc.get('save', tasks)` 调用三级 Node 后台写盘。关闭 QEMU 后保留数据盘，再次启动、打开 Todo 即可检查任务清单。[应用源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
-
-页面与后台均可用 `await rpc.set(name, handler)` 注册方法，用 `await rpc.get(name, ...args)` 调用对端并接收返回值。每个运行中的 WAP 实例有一张方法名表。注册成功后方法名归注册端所有，直到该实例结束。同端重复、跨端重名以及注册 `set`、`get` 都会拒绝 Promise。并发争用同一名称只有一次注册成功。参数和返回值用 JSON 表示，每个消息最多 1024 个 UTF-8 字节。
-
-![UI 的二级任务准入检查](docs/screenshots/c-lvgl-admission.png)
-
-![Web UI Todo 示例](docs/screenshots/web-ui-todo.png)
-
-### 启动本地 Web UI 构建
-
-在仓库根目录运行。以下命令首次创建 Todo 专用的 64 KiB 数据盘，再次执行会复用这块盘。旧笔记示例数据盘请单独保留。
+先安装支持 ARM64 系统模拟的 QEMU 和 AArch64 GNU 交叉工具链，再从 Touch UI 源码构建。
 
 ```sh
-test -e build/todo-data.raw || (set -C; umask 077; dd if=/dev/zero bs=1024 count=64 >build/todo-data.raw)
-qemu-system-aarch64 -machine virt,gic-version=2 -cpu cortex-a35 -m 1G -nic none \
-  -global virtio-mmio.force-legacy=false -device virtio-rng-device -device ramfb \
-  -device virtio-tablet-device -device virtio-keyboard-device \
-  -drive if=none,id=notes,format=raw,file=build/todo-data.raw \
-  -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES -icount shift=1,sleep=off \
-  -kernel build/quotaos-node-web.bin -append apps-video -serial stdio -monitor none
-```
-
-## LVGL desktop baseline
-
-![Quota OS desktop with the Apps directory and three vehicle demo applications](docs/screenshots/apps.png)
-
-
-Quota OS is an experimental single-core ARM64 operating system built around resource quotas. Its 1280 × 800 LVGL desktop runs on QEMU with one Cortex-A35 core and 64 MiB of RAM by default. A speedometer uses a fixed Tier 1 CPU slot, a dashcam demo requests a Tier 2 reservation, and music and desktop interaction share the Tier 3 pool. CPU deadlines are measured against the guest clock. The demos use simulated speed, video frames and playback activity.
-
-Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。一级由厂商预留固定时间槽，二级由应用申报、用户选择启用，三级共享剩余资源。桌面提供任务监控、现场测试和持久笔记，默认以 QEMU 单核 Cortex-A35 和 64 MiB 内存运行。当前验收基于 QEMU 虚拟时钟及帧缓冲提交，物理显示和实际 SSD 的最坏时延尚待验证。
-
-## Run the prebuilt LVGL desktop
-
-[Download the desktop preview](https://github.com/leiquan/Quota-OS/releases/latest) for the standalone ARM64 image and launch commands. If you prefer a local checkout, use the launcher below.
-
-Install Git and QEMU with ARM system emulation (macOS: `brew install git qemu`; Ubuntu/Debian: `sudo apt install git qemu-system-arm qemu-system-gui`). From a graphical desktop, run:
-
-```sh
-git clone --branch UI https://github.com/leiquan/Quota-OS.git
+git clone --branch Touch-UI https://github.com/leiquan/Quota-OS.git
 cd Quota-OS
-bash tools/run-files.sh
+bash tools/build-lvgl-guest.sh
+QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh
 ```
 
-The launcher boots the included ARM64 image and creates a persistent Notes disk on first use. No cross-compiler is required.
+Apple Silicon 可以用 Homebrew 的 `qemu`、`llvm` 和 `lld`。先设置构建所需的工具路径，再通过项目脚本打开大尺寸普通窗口。
+
+```sh
+QUOTA_LLVM_BIN="$(brew --prefix llvm)/bin" QUOTA_LLD="$(brew --prefix lld)/bin/ld.lld" bash tools/build-lvgl-guest.sh
+bash tools/run-macos-gui.sh build/quotaos-lvgl.bin
+```
+
+| 操作 | 结果 |
+|---|---|
+| 底部 Bar 单击或向上滑一次 | 返回上一页 |
+| 底部 Bar 双击或连续向上滑两次 | 回主屏，保留当前应用现场 |
+| 移动或按下 QEMU 鼠标 | 圆形指针跟随，按下时变蓝 |
+
+`run-files.sh` 以 `apps-video` 启动模拟版 GPS Speed、Flight Camera 和 Music Player，并为 Notes 创建数据盘。macOS 普通启动模式会将这三个演示图标置灰。
+
+QEMU 虚拟平板已覆盖四角坐标、单双手势和切回 Notes 后草稿及对话框的恢复。多触点事件解析、实体触摸屏驱动、校准和端到端延迟仍待验证。
 
 ## Vehicle instruments
 
-GPS Speed updates its digital readout and linear pointer from the reserved Tier 1 display path. Its deadline counter is cumulative. Flight Camera animates simulated lane markings at a target of 25 frames per second in Tier 2, updating only changing pixels after initialization. The GPS Speed, Flight Camera and Music Player cards display their tier at the right. Music Player shows eight recent samples of frame delivery in the shared Tier 3 pool. GPS Speed and Flight Camera FPS use timestamps from completed framebuffer commits. The Test app also reports their longest observed gaps; the intentional camera pause starts a new interval on resume. The labels and history are sampled by the desktop; GPS Speed continues to commit while that desktop is stalled.
-
-![Quota OS desktop showing the GPS Speed gauge, simulated dashcam lanes and music frame history](docs/screenshots/vehicle-instruments.png)
-
-[Watch the QEMU capture](docs/screenshots/instruments-live.gif) · [Run the measured LVGL build](https://github.com/leiquan/Quota-OS/tree/7e594c7)
-
-[100 desktop-stall cold boots with these instruments](docs/tests/cortex-a35/instrument-regression.tar.gz)
-
-The LVGL frontend lives in `os/port/desktop/`. Hardware access belongs to `os/kernel/drivers/`; the scheduler and admission code stay in `os/kernel/`. The serial and graphical builds read the same core source list from `os/kernel/sources.list`.
+In the `apps-video` demo, GPS Speed, Flight Camera and Music Player open as separate full-screen pages. The producers publish simulated frames to private surfaces, and LVGL displays the active app's surface. Producer frame counters and guest framebuffer measurements describe different stages of the display path.
 
 ## Tasks and application control
 

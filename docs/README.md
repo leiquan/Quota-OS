@@ -1,8 +1,8 @@
 # Quota OS documentation · 文档导航
 
-The three editions share this directory. Each branch's top-level README describes how to build and run that edition.
+The four editions share this directory. Each branch's top-level README describes how to build and run that edition.
 
-三个发行版同步维护本目录。构建和启动命令以各分支根目录的 README 为准。
+四个发行版同步维护本目录。构建和启动命令以各分支根目录的 README 为准。
 
 | Area · 内容 | Files · 位置 |
 |---|---|
@@ -21,6 +21,7 @@ The three editions share this directory. Each branch's top-level README describe
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | Serial console · 串口 | 4 MiB | [Standalone Test and cold readback](tests/cli-4m/) |
 | [UI](https://github.com/leiquan/Quota-OS/tree/UI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Frame timing](tests/frame-intervals/base.json) |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 1 GiB | [Frame timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 900 × 1600 portrait LVGL · 竖屏触控界面 | 64 MiB demo · 128 MiB macOS launcher | [QEMU touch verification · 模拟器触控验证](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui) |
 
 ## Web UI development · Web UI 开发
 

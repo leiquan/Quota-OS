@@ -22,6 +22,7 @@
 <h3 class="platform-title">演示运行环境</h3><dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/CLI">CLI 版</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（单核）</dd></div><div><dt>内存</dt><dd>4 MiB</dd></div><div><dt>启动镜像</dt><dd>72.3 KiB</dd></div><div><dt>交互与计时</dt><dd>PL011 串口命令行 · QEMU TCG / icount</dd></div></dl>
 <dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/UI">UI 版</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（单核）</dd></div><div><dt>内存</dt><dd>64 MiB</dd></div><div><dt>启动镜像</dt><dd>685.4 KiB</dd></div><div><dt>交互与计时</dt><dd>1280 × 800 · LVGL / ramfb · QEMU TCG / icount</dd></div></dl>
 <dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">Web UI 版</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（单核）</dd></div><div><dt>内存</dt><dd>1 GiB</dd></div><div><dt>启动镜像</dt><dd>357.5 MiB</dd></div><div><dt>交互与计时</dt><dd>1280 × 800 · LVGL / ramfb · QEMU TCG / icount</dd></div></dl>
+<dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/Touch-UI">Touch UI</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（单核）</dd></div><div><dt>内存</dt><dd>64 MiB 演示</dd></div><div><dt>启动镜像</dt><dd>源码构建</dd></div><div><dt>交互与计时</dt><dd>900 × 1600 · LVGL / ramfb · QEMU 虚拟平板</dd></div></dl>
 <p class="platform-note">镜像大小为未压缩的 ARM64 启动镜像大小。</p>
 </section>
 <section class="wrap section" id="model">
@@ -34,8 +35,9 @@
 </div>
 </section>
 <section class="wrap section" id="editions">
-<h2>三个发行版，共用一个内核</h2><p>CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在此基础上增加由 Blink、V8 和 Node.js 组成的三级 WAP 运行时。</p>
-<h3>启动、开发与验证</h3><div class="grid editions-grid"><article><h4>CLI</h4><p><strong>启动</strong> · 通过单核 Cortex-A35 QEMU 进入串口命令行。</p><p><strong>开发</strong> · 用 C 编译独立 Test，以二级或三级 EL0 应用运行。</p><p><strong>验证</strong> · 检查配额，并验证笔记在冷启动后能读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/CLI">启动指南</a> · <a href="tests/cli-4m/disk-boot-2.log">验收证据</a></p></article><article><h4>UI</h4><p><strong>启动</strong> · 启动 1280 × 800 的 LVGL 原生桌面。</p><p><strong>开发</strong> · 用 C 和 LVGL 编写原生界面和应用。</p><p><strong>验证</strong> · 在 Apps → Test 检查准入、配额和仪表帧间隔。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/UI">启动指南</a> · <a href="tests/frame-intervals/base.json">验收证据</a></p></article><article><h4>Web UI</h4><p><strong>启动</strong> · 启动带三级 WAP 运行时的 LVGL 桌面。</p><p><strong>开发</strong> · 用 HTML、CSS、JavaScript 和可选的 Node.js 后台编写 WAP 应用。</p><p><strong>验证</strong> · 在 Files 打开示例，保存任务并在冷启动后读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">启动指南</a> · <a href="screenshots/web-ui-todo.png">验收证据</a></p></article></div>
+<h2>四个发行版，共用一个内核</h2><p>CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在此基础上增加由 Blink、V8 和 Node.js 组成的三级 WAP 运行时。 Touch UI 提供 900 × 1600 竖屏、全屏应用和底部手势栏。</p>
+<h3>启动、开发与验证</h3><div class="grid editions-grid"><article><h4>CLI</h4><p><strong>启动</strong> · 通过单核 Cortex-A35 QEMU 进入串口命令行。</p><p><strong>开发</strong> · 用 C 编译独立 Test，以二级或三级 EL0 应用运行。</p><p><strong>验证</strong> · 检查配额，并验证笔记在冷启动后能读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/CLI">启动指南</a> · <a href="tests/cli-4m/disk-boot-2.log">验收证据</a></p></article><article><h4>UI</h4><p><strong>启动</strong> · 启动 1280 × 800 的 LVGL 原生桌面。</p><p><strong>开发</strong> · 用 C 和 LVGL 编写原生界面和应用。</p><p><strong>验证</strong> · 在 Apps → Test 检查准入、配额和仪表帧间隔。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/UI">启动指南</a> · <a href="tests/frame-intervals/base.json">验收证据</a></p></article><article><h4>Web UI</h4><p><strong>启动</strong> · 启动带三级 WAP 运行时的 LVGL 桌面。</p><p><strong>开发</strong> · 用 HTML、CSS、JavaScript 和可选的 Node.js 后台编写 WAP 应用。</p><p><strong>验证</strong> · 在 Files 打开示例，保存任务并在冷启动后读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">启动指南</a> · <a href="screenshots/web-ui-todo.png">验收证据</a></p></article>
+<article id="touch-ui"><h4>Touch UI</h4><p>900 × 1600 竖屏应用。底部 Bar 单击或上滑一次返回，双击或连续上滑两次回主屏，并保留应用现场。</p><p>已用 QEMU 单指模拟验证，实体屏和多点触控待验证。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui">源码构建与启动</a> · <a href="screenshots/touch-ui-portrait.png">Touch UI 竖屏中的全屏 Notes 与底部手势栏 ↗</a></p></article></div>
 <h3>发行版示例</h3><div class="edition-pair edition-examples"><div><figure><pre class="cli-transcript" tabindex="0"><code>Quota OS CLI 016 | ARM64 | 4096 KiB RAM
 
 quota&gt; run Test
@@ -73,6 +75,7 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 cd Quota-OS
 bash tools/run-files.sh</code></pre>
 <p><a href="https://github.com/leiquan/Quota-OS#readme">查看 README 和完整测试记录 ↗</a></p>
+<p>运行 900 × 1600 竖屏版，请按 <a href="https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui">Touch UI 构建与启动指南</a>从源码构建。</p>
 </section>
 <section class="wrap section" id="dev">
 <h2>开发应用</h2>

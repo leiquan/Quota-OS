@@ -1,5 +1,20 @@
 # Quota OS（版本 016）
 
+## Touch UI
+
+### 策略与输入链路
+
+- [分辨率与预算](os/include/quotaos.h) 使用 900 × 1600，像素为 XRGB8888。[ramfb](os/kernel/drivers/fb.c) 发布 3600 字节行步长，画面区占 5,760,000 字节。
+- [LVGL 启动](os/kernel/lvgl_boot.c) 把帧缓冲尺寸交给[输入驱动](os/kernel/drivers/input.c)。VirtIO-MMIO 虚拟平板上报绝对坐标和按压状态，驱动将设备坐标映射到屏幕，右下角为 `(899,1599)`。驱动在 `SYN_REPORT` 时提交事件，[桌面 LVGL 回调](os/port/desktop/desktop.c) 将坐标和状态交给控件。
+- 底部 Bar 捕获从该区域起始的接触。单次动作在约 320 ms 的双动作判定窗口后执行返回，同类第二次动作匹配时回主屏。回主屏隐藏活动页，保留 LVGL 控件、草稿和仍在运行的应用任务。
+- [车载演示应用](os/kernel/apps/vehicle.c) 各自向独立缓冲区发布模拟画面。[仪表页面](os/port/desktop/instruments.c) 通过 LVGL 展示前台应用画面。仪表提交时间、LVGL 合成和物理屏幕出光需分别测量。
+
+### 已验证的范围
+
+QEMU 的 `virtio-tablet-device` 已验证四角、单击、单次上滑、双击、双次上滑，以及返回主屏后恢复 Notes 草稿和保存对话框。当前输入代码维护一组指针坐标和按压状态。多点触控槽位、目标控制器、校准旋转、持续高速输入和物理延迟待验证。
+
+以下 1280 × 800 桌面和帧间隔记录对应早期横屏演示配置。Touch UI 的启动方式见 [分支 README](README.md#run-touch-ui)。
+
 基于三级资源声明的微内核：一级固定时间槽、二级准入最低值、三级使用剩余资源。有限测试不等同于无条件的硬实时保证。
 
 A microkernel with fixed Tier-1 slots, admitted Tier-2 minimum reservations, and best-effort Tier-3 work. Real-time guarantees require bounded interrupt latency and execution costs.
@@ -89,7 +104,7 @@ System 的 Task 标签显示各级任务。显示一级固定槽、二级每周�
 
 [真实时钟对照](docs/tests/optimization/cycle-03/REPORT.txt)
 
-## 最新桌面：1280 × 800
+## 历史桌面：1280 × 800
 
 ![Quota OS 1280×800 实际运行桌面](docs/screenshots/desktop-1280x800.png)
 
