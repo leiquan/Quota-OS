@@ -14,14 +14,12 @@ int fb_reserved_range(uint64_t *start, uint64_t *bytes)
 
 int64_t proc_spawn_module(const char *code, unsigned bytes, int tier);
 
-static void run_test(int tier)
+int cli_read_root_elf(const struct ext4_volume *, const char *, char *, unsigned,
+                      unsigned *);
+
+static void run_module(const char *code, unsigned size, int tier)
 {
-    unsigned size = __cli_module_size;
-    if (!size || size > 4096) {
-        printf("Test unavailable (start QEMU with CLI_TEST=1)\n");
-        return;
-    }
-    int64_t h = proc_spawn_module((const char *)__cli_module, size, tier);
+    int64_t h = proc_spawn_module(code, size, tier);
     if (h < 0) {
         printf("Test admission refused\n");
         return;
@@ -45,7 +43,17 @@ static void run_test(int tier)
 }
 
 static struct ext4_volume root_volume;
-static unsigned char root_file[4096];
+static char root_file[4096];
+
+static void run_test(int tier)
+{
+    unsigned size = __cli_module_size;
+    if (!size || size > 4096) {
+        printf("Test unavailable (start QEMU with CLI_TEST=1)\n");
+        return;
+    }
+    run_module((const char *)__cli_module, size, tier);
+}
 
 static int print_root_name(void *context, const char *name, unsigned length)
 {
@@ -58,8 +66,20 @@ static int print_root_name(void *context, const char *name, unsigned length)
 static int ensure_root(void)
 {
     int rc = root_volume.read ? EXT4_OK : root_disk_mount(&root_volume);
-    if (rc) printf("ext4 mount failed (%d)\n", rc);
+    if (rc) printf("ext4 mount failed: %s\n", rc == EXT4_NOT_FOUND ?
+                   "no read-only root disk" : ext4_result_text(rc));
     return rc;
+}
+
+static void run_root(const char *name)
+{
+    if (ensure_root()) return;
+    unsigned size;
+    int rc = cli_read_root_elf(&root_volume, name, root_file, sizeof root_file, &size);
+    if (rc)
+        printf("ext4 ELF load failed: %s\n", ext4_result_text(rc));
+    else
+        run_module(root_file, size, TIER3);
 }
 
 static void show_commands(void)
@@ -78,6 +98,7 @@ static void show_commands(void)
            "         rootcat FILE   Read a file from the ext4 root\n"
            "Apps     run test.c     Run the compiled sample in Tier 3\n"
            "         run Test t2    Request a Tier 2 budget for Test\n"
+           "         run /FILE      Load an ARM64 console ELF from the root disk\n"
            "Console  echo TEXT      Print text\n"
            "         clear          Clear the terminal screen\n"
            "         help           Show this command guide\n");
@@ -90,11 +111,20 @@ static void show_welcome(void)
            __cli_module_size ? ", run test.c" : "");
 }
 
+static void wait_for_notes(void)
+{
+    while (!note_disk_power_ready()) {
+        note_disk_poll();
+        if (!note_disk_power_ready()) asm volatile("wfi");
+    }
+}
+
 void shell_main(void)
 {
     char line[128];
     klog_flush();
     note_disk_init();
+    wait_for_notes();
     show_welcome();
     for (;;) {
         printf("quota> ");
@@ -125,13 +155,13 @@ void shell_main(void)
         } else if (!strcmp(command, "rootls") && !*arg) {
             if (!ensure_root()) {
                 int rc = ext4_list_root(&root_volume, print_root_name, NULL);
-                if (rc) printf("ext4 directory read failed (%d)\n", rc);
+                if (rc) printf("ext4 directory read failed: %s\n", ext4_result_text(rc));
             }
         } else if (!strcmp(command, "rootcat") && *arg) {
             if (!ensure_root()) {
                 size_t bytes;
                 int rc = ext4_read_root(&root_volume, arg, root_file, sizeof root_file, &bytes);
-                if (rc) printf("ext4 file read failed (%d)\n", rc);
+                if (rc) printf("ext4 file read failed: %s\n", ext4_result_text(rc));
                 else {
                     for (size_t i = 0; i < bytes; ++i) printf("%c", root_file[i]);
                     printf("\n");
@@ -143,10 +173,7 @@ void shell_main(void)
             else if (note_disk_save(arg))
                 printf("Cannot save: %s\n", note_disk_status());
             else {
-                while (!note_disk_power_ready()) {
-                    note_disk_poll();
-                    asm volatile("wfi");
-                }
+                wait_for_notes();
                 printf("%s\n", note_disk_status());
             }
         } else if (!strcmp(command, "run")) {
@@ -154,8 +181,10 @@ void shell_main(void)
                 run_test(TIER3);
             else if (!strcmp(arg, "Test t2") || !strcmp(arg, "test.c t2"))
                 run_test(TIER2);
+            else if (*arg == '/' && arg[1])
+                run_root(arg);
             else
-                printf("Usage: run Test [t2]\n");
+                printf("Usage: run Test [t2] or run /FILE\n");
         } else if (*arg)
             printf("Unexpected arguments. Type help for usage.\n");
         else if (!strcmp(command, "help"))

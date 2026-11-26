@@ -59,6 +59,7 @@ static int read_root_disk(void *context, uint64_t offset, void *output, size_t b
 {
     (void)context;
     uint8_t *dst = output;
+    if (sched_current()->tier != TIER3) return -1;
     if (offset > capacity * SECTOR || bytes > capacity * SECTOR - offset) return -1;
     while (bytes) {
         if (fetch_sector(offset / SECTOR)) return -1;

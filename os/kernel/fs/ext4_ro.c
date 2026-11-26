@@ -24,6 +24,21 @@ static int same_name(const char *name, const char *entry, unsigned length)
     return name[length] == 0;
 }
 
+static int walk_root(const struct ext4_volume *, ext4_dir_fn, void *,
+                     const char *, uint32_t *);
+
+const char *ext4_result_text(int result)
+{
+    switch (result) {
+    case EXT4_OK: return "ok";
+    case EXT4_UNSUPPORTED: return "unsupported layout or recovery required";
+    case EXT4_CORRUPT: return "invalid ext4 metadata";
+    case EXT4_IO: return "block read failed";
+    case EXT4_NOT_FOUND: return "not found";
+    default: return "unknown error";
+    }
+}
+
 int ext4_mount_ro(struct ext4_volume *v, ext4_read_fn read, void *context, uint64_t bytes)
 {
     uint8_t sb[1024];
@@ -34,7 +49,7 @@ int ext4_mount_ro(struct ext4_volume *v, ext4_read_fn read, void *context, uint6
     uint32_t incompatible = le32(sb + 96);
     /* Accept only the layouts this reader understands. A volume requiring
      * journal recovery advertises an incompatible feature and is rejected. */
-    if (le16(sb + 58) != CLEAN || le32(sb + 24) != 2 || le32(sb + 28) != 2 ||
+    if (le32(sb + 76) != 1 || le16(sb + 58) != CLEAN || le32(sb + 24) != 2 || le32(sb + 28) != 2 ||
         le32(sb + 20) || !(incompatible & EXTENTS) ||
         (incompatible & ~(EXTENTS | FILETYPE)) || (le32(sb + 100) & ~3u))
         return EXT4_UNSUPPORTED;
@@ -53,7 +68,9 @@ int ext4_mount_ro(struct ext4_volume *v, ext4_read_fn read, void *context, uint6
         return EXT4_CORRUPT;
     *v = (struct ext4_volume){read, context, blocks, blocks_per_group,
                               inodes, inodes_per_group, inode_size};
-    return EXT4_OK;
+    int rc = walk_root(v, NULL, NULL, NULL, NULL);
+    if (rc) memset(v, 0, sizeof *v);
+    return rc;
 }
 
 static int read_inode(const struct ext4_volume *v, uint32_t number, uint8_t inode[128])
@@ -100,7 +117,8 @@ static int walk_root(const struct ext4_volume *v, ext4_dir_fn callback, void *co
     int rc = read_inode(v, ROOT_INODE, inode);
     if (rc) return rc;
     uint32_t size = le32(inode + 4);
-    if ((le16(inode) & MODE_MASK) != DIRECTORY || !size || size % BLOCK_BYTES)
+    if ((le16(inode) & MODE_MASK) != DIRECTORY || le32(inode + 108) ||
+        !size || size % BLOCK_BYTES)
         return EXT4_CORRUPT;
     /* Limit enumeration to 64 blocks in the first milestone. */
     if (size > 64 * BLOCK_BYTES || (le32(inode + 32) & 0x1000))
@@ -137,29 +155,50 @@ int ext4_list_root(const struct ext4_volume *v, ext4_dir_fn callback, void *cont
     return walk_root(v, callback, context, NULL, NULL);
 }
 
+int ext4_open_root(const struct ext4_volume *v, const char *name, struct ext4_file *file)
+{
+    if (*name == '/') ++name;
+    uint32_t number;
+    int rc = walk_root(v, NULL, NULL, name, &number);
+    if (rc) return rc;
+    rc = read_inode(v, number, file->inode);
+    if (rc) return rc;
+    if ((le16(file->inode) & MODE_MASK) != REGULAR || le32(file->inode + 108))
+        return EXT4_UNSUPPORTED;
+    file->size = le32(file->inode + 4);
+    return EXT4_OK;
+}
+
+int ext4_read_file(const struct ext4_volume *v, const struct ext4_file *file,
+                   uint32_t offset, void *output, size_t bytes)
+{
+    if (offset > file->size || bytes > file->size - offset) return EXT4_CORRUPT;
+    uint8_t *dst = output;
+    while (bytes) {
+        uint32_t block, start = offset % BLOCK_BYTES;
+        size_t length = BLOCK_BYTES - start;
+        if (length > bytes) length = bytes;
+        int rc = extent_block(v, file->inode, offset / BLOCK_BYTES, &block);
+        if (rc) return rc;
+        if (!block) memset(dst, 0, length);
+        else if (v->read(v->context, (uint64_t)block * BLOCK_BYTES + start, dst, length))
+            return EXT4_IO;
+        dst += length;
+        offset += length;
+        bytes -= length;
+    }
+    return EXT4_OK;
+}
+
 int ext4_read_root(const struct ext4_volume *v, const char *name, void *output,
                    size_t capacity, size_t *bytes)
 {
     *bytes = 0;
-    uint32_t number;
-    int rc = walk_root(v, NULL, NULL, name, &number);
+    struct ext4_file file;
+    int rc = ext4_open_root(v, name, &file);
     if (rc) return rc;
-    uint8_t inode[128];
-    rc = read_inode(v, number, inode);
-    if (rc) return rc;
-    uint32_t size = le32(inode + 4);
-    if ((le16(inode) & MODE_MASK) != REGULAR || le32(inode + 108) || size > capacity)
-        return EXT4_UNSUPPORTED;
-    for (uint32_t consumed = 0; consumed < size;) {
-        uint32_t block, length = size - consumed;
-        if (length > BLOCK_BYTES) length = BLOCK_BYTES;
-        rc = extent_block(v, inode, consumed / BLOCK_BYTES, &block);
-        if (rc) return rc;
-        uint8_t *dst = (uint8_t *)output + consumed;
-        if (!block) memset(dst, 0, length);
-        else if (v->read(v->context, (uint64_t)block * BLOCK_BYTES, dst, length)) return EXT4_IO;
-        consumed += length;
-    }
-    *bytes = size;
-    return EXT4_OK;
+    if (file.size > capacity) return EXT4_UNSUPPORTED;
+    rc = ext4_read_file(v, &file, 0, output, file.size);
+    if (!rc) *bytes = file.size;
+    return rc;
 }

@@ -11,7 +11,7 @@ while IFS= read -r f; do
     obj="$out/${f%.*}.o"; mkdir -p "$(dirname "$obj")"
     "${cc[@]}" -DQUOTA_CLI -O2 -ffreestanding -fno-builtin -fno-stack-protector -fno-pic -mgeneral-regs-only -mstrict-align -ffunction-sections -fdata-sections -Ios/include -I"$out" -c "os/$f" -o "$obj"
     objs+=("$obj")
-done < <(cat os/kernel/sources.list; echo cli/console.c)
+done < <(cat os/kernel/sources.list; printf "%s\n" cli/console.c cli/root_elf.c)
 sed '/__image_end =/i\
     .cli_module (NOLOAD) : ALIGN(4096) { __cli_module = .; . += 4096; __cli_module_size = .; . += 4; __cli_source = .; . += 4096; __cli_quiet = .; . += 1; } :data
 ' os/boot/linker.ld > "$out/linker.ld"
