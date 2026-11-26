@@ -1,3 +1,4 @@
+#include "root_disk.h"
 #include "auth.h"
 /* Dedicated virtio-blk note volume on QEMU virt, modern MMIO transport.
  * Accessed only by the Tier-3 desktop. One request per period, one in flight.
@@ -64,6 +65,7 @@ void note_disk_init(void)
     uint64_t nodes[32];
     int n = dtb_find_bases("virtio,mmio", nodes, 32);
     for (int i = 0; i < n; ++i) {
+        if (nodes[i] == ROOT_RW_MMIO) continue;
         if (mmio_rd(nodes[i]+8) == 2 && mmio_rd(nodes[i]+4) == 2) {
             base = nodes[i];
             break;

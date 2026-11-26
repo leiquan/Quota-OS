@@ -13,8 +13,9 @@ if [ ! -e "$disk" ]; then
     python3 tools/init-admin-disk.py "$disk"
 fi
 test "$(wc -c < "$disk")" -ge 32768 || { echo "Use tools/init-admin-disk.py NEW --from-legacy OLD to create an account-enabled copy" >&2; exit 1; }
+source tools/root-volume.sh
 exec /bin/bash tools/run-qemu-gui.sh -machine virt,gic-version=2 -cpu cortex-a35 -smp "${QUOTA_CPUS:-2}" -m "${QUOTA_RAM:-64M}" -nic none \
-    -global virtio-mmio.force-legacy=false -device virtio-rng-device -device ramfb -device virtio-tablet-device \
-    -device virtio-keyboard-device -drive "if=none,id=notes,format=raw,file=$disk" \
-    -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES -icount shift=4,sleep=off \
+    -global virtio-mmio.force-legacy=false  \
+    -drive "if=none,id=notes,format=raw,file=$disk" \
+    ${root_args[@]+"${root_args[@]}"} -device virtio-blk-device,bus=virtio-mmio-bus.29,drive=notes,serial=QUOTA-NOTES -device virtio-rng-device -device ramfb -device virtio-tablet-device -device virtio-keyboard-device -icount shift=4,sleep=off \
     -kernel "$kernel" -append apps-video -serial "${QUOTA_SERIAL:-stdio}" -monitor none "$@"

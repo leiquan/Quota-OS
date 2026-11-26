@@ -1,3 +1,4 @@
+#include "root_shell.h"
 #include "auth.h"
 /*
  * LVGL adaptation and the demo screen. Calls the kernel framebuffer and
@@ -707,11 +708,11 @@ static void shell_help(char *out, unsigned capacity)
 {
     const char *name = note_disk_source_name();
     if (name)
-        lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
+        lv_snprintf(out, capacity, "pwd, ls [/], cat FILE, write FILE TEXT, rm FILE, clear\n"
                     "cc %s -o hello.cap   Compile your source\n"
                     "./hello.cap   Run in Tier 3", name);
     else
-        lv_snprintf(out, capacity, "help / pwd / ls / clear\n"
+        lv_snprintf(out, capacity, "pwd, ls [/], cat FILE, write FILE TEXT, rm FILE, clear\n"
                     "In Notes, choose C Example, then Save As... to save a .c file.\n"
                     "Return here to compile and run it.");
 }
@@ -833,6 +834,7 @@ static void end_session(void)
     lv_textarea_set_text(shell_input, "");
     lv_textarea_set_text(source_name, "");
     monitor_visible(source_dialog, 0);
+    root_shell_logout();
     shell_transcript[0] = 0;
     lv_label_set_text(shell_output, "");
     for (unsigned i = 0; i < APP_COUNT; ++i)
@@ -919,7 +921,7 @@ static void on_group(lv_event_t *e)
         if (!shell_transcript[0]) {
             char help[200];
             shell_help(help, sizeof help);
-            shell_append("Quota OS Shell  |  /Desktop");
+            shell_append("Quota OS Shell  |  /");
             shell_append(help);
         }
         lv_group_focus_obj(shell_input);
@@ -931,6 +933,7 @@ static void on_group(lv_event_t *e)
         if (!command[0]) return;
         char output[200], compile[96], legacy_compile[96];
         const char *name = note_disk_source_name();
+        const char *root_reply = root_shell_command(command);
         const char *result = "Unknown command. Type help.";
         lv_snprintf(compile, sizeof compile, "cc %s -o hello.cap", name ? name : "hello.c");
         lv_snprintf(legacy_compile, sizeof legacy_compile, "cc %s -o hello", name ? name : "hello.c");
@@ -938,15 +941,7 @@ static void on_group(lv_event_t *e)
             shell_help(output, sizeof output);
             result = output;
         }
-        else if (!strcmp(command, "pwd"))
-            result = "/Desktop";
-        else if (!strcmp(command, "ls")) {
-            lv_snprintf(output, sizeof output, "%s%s%s",
-                        note_disk_text() ? "Note.txt" : "",
-                        note_disk_text() && name ? "  " : "",
-                        name ? name : "");
-            result = output[0] ? output : "Desktop is empty";
-        }
+        else if (root_reply) result = root_reply;
         else if (!strcmp(command, "clear")) {
             shell_transcript[0] = 0;
             shell_refresh();
@@ -2171,6 +2166,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         }
         touch_pressure_memory();
         power_poll();
+        const char *reply = root_shell_poll();
+        if (reply) { shell_append(reply); printf("[shell] root: %s\n", reply); }
         const char *console = proc_console_text();
         if (console) {
             shell_append(console);
