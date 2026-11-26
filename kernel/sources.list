@@ -22,8 +22,6 @@ kernel/color.c
 kernel/e4.c
 kernel/drivers/rng.c
 kernel/drivers/note_disk.c
-kernel/app_manifest.c
-kernel/app_zip.c
 kernel/drivers/fb.c
 kernel/drivers/input.c
 kernel/lvgl_boot.c

@@ -12,6 +12,7 @@ QMP = runpy.run_path(str(Path(__file__).with_name("realtime-rounds.py")))["QMP"]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("kernel", type=Path)
 parser.add_argument("out", type=Path)
+parser.add_argument("--memory", default="64M", help="QEMU RAM, e.g. 1G for the Web Node image")
 args = parser.parse_args()
 args.out.mkdir(parents=True, exist_ok=True)
 def boot():
@@ -19,7 +20,7 @@ def boot():
     with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
         sock = tmp + "/qmp"
         cmd = ["qemu-system-aarch64", "-machine", "virt,gic-version=2", "-cpu", "cortex-a35",
-               "-m", "64M", "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
+               "-m", args.memory, "-display", "none", "-nic", "none", "-global", "virtio-mmio.force-legacy=false",
                "-device", "ramfb", "-device", "virtio-tablet-device", "-device", "virtio-keyboard-device",
                "-icount", "shift=4,sleep=off", "-kernel", str(args.kernel), "-append", "apps-video",
                "-serial", "file:" + str(log), "-qmp", "unix:" + sock + ",server=on,wait=off"]

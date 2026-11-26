@@ -1,5 +1,11 @@
 Web Node edition
 
+The C-LVGL branch is the base for shared kernel and desktop work. Keep shared
+fixes in their own commits so Web-Node can take them without importing a
+runtime into C-LVGL. Both editions use tools/build-desktop-image.sh. The Web
+Node entry point adds port/quotaos/wap/sources.list and a runtime payload
+hook. ZIP decoding and manifest validation belong to the WAP extension.
+
 The LVGL desktop owns the file picker, windows and input. Files passes an open
 request to wap_open_saved() in port/quotaos/wap/app.c. That module validates the
 ZIP and manifest, restores an existing app or asks the process service to start
@@ -16,6 +22,16 @@ V8. tools/build-lvgl-guest.sh builds the common image. With QUOTA_NODE_WEB_OUT
 set, tools/wap-runtime.sh embeds the executables and calls stage-wap-libraries.py
 to collect their transitive dependencies, font, ICU data and V8 snapshot.
 The packer checks that both executables resolve to the same libv8.so.
+
+Image footprint
+
+The two executables and their shared libraries are staged from the DT_NEEDED
+closure. With LLVM objcopy, the image contains program segments without ELF
+section headers; the source build retains its original ELF files. In Chromium
+142, blink_core links the WebRTC component and media, and blink_platform links
+GLES2 and gpu_config (which links Dawn). Removing those files alone breaks the
+dynamic loader contract. Further reductions require a different Chromium
+build configuration and a fresh guest acceptance run.
 
 Historical WebCore and JSC prototype
 

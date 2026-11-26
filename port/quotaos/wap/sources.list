@@ -1,2 +1,4 @@
+port/quotaos/wap/app_manifest.c
+port/quotaos/wap/app_zip.c
 port/quotaos/wap/app.c
 port/quotaos/wap/demo_files.S
