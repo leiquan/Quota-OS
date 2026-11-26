@@ -62,9 +62,16 @@ def verify(text):
         require(len(selected) == window[name] and len(selected) > 0, name+' count')
         prev = window['prev_'+name]
         max_gap = max_latency = overlap = 0
+        deadline_misses = long_gaps = 0
+        previous_release = None
         for f in selected:
             release, start, copy, commit = (f[k] for k in ('release', 'start', 'copy', 'commit'))
+            if previous_release is not None:
+                require(release - previous_release == limit, f'{name} release discontinuity at {release}')
+            previous_release = release
             gap, latency = commit-prev, commit-release
+            deadline_misses += latency > limit
+            long_gaps += gap > limit
             require(prev > 0 and 0 < gap <= limit and release <= start <= copy <= commit
                     and latency <= limit and window['begin'] <= commit <= window['end'],
                     f'{name} release={release} gap={gap} latency={latency}')
@@ -74,7 +81,8 @@ def verify(text):
             prev = commit
         require(overlap > 0, name+' has no release during confirmed major GC')
         streams[name] = dict(frames=len(selected), max_gap_ticks=max_gap,
-                             max_latency_ticks=max_latency, releases_during_gc=overlap)
+                             max_latency_ticks=max_latency, releases_during_gc=overlap,
+                             deadline_misses=deadline_misses, long_gaps=long_gaps)
     return dict(passed=not errors, violations=len(errors), first_errors=errors[:12],
                 tick_hz=freq, streams=streams, periods=len(periods),
                 pressure=pressure, budget_counters=result,
