@@ -511,10 +511,23 @@ static uint8_t pool[EL0_POOL][4096] __attribute__((aligned(4096)));
 #endif
 static uint8_t pool_used[EL0_POOL];
 static unsigned free_frames = EL0_POOL;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+/* The disk-backed runtime's recolored physical pool is sparse after reclaim.
+ * Preserve allocation order through a FIFO without scanning used frames. */
+static unsigned free_next[EL0_POOL], free_head = EL0_POOL, free_tail = EL0_POOL;
+#endif
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
 void proc_bind_color_pool(void)
 {
     free_frames = pool_capacity = color_bind_process_frames(pool, EL0_POOL);
+#ifdef QUOTA_NODE_WEB
+    if (pool_capacity) {
+        free_head = 0;
+        free_tail = pool_capacity - 1;
+        for (unsigned i = 0; i < free_tail; ++i) free_next[i] = i + 1;
+        free_next[free_tail] = EL0_POOL;
+    }
+#endif
     printf("[proc] shared-color frames %u, %u KiB physical capacity\n", pool_capacity, pool_capacity * 4);
 }
 #endif
@@ -2115,8 +2128,22 @@ int proc_kill(int64_t handle)
     return 0;
 }
 
-static int alloc_page(uint64_t *pa)
+static int take_frame(void)
 {
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    uint64_t flags = irq_save();
+    if (free_frames <= reserved_frames || free_head == EL0_POOL) {
+        irq_restore(flags);
+        return -1;
+    }
+    unsigned i = free_head;
+    free_head = free_next[i];
+    if (free_head == EL0_POOL) free_tail = EL0_POOL;
+    pool_used[i] = 1;
+    --free_frames;
+    irq_restore(flags);
+    return i;
+#else
     static unsigned cursor;
     for (unsigned scanned = 0; scanned < pool_capacity; ++scanned) {
         uint64_t flags = irq_save();
@@ -2132,11 +2159,20 @@ static int alloc_page(uint64_t *pa)
         pool_used[i] = 1;
         --free_frames;
         irq_restore(flags);
-        memset(pool[i], 0, 4096);
-        *pa = (uint64_t)(uintptr_t)pool[i];
         return i;
     }
     return -1;
+#endif
+}
+
+static int alloc_page(uint64_t *pa)
+{
+    int i = take_frame();
+    if (i >= 0) {
+        memset(pool[i], 0, 4096);
+        *pa = (uint64_t)(uintptr_t)pool[i];
+    }
+    return i;
 }
 
 static void free_idx(int idx)
@@ -2152,6 +2188,12 @@ static void free_idx(int idx)
     memset(pool[idx], 0, 4096);
     uint64_t flags = irq_save();
     pool_used[idx] = 0;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (free_tail == EL0_POOL) free_head = idx;
+    else free_next[free_tail] = idx;
+    free_tail = idx;
+    free_next[idx] = EL0_POOL;
+#endif
     ++free_frames;
     irq_restore(flags);
 }

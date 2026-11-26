@@ -488,7 +488,7 @@ static int64_t protect_high(struct proc *p, struct irq_frame *f, uint64_t va, un
     if (prot > 7 || (prot & 6) == 6) return -22;
     /* Small first commits, including any translation tables, are charged together. */
     p->mapping.va = va;
-    unsigned stop = p->mapping.checked + 128;
+    unsigned stop = p->mapping.checked + 32;
     if (stop > pages) stop = pages;
     for (unsigned i = p->mapping.checked; i < stop; ++i) {
         uint64_t at = va + i * 4096ull;
@@ -645,7 +645,7 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     /* Every mapping slice returns through the scheduler before continuing.
      * Leave time before the next protected slot for a page and exception exit. */
     uint64_t now = ticks_now();
-    if (sched_next_guard(now) <= now + us_to_ticks(80)) {
+    if (sched_next_guard(now) <= now + us_to_ticks(100)) {
         f->elr -= 4;
         return f->r[0];
     }
@@ -677,9 +677,6 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     if (p->mapping.va) va = p->mapping.va;
     else if (map && !(flags & 16)) {
         unsigned first;
-#ifdef QUOTA_WEB_COLD_TRACE
-        sched_cold_mmap_stage(1);
-#endif
         int result = find_mapping_slice(p, pages, &first);
         if (result <= 0) {
             if (result < 0) {
@@ -726,7 +723,7 @@ static int64_t runtime_map(struct proc *p, struct irq_frame *f, const struct run
     /* Re-enter the same SVC between bounded slices. No user instruction
      * observes partial updates: the sole address-space owner resumes at svc. */
     p->mapping.va = va;
-    unsigned stop = p->mapping.checked + 128;
+    unsigned stop = p->mapping.checked + 32;
     if (stop > pages) stop = pages;
     for (unsigned i = p->mapping.checked; i < stop; ++i) {
         unsigned idx = first + i;
@@ -945,7 +942,7 @@ static int64_t runtime_advise(struct proc *p, struct irq_frame *f)
         va - ELF_DSO_BASE > ELF_DSO_PAGES * 4096 - len) return -12;
     unsigned first = (va - ELF_DSO_BASE) / 4096, count = (len + 4095) / 4096;
     p->mapping.va = va;
-    unsigned stop = p->mapping.checked + 128;
+    unsigned stop = p->mapping.checked + 32;
     if (stop > count) stop = count;
     for (unsigned i = p->mapping.checked; i < stop; i++) {
         unsigned idx = first + i;
