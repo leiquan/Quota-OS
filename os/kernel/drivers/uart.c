@@ -44,6 +44,9 @@ static char uart_getc(void)
 {
     int c;
     for (;;) {
+#ifdef QUOTA_CLI
+        note_disk_poll();
+#endif
         c = uart_getc_nonblock();
         if (c >= 0)
             return (char)c;
@@ -51,9 +54,9 @@ static char uart_getc(void)
     }
 }
 
-void readline(char *buf, int cap)
+static void read_line(char *buf, int cap, int hidden)
 {
-    int n = 0;
+    int n = 0, overflow = 0;
     if (cap < 2) {
         if (cap > 0)
             buf[0] = 0;
@@ -68,7 +71,7 @@ void readline(char *buf, int cap)
         if (c == 0x7f || c == '\b') {
             if (n > 0) {
                 n--;
-                printf("\b \b");
+                if (!hidden) printf("\b \b");
             }
             continue;
         }
@@ -76,10 +79,10 @@ void readline(char *buf, int cap)
             continue;
         if (n < cap - 1) {
             buf[n++] = c;
-            uart_putc(c);
-        }
+            if (!hidden) uart_putc(c);
+        } else overflow = 1;
     }
-    buf[n] = 0;
+    buf[hidden && overflow ? 0 : n] = 0;
 }
 
 __attribute__((weak)) void mmu_init(void) {}
@@ -92,3 +95,6 @@ __attribute__((weak)) int mmu_protect(uint64_t addr, uint64_t len, int prot)
 }
 __attribute__((weak)) int mmu_fault_expected(void) { return 0; }
 __attribute__((weak)) void mmu_note_fault(void) {}
+
+void readline(char *buf, int cap) { read_line(buf, cap, 0); }
+void readline_secret(char *buf, int cap) { read_line(buf, cap, 1); }

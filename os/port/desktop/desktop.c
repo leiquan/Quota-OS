@@ -1,3 +1,4 @@
+#include "auth.h"
 /*
  * LVGL adaptation and the demo screen. Calls the kernel framebuffer and
  * the input queue. Does not program fw_cfg, virtio, or the page tables.
@@ -17,7 +18,7 @@ static uint32_t *fb_px;
 static uint32_t fb_w, fb_h, fb_stride;
 static lv_obj_t *field;
 static lv_obj_t *power_menu, *power_status, *power_backdrop;
-enum power_action { POWER_NONE, POWER_OFF, POWER_RESET };
+enum power_action { POWER_NONE, POWER_OFF, POWER_RESET, POWER_LOGOUT };
 static enum power_action requested_power;
 static lv_obj_t *menu_list;
 static lv_obj_t *detail;
@@ -281,7 +282,7 @@ static void take_inputs(void)
     input_service_poll();
     struct quota_input ev;
     while (input_pop(&ev)) {
-        if (ev.kind == QUOTA_INPUT_CONTEXT)
+        if (ev.kind == QUOTA_INPUT_CONTEXT && auth_state() == AUTH_OPEN)
             task_context_at((lv_point_t){ev.x, ev.y});
         else if (ev.kind == QUOTA_INPUT_KEY && nkeys < 32)
             keys[nkeys++] = ev;
@@ -329,7 +330,7 @@ static void keypad_read(lv_indev_t *indev, lv_indev_data_t *data)
             continue;
         }
         uint32_t mapped = map_key(ev.code, shift_keys != 0);
-        printf("[lvgl] key code %u value %u char %u\n", ev.code, ev.value, mapped);
+
         if (ev.value)
             key_stamp = now_us();
         if (!mapped)
@@ -674,9 +675,114 @@ static void shell_help(char *out, unsigned capacity)
                     "Return here to compile and run it.");
 }
 
+static lv_obj_t *login_screen, *desktop_screen, *password_box, *login_status, *login_prompt;
+static lv_group_t *login_group, *desktop_group;
+static lv_indev_t *session_keyboard;
+static int confirm_logout;
+static void login_action(lv_event_t *event)
+{
+    (void)event;
+    const char *msg = auth_submit(lv_textarea_get_text(password_box));
+    lv_textarea_set_text(password_box, "");
+    lv_label_set_text(login_status, msg);
+    lv_group_focus_obj(password_box);
+}
+static void login_screen_init(lv_indev_t *keypad, lv_group_t *group)
+{
+    desktop_screen = lv_screen_active();
+    desktop_group = group;
+    session_keyboard = keypad;
+    login_group = lv_group_create();
+    login_screen = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(login_screen, lv_color_hex(0x182840), 0);
+    lv_obj_t *card = lv_obj_create(login_screen);
+    lv_obj_set_size(card, 400, 280);
+    lv_obj_center(card);
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    desk_label(card, 12, 8, "Quota OS  /  admin", 0x142d47);
+    login_prompt = desk_label(card, 12, 54, "Opening account storage...", 0x435574);
+    password_box = lv_textarea_create(card);
+    lv_obj_set_pos(password_box, 12, 85);
+    lv_obj_set_size(password_box, 336, 50);
+    lv_textarea_set_one_line(password_box, true);
+    lv_textarea_set_password_mode(password_box, true);
+    lv_textarea_set_password_show_time(password_box, 0);
+    lv_textarea_set_max_length(password_box, 64);
+    lv_group_add_obj(login_group, password_box);
+    lv_obj_add_event_cb(password_box, login_action, LV_EVENT_READY, NULL);
+    lv_obj_t *button = lv_button_create(card);
+    lv_obj_set_pos(button, 12, 150);
+    lv_obj_set_size(button, 132, 38);
+    lv_obj_center(desk_label(button, 0, 0, "Continue", 0xffffff));
+    lv_obj_add_event_cb(button, login_action, LV_EVENT_CLICKED, NULL);
+    login_status = desk_label(card, 12, 205, "", 0x883333);
+    lv_indev_set_group(keypad, login_group);
+    lv_screen_load(login_screen);
+}
+static void account_poll(void)
+{
+    enum auth_state s = auth_state();
+    static int previous = -1;
+    if ((int)s == previous) return;
+    previous = s;
+    struct sched_system_info info;
+    struct app_display_stats display;
+    sched_read_system_info(&info);
+    app_display_read(&display);
+    printf("[session] state=%d t1_misses=%lu t2_short=%lu frames=%u,%u long=%u,%u\n",
+           s, info.tier1_misses, info.tier2_short, display.frames[0], display.frames[1],
+           display.speed_late_gaps, display.video_late_gaps);
+    if (s == AUTH_OPEN) {
+        lv_screen_load(desktop_screen);
+        lv_indev_set_group(session_keyboard, desktop_group);
+        return;
+    }
+    if (lv_screen_active() != login_screen) lv_screen_load(login_screen);
+    lv_indev_set_group(session_keyboard, login_group);
+    lv_group_focus_obj(password_box);
+    lv_label_set_text(login_prompt, s == AUTH_SETUP ? "Set a password" : s == AUTH_CONFIRM ?
+        "Confirm your password" : s == AUTH_LOGIN ? "Enter your password" :
+        s == AUTH_SAVING ? "Saving credentials..." : "Checking account storage...");
+    if (s == AUTH_LOGIN) lv_label_set_text(login_status, "");
+}
+static void end_session(void)
+{
+    if (trial.active && trial.active < 4) {
+        task_kill(trial.task);
+        resource_release(trial.reservation);
+    }
+    if (trial.pressure_memory) {
+        unsigned done;
+        note_disk_scrub_stop(&done);
+        resource_release(trial.pressure_memory);
+    }
+    memset(&trial, 0, sizeof trial);
+    proc_stop_session();
+    checks.active = 0;
+    lv_obj_t *windows[] = {page_home,page_input,page_cover,page_apps,page_files,page_shell,page_test};
+    for (unsigned i = 0; i < sizeof windows / sizeof *windows; ++i) monitor_visible(windows[i], 0);
+    
+    lv_textarea_set_text(field, "");
+    lv_textarea_set_text(shell_input, "");
+    lv_textarea_set_text(source_name, "");
+    monitor_visible(source_dialog, 0);
+    shell_transcript[0] = 0;
+    lv_label_set_text(shell_output, "");
+    for (unsigned i = 0; i < APP_COUNT; ++i)
+        if (i != APP_SPEED && i != APP_VIDEO && i != APP_MUSIC) states[i] = CLOSED;
+    recent_count = 0;
+    sync_dock();
+    monitor_visible(power_menu, 0);
+    monitor_visible(power_backdrop, 0);
+    confirm_logout = 0;
+    auth_logout();
+    account_poll();
+}
+
 static void power_dismiss(lv_event_t *e)
 {
     (void)e;
+    confirm_logout = 0;
     monitor_visible(power_menu, 0);
     monitor_visible(power_backdrop, 0);
 }
@@ -685,13 +791,19 @@ static void power_click(lv_event_t *e)
 {
     if (requested_power != POWER_NONE) return;
     enum power_action action = (uintptr_t)lv_event_get_user_data(e);
+    if (action == POWER_LOGOUT && !confirm_logout) {
+        confirm_logout = 1;
+        lv_obj_set_height(power_menu, 192);
+        lv_label_set_text(power_status, "Unsaved edits will be lost. Press Log Out again.");
+        return;
+    }
     if (action != POWER_NONE) {
         requested_power = action;
         lv_obj_set_height(power_menu, 124);
         lv_label_set_text(power_status, "Waiting for disk...");
         return;
     }
-    lv_obj_set_height(power_menu, 86);
+    lv_obj_set_height(power_menu, 124);
     lv_label_set_text(power_status, "");
     monitor_visible(power_backdrop, 1);
     monitor_visible(power_menu, 1);
@@ -710,6 +822,7 @@ static void power_poll(void)
         lv_label_set_text(power_status, "Disk error. Power action canceled.");
         return;
     }
+    if (action == POWER_LOGOUT) { end_session(); return; }
     printf("[power] %s after disk ready\n", action == POWER_RESET ? "reset" : "off");
     register uint64_t function asm("x0") = action == POWER_RESET ? 0x84000009u : 0x84000008u;
     asm volatile("dsb sy; hvc #0" : "+r"(function) :: "memory");
@@ -1942,7 +2055,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_bg_color(power_menu, lv_color_hex(0x152641), 0);
     lv_obj_set_style_border_color(power_menu, lv_color_hex(0x415674), 0);
     lv_obj_remove_flag(power_menu, LV_OBJ_FLAG_SCROLLABLE);
-    for (unsigned i = 0; i < 2; i++) {
+    for (unsigned i = 0; i < 3; i++) {
         lv_obj_t *button = lv_button_create(power_menu);
         lv_obj_set_pos(button, 0, i * 35);
         lv_obj_set_size(button, lv_pct(100), 32);
@@ -1952,20 +2065,21 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         lv_obj_set_style_bg_color(button, lv_color_hex(0x293f5c), LV_STATE_HOVERED);
         lv_obj_set_style_bg_color(button, lv_color_hex(0x355375), LV_STATE_PRESSED);
         lv_obj_set_style_shadow_width(button, 0, 0);
-        lv_obj_t *icon = desk_label(button, 0, 0, i ? LV_SYMBOL_REFRESH : LV_SYMBOL_POWER,
+        lv_obj_t *icon = desk_label(button, 0, 0, i == 2 ? LV_SYMBOL_CLOSE : i ? LV_SYMBOL_REFRESH : LV_SYMBOL_POWER,
                                    i ? 0xaecaf1 : 0xf4b6bd);
-        lv_obj_t *label = desk_label(button, 0, 0, i ? "Restart" : "Shut Down", 0xf5f8ff);
+        lv_obj_t *label = desk_label(button, 0, 0, i == 2 ? "Log Out" : i ? "Restart" : "Shut Down", 0xf5f8ff);
         lv_obj_align(icon, LV_ALIGN_LEFT_MID, 10, 0);
         lv_obj_align(label, LV_ALIGN_LEFT_MID, 36, 0);
         lv_obj_add_event_cb(button, power_click, LV_EVENT_CLICKED,
-                            (void *)(uintptr_t)(i ? POWER_RESET : POWER_OFF));
+                            (void *)(uintptr_t)(i == 2 ? POWER_LOGOUT : i ? POWER_RESET : POWER_OFF));
     }
     power_status = lv_label_create(power_menu);
-    lv_obj_set_pos(power_status, 0, 73);
+    lv_obj_set_pos(power_status, 0, 108);
     lv_obj_set_width(power_status, lv_pct(100));
     lv_obj_set_style_text_color(power_status, lv_color_hex(0xdce8ff), 0);
     lv_label_set_text(power_status, "");
     monitor_visible(power_menu, 0);
+    login_screen_init(keypad, group);
     printf("[lvgl] ready\n");
 
     /* The shell stack is 8 KB. These stay off that stack. */
@@ -1978,6 +2092,15 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
      * and the scheduler still charges all rendering/input to Tier 3. */
     for (;;) {
         note_disk_poll();
+        account_poll();
+        if (auth_state() != AUTH_OPEN) {
+            take_inputs();
+            lv_timer_handler();
+            app_desktop_poll();
+            if (!strcmp(note_disk_status(),"Disk error") || !strcmp(note_disk_status(),"No Notes disk") || auth_state()==AUTH_ERROR)
+                lv_label_set_text(login_status,"Account storage unavailable.");
+            continue;
+        }
         touch_pressure_memory();
         power_poll();
         const char *console = proc_console_text();
