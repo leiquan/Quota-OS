@@ -309,6 +309,24 @@ void app_display_core_frame(uint64_t release);
 void app_frame_trace_start(void);
 void app_frame_trace_dump(void);
 void app_desktop_stall_probe(void);
+#if defined(QUOTA_SYSTEM_STATUS) && !defined(QUOTA_CLI)
+#define SYSTEM_STATUS_ENABLED 1
+#define SYSTEM_STATUS_TASK "system-status"
+#endif
+
+struct sched_status_snapshot {
+    uint64_t generation, release_ticks, sample_ticks;
+    uint64_t busy_ticks, window_ticks, reserved_kb, total_kb;
+    uint64_t tier1_misses, tier2_short, task_peak_ticks;
+    unsigned tasks, sample_misses;
+};
+
+/* Returns zero until the optional Tier 1 sampler has published a snapshot. */
+int sched_system_status_read(struct sched_status_snapshot *snapshot);
+#ifdef SYSTEM_STATUS_ENABLED
+void *color_tier1_first_page(const char *name);
+#endif
+
 struct sched_system_info {
     uint64_t period;
     uint64_t cpu_us[3], kernel_us, tier3_limit_us;
