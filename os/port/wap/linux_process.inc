@@ -2676,27 +2676,31 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
         const struct runtime_volume_file *disk_file = disk_file_extent(file);
         if (disk_file) {
-            /* ld.so reads an initial ELF window in one syscall. SVCs
-             * serialize access to this scratch page on the single core. */
-            static uint8_t buffer[4096];
+            if (p->disk_read.file) {
+                int result = p->disk_read.result;
+                uint64_t completed_at = p->disk_read.position;
+                p->disk_read.file = NULL;
+                p->disk_read.result = 0;
+                /* A shared descriptor may have moved while I/O was pending. */
+                if (pos == completed_at) {
+                    if (op == 63 && result > 0) p->files[index].position->offset += result;
+                    return result;
+                }
+            }
             if (pos >= disk_file->size || !f->r[2])
                 return 0;
             uint64_t bytes = disk_file->size - pos;
             if (bytes > f->r[2]) bytes = f->r[2];
-            if (bytes > sizeof buffer) bytes = sizeof buffer;
-            int result = runtime_volume_read_file(disk_file, pos, buffer, bytes);
-            if (result < 0)
-                return -5;
-            if (!result) {
-                p->disk_read_waiting = 1;
-                p->task->state = TASK_BLOCKED;
-                f->elr -= 4;
-                return fd;
-            }
-            if (copy_process_bytes(p, f->r[1], buffer, bytes, 1))
-                return -14;
-            if (op == 63) p->files[index].position->offset += bytes;
-            return bytes;
+            if (bytes > 4096) bytes = 4096;
+            /* ld.so needs the full initial ELF window. Retry the SVC only
+             * after the Tier-3 service has copied it with IRQs enabled. */
+            p->disk_read.file = disk_file;
+            p->disk_read.address = f->r[1];
+            p->disk_read.position = pos;
+            p->disk_read.bytes = bytes;
+            p->task->state = TASK_BLOCKED;
+            f->elr -= 4;
+            return fd;
         }
 #endif
         uint64_t size = file->end - file->begin;

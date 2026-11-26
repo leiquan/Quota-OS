@@ -345,7 +345,13 @@ struct proc {
     struct runtime_volume_file disk_elf;
     struct disk_elf_segment disk_segments[DISK_ELF_MAX_SEGMENTS];
     unsigned disk_segment_count, disk_fault_segment, disk_fault_page;
-    int disk_elf_waiting, disk_read_waiting;
+    int disk_elf_waiting;
+    struct {
+        const struct runtime_volume_file *file;
+        uint64_t address, position;
+        unsigned bytes;
+        int result;
+    } disk_read;
     unsigned v8_shared, page_ins;
     const char *stop_reason;
     uint64_t fault_file_offset[2];
@@ -1262,6 +1268,42 @@ static void finish_disk_dso_fault(struct proc *p)
                p->high_frames, free_frames);
 }
 
+static int copy_process_bytes(struct proc *p, uint64_t va, void *buffer, unsigned count, int to_user);
+
+/* The caller stays blocked at its SVC until the volume and user copies have
+ * finished. A hold protects its pages while this Tier-3 work is preemptible. */
+static void finish_disk_read(struct proc *p)
+{
+    static uint8_t buffer[4096];
+    static int busy;
+    uint64_t irq = irq_save();
+    if (busy || !p->alive || p->draining || !p->disk_read.file ||
+        p->disk_read.result || !p->task) {
+        irq_restore(irq);
+        return;
+    }
+    busy = 1;
+    ++p->hold;
+    irq_restore(irq);
+
+    unsigned bytes = p->disk_read.bytes;
+    int result = runtime_volume_read_file(p->disk_read.file, p->disk_read.position,
+                                          buffer, bytes);
+    if (result > 0)
+        result = copy_process_bytes(p, p->disk_read.address, buffer, bytes, 1) ? -14 : (int)bytes;
+    else if (result < 0)
+        result = -5;
+
+    irq = irq_save();
+    --p->hold;
+    busy = 0;
+    if (result && !p->draining) {
+        p->disk_read.result = result;
+        task_ready(p->task);
+    }
+    irq_restore(irq);
+}
+
 static void finish_disk_elf_fault(struct proc *p)
 {
     if (!p->alive || p->draining || !p->disk_elf_waiting)
@@ -1455,13 +1497,7 @@ void proc_finish_pending(void)
         if (sched_current() && sched_current()->tier == TIER3) {
             struct proc *p = &procs[i];
             finish_disk_elf_fault(p);
-            if (p->alive && !p->draining && p->disk_read_waiting &&
-                !runtime_volume_io_pending()) {
-                uint64_t irq = irq_save();
-                p->disk_read_waiting = 0;
-                task_ready(p->task);
-                irq_restore(irq);
-            }
+            finish_disk_read(p);
         }
 #endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
@@ -1961,7 +1997,7 @@ void proc_el0_svc(struct irq_frame *f)
 #endif
         f->r[0] = (uint64_t)result;
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
-        if (p->disk_read_waiting)
+        if (p->disk_read.file && !p->disk_read.result)
             return;
 #endif
 #ifdef QUOTA_WAP_FULL_RUNTIME
@@ -2363,7 +2399,8 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
     p->v8_shared = p->page_ins = 0;
     p->clean_pages = p->clean_cursor = p->clean_scanned = p->evicted_pages = 0;
     p->disk_elf_waiting = 0;
-    p->disk_read_waiting = 0;
+    p->disk_read.file = NULL;
+    p->disk_read.result = 0;
 #endif
     build_pt(p);
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
