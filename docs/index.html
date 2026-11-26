@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="An ARM64 operating system built around CPU quotas.">
 <title>Quota OS — A resource-partitioned operating system</title>
-<link rel="stylesheet" href="site.css?v=quota-brand">
+<link rel="stylesheet" href="site.css?v=quota-task-list">
 <script src="site.js?v=quota-brand" defer></script>
 <link rel="icon" href="favicon.png?v=quota-brand" type="image/png" sizes="32x32">
 <link rel="icon" href="quota-mark.svg" type="image/svg+xml" sizes="any">
@@ -109,6 +109,7 @@ bash tools/run-files.sh</code></pre>
 <p>When checking a WAP, look for <code>app.json</code> and <code>app.html</code> at the ZIP root, with <code>app.js</code> when needed. Use ZIP store mode and the <code>.wap</code> extension. If the note is missing after reboot, confirm that the first run displayed <code>Saved</code> and that both boots used the same data disk.</p>
 <p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">Build and boot</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo">Demo source</a> · <a href="screenshots/web-ui-wap-rotate.png">Demo screenshot</a> · <a href="tests/frame-intervals/web.json">Frame timing results</a></p>
 <div class="showcase"><figure><a class="capture" href="screenshots/web-ui-wap-rotate.png"><img src="screenshots/web-ui-wap-rotate.png" width="1280" height="800" loading="lazy" alt="Web UI · WAP controls and saved note"></a><figcaption>Web UI · WAP controls and saved note</figcaption></figure></div></article></div>
+<div class="dev-grid"><article class="sample-note"><h3>Task List example</h3><p>Add a task, check it off, filter with Open only, or delete it. Node.js saves each edit. Boot with the dedicated data disk created by the build script and reuse it after reboot to restore the list. Files currently labels the package <code>demo.wap</code>.</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/tasks">Source and launch steps</a></p></article><figure class="showcase"><a class="capture" href="screenshots/web-ui-task-list.png"><img src="screenshots/web-ui-task-list.png" width="665" height="310" loading="lazy" alt="Task List example"></a></figure></div>
 <h3>Build the desktop from source</h3>
 <p>On macOS with Homebrew LLVM and LLD installed, run these commands from the repository root. QEMU ARM64 runs the resulting kernel with one Cortex-A35 core and 64 MiB of RAM.</p>
 <pre><code>bash tools/build-lvgl-macos.sh

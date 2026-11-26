@@ -83,6 +83,7 @@ figcaption,.edition-pair p { font-size: .94rem; line-height: 1.6; padding: 3px 4
 .evidence-grid figure:last-child:nth-child(odd) { grid-column: 1/-1; display: grid; grid-template-columns: 1.5fr 1fr; gap: var(--gap); align-items: center; }
 .dev-grid > * { min-width: 0; }
 .dev-grid { align-items: start; }
+.sample-note { border-inline-start: 3px solid #f3ae32; }
 pre { padding: 18px; overflow-x: auto; border-radius: 8px; background: #243e59; color: #eff7f4; line-height: 1.65; }
 footer.bar { border-bottom: 0; border-top: 1px solid var(--line); }
 .hero > .showcase { min-width: 0; box-shadow: 0 14px 40px rgb(36 62 89 / 8%); }

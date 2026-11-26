@@ -31,6 +31,14 @@ The 1 GiB QEMU profile has separate evidence for WAP cold readback and guest fra
 
 [Build and boot · 构建与启动](https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建) · [Demo source · 示例源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo) · [Cold readback · 冷启动读回](screenshots/web-node-cold.png) · [Frame timing · 帧间隔](tests/frame-intervals/web.json)
 
+### Task List · 任务清单
+
+The standalone Tier 3 WAP supports adding, completing, filtering and deleting tasks. The Node.js backend saves edits. Build with Python 3 and Terser by running `python3 examples/tasks/build.py build/task-list-demo` from Web-UI, using a new output directory. Boot with the generated `tasks.raw`, then open the current `demo.wap` entry in Files. Reuse the same disk on restart.
+
+独立的三级任务清单支持添加、完成、筛选和删除。Node.js 后台保存修改。按示例说明生成并挂载专用的 `tasks.raw`，在 Files 中打开当前标为 `demo.wap` 的入口。重启时复用同一块盘可恢复列表。
+
+[Source and launch guide · 源码与启动指南](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/tasks) · [Screenshot · 实拍](screenshots/web-ui-task-list.png)
+
 ## CLI validation · CLI 验收
 
 The CLI boot image is 72.25 KiB (73,984 bytes). The QEMU default is 4 MiB. Serial interaction and the standalone C Test passed in both quota modes at 3 and 16 MiB in short runs. Saving a note and reading it back after a cold boot passed at 4 and 16 MiB.
