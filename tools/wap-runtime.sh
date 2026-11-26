@@ -33,7 +33,15 @@ configure_wap_runtime() {
 
 embed_wap_runtime() {
     if [ -n "${QUOTA_NODE_WEB_OUT:-}" ]; then
-        "$OBJCOPY" --strip-unneeded "$QUOTA_WAP_PAGE_ELF" build/wap-worker.elf
+        # LLVM and GNU objcopy use different names for stripping section headers.
+        local strip_flag=--strip-unneeded
+        local objcopy_help
+        objcopy_help=$("$OBJCOPY" --help)
+        case "$objcopy_help" in
+            *--strip-sections*) strip_flag=--strip-sections ;;
+            *--strip-section-headers*) strip_flag=--strip-section-headers ;;
+        esac
+        "$OBJCOPY" "$strip_flag" "$QUOTA_WAP_PAGE_ELF" build/wap-worker.elf
     else
         cp "$QUOTA_WAP_PAGE_ELF" build/wap-worker.elf
     fi
@@ -62,7 +70,7 @@ ASM
                     --system-font "${QUOTA_SYSTEM_FONT:?Set QUOTA_SYSTEM_FONT to a readable TrueType font}")
         fi
         if [ -n "${QUOTA_NODE_WEB_OUT:-}" ]; then
-            assets=(--strip-with-objcopy "$OBJCOPY" --blink-renderer "$QUOTA_NODE_WEB_OUT/quota-blink"
+            assets=(--strip-with-objcopy "$OBJCOPY" "--strip-flag=$strip_flag" --blink-renderer "$QUOTA_NODE_WEB_OUT/quota-blink"
                     --v8-data "$QUOTA_NODE_WEB_OUT" --system-font "$QUOTA_SYSTEM_FONT")
         fi
         if [ -n "${QUOTA_WAP_INTERPRETER:-}" ]; then

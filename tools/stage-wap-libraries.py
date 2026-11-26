@@ -25,6 +25,8 @@ def main():
     args.add_argument("--lld", default="lld")
     args.add_argument("--strip-with-objcopy", metavar="OBJCOPY",
                       help="strip non-runtime symbols from staged ELF copies")
+    args.add_argument("--strip-flag", default="--strip-unneeded",
+                      choices=("--strip-unneeded", "--strip-sections", "--strip-section-headers"))
     args.add_argument("--readelf", default="llvm-readelf")
     args.add_argument("--blink-renderer", type=Path,
                       help="also embed the ARM64 Blink page process and its required libraries")
@@ -136,7 +138,7 @@ def main():
             elf_dir = options.output.parent / "runtime-elf"
             elf_dir.mkdir(exist_ok=True)
             staged = (elf_dir / name).resolve()
-            subprocess.run([options.strip_with_objcopy, "--strip-unneeded", path, staged], check=True)
+            subprocess.run([options.strip_with_objcopy, options.strip_flag, path, staged], check=True)
             path = staged
         assembly.extend([f'dso_name_{i}: .asciz "{name}"', '.balign 4096',
                          f'dso_{i}: .incbin {json.dumps(str(path), ensure_ascii=False)}',
