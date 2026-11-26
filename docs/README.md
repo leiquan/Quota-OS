@@ -20,7 +20,7 @@ The four editions share this directory. Each branch's top-level README describes
 | Edition · 发行版 | Environment · 环境 | Default QEMU RAM · 默认内存 | Evidence · 验收 |
 |---|---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | Serial console · 串口 | 4 MiB | [Standalone Test and cold readback](tests/cli-4m/) |
-| [UI](https://github.com/leiquan/Quota-OS/tree/UI) | Native LVGL desktop · 原生桌面 | 512 MiB | [Frame timing](tests/frame-intervals/base.json) |
+| [UI](https://github.com/leiquan/Quota-OS/tree/UI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Frame timing](tests/frame-intervals/base.json) |
 | [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 512 MiB | [Frame timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
 | [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 900 × 1600 portrait LVGL · 竖屏触控界面 | 512 MiB | [QEMU touch verification · 模拟器触控验证](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui) |
 

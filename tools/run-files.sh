@@ -13,7 +13,7 @@ if [ ! -e "$disk" ]; then
     python3 tools/init-admin-disk.py "$disk"
 fi
 test "$(wc -c < "$disk")" -ge 32768 || { echo "Use tools/init-admin-disk.py NEW --from-legacy OLD to create an account-enabled copy" >&2; exit 1; }
-exec /bin/bash tools/run-qemu-gui.sh -machine virt,gic-version=2 -cpu cortex-a35 -m "${QUOTA_RAM:-512M}" -nic none \
+exec /bin/bash tools/run-qemu-gui.sh -machine virt,gic-version=2 -cpu cortex-a35 -m "${QUOTA_RAM:-64M}" -nic none \
     -global virtio-mmio.force-legacy=false -device virtio-rng-device -device ramfb -device virtio-tablet-device \
     -device virtio-keyboard-device -drive "if=none,id=notes,format=raw,file=$disk" \
     -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES -icount shift=4,sleep=off \
