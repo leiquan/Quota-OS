@@ -550,6 +550,9 @@ struct runtime_volume_file {
 int runtime_volume_find(const char *name, struct runtime_volume_file *file);
 int runtime_volume_read_file(const struct runtime_volume_file *file, uint64_t position,
                              void *destination, unsigned length);
+#ifdef QUOTA_NODE_WEB
+int proc_prepare_volume_interpreter(const struct runtime_volume_file *file);
+#endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
 int runtime_volume_acquire(uint64_t offset, const uint8_t **data);
 void runtime_volume_release(const uint8_t *data);

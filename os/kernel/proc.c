@@ -426,6 +426,7 @@ struct elf_mapping {
     unsigned pages;
     unsigned load_bias;
     unsigned phdr_va;
+    const unsigned char *interpreter;
     unsigned interp_entry;
     unsigned interp_phoff;
     unsigned interp_count;
@@ -1984,8 +1985,8 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
         memset(image_pt[p->slot], 0, sizeof image_pt[0]);
         map_image(p, image->file, image->load_bias, headers, header_count);
         if (image->interp_entry) {
-            map_image(p, wap_interp_start, ELF_INTERP_BASE,
-                      wap_interp_start + image->interp_phoff, image->interp_count);
+            map_image(p, image->interpreter, ELF_INTERP_BASE,
+                      image->interpreter + image->interp_phoff, image->interp_count);
             for (unsigned va = ELF_STACK_TOP - ELF_STACK_PAGES * 4096;
                  va < ELF_BRK_BASE + ELF_BRK_PAGES * 4096; va += 4096) {
                 uint64_t pa = p->pa[1];
@@ -2094,12 +2095,9 @@ static uint64_t elf_number(const unsigned char *bytes, unsigned count)
     return value;
 }
 
-static int prepare_interpreter(struct elf_mapping *image)
+static int parse_interpreter(struct elf_mapping *image, const unsigned char *file, size_t bytes)
 {
-    const unsigned char *file = wap_interp_start;
-    uintptr_t start = (uintptr_t)file, end = (uintptr_t)wap_interp_end;
-    if (!start || end < start || end - start < 64) return -1;
-    size_t bytes = end - start;
+    if (!file || bytes < 64) return -1;
     if (elf_number(file, 4) != 0x464c457f || file[4] != 2 || file[5] != 1 ||
         file[6] != 1 || elf_number(file + 16, 2) != 3 || elf_number(file + 18, 2) != 183 ||
         elf_number(file + 20, 4) != 1 || elf_number(file + 52, 2) != 64 ||
@@ -2130,10 +2128,62 @@ static int prepare_interpreter(struct elf_mapping *image)
             valid_entry = 1;
     }
     if (!valid_entry) return -1;
+    image->interpreter = file;
     image->interp_entry = ELF_INTERP_BASE + entry;
     image->interp_phoff = off;
     image->interp_count = count;
     return 0;
+}
+
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+/* The desktop loads one page per poll and publishes only a validated ELF.
+ * The published image is immutable for the lifetime of the boot. */
+static unsigned char volume_interpreter[256 * 1024] __attribute__((aligned(4096)));
+static unsigned interpreter_read;
+static int interpreter_ready;
+
+int proc_prepare_volume_interpreter(const struct runtime_volume_file *file)
+{
+    if (interpreter_ready)
+        return 1;
+    if (!file || file->size < 64 || file->size > sizeof volume_interpreter) {
+        interpreter_read = 0;
+        return -1;
+    }
+    unsigned remaining = file->size - interpreter_read;
+    unsigned length = remaining < 4096 ? remaining : 4096;
+    int result = runtime_volume_read_file(file, interpreter_read,
+                                          volume_interpreter + interpreter_read, length);
+    if (result != 1) {
+        if (result < 0)
+            interpreter_read = 0;
+        return result;
+    }
+    interpreter_read += length;
+    if (interpreter_read != file->size)
+        return 0;
+    struct elf_mapping layout = {0};
+    if (parse_interpreter(&layout, volume_interpreter, interpreter_read)) {
+        interpreter_read = 0;
+        return -1;
+    }
+    interpreter_ready = 1;
+    printf("[wap-volume] interpreter ready bytes=%u entry=%x\n",
+           interpreter_read, layout.interp_entry);
+    return 1;
+}
+#endif
+
+static int prepare_interpreter(struct elf_mapping *image)
+{
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+    if (interpreter_ready)
+        return parse_interpreter(image, volume_interpreter, interpreter_read);
+#endif
+    uintptr_t start = (uintptr_t)wap_interp_start, end = (uintptr_t)wap_interp_end;
+    if (end < start)
+        return -1;
+    return parse_interpreter(image, wap_interp_start, end - start);
 }
 
 static int64_t spawn_elf(const unsigned char *elf, unsigned bytes, const unsigned char *document, unsigned size,

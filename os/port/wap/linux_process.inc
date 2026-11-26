@@ -2768,7 +2768,8 @@ next_range:;
     unsigned last = first + 4*4096;
     memset(&image_pt[p->slot][first >> 12], 0, (last-first) >> 9);
     map_image_range(p, file, system_layout.load_bias, headers, count, first, last, &p->exec_frames);
-    map_image_range(p, wap_interp_start, ELF_INTERP_BASE, wap_interp_start + system_layout.interp_phoff,
+    map_image_range(p, system_layout.interpreter, ELF_INTERP_BASE,
+                    system_layout.interpreter + system_layout.interp_phoff,
                     system_layout.interp_count, first, last, &p->exec_frames);
     for (unsigned at = first; at < last; at += 4096) {
         unsigned va = ELF_BASE + at;
