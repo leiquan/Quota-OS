@@ -5,6 +5,17 @@ qemu=$(command -v qemu-system-aarch64) || {
     echo 'qemu-system-aarch64 is required.' >&2
     exit 127
 }
+# Preserve an explicit QEMU name supplied by a test or custom launch.
+vm_name_set=0
+for arg in "$@"; do
+    case "$arg" in
+        -name|--name|-name=*|--name=*) vm_name_set=1; break ;;
+    esac
+done
+if [[ $vm_name_set == 0 ]]; then
+    set -- -name 'Quota OS UI' "$@"
+fi
+
 if [[ $(uname -s) != Darwin ]]; then
     exec "$qemu" "$@"
 fi
