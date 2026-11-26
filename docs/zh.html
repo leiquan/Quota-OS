@@ -35,7 +35,7 @@
 </section>
 <section class="wrap section" id="editions">
 <h2>三个发行版，共用一个内核</h2><p>CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。UI 增加 LVGL 原生桌面，Web UI 在此基础上增加由 Blink、V8 和 Node.js 组成的三级 WAP 运行时。</p>
-<h3>启动、开发与验证</h3><div class="grid editions-grid"><article><h4>CLI</h4><p><strong>启动</strong> · 通过单核 Cortex-A35 QEMU 进入串口命令行。</p><p><strong>开发</strong> · 用 C 编译独立 Test，以二级或三级 EL0 应用运行。</p><p><strong>验证</strong> · 检查配额，并验证笔记在冷启动后能读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/CLI">启动指南</a> · <a href="tests/cli-4m/disk-boot-2.log">验收证据</a></p></article><article><h4>UI</h4><p><strong>启动</strong> · 启动 1280 × 800 的 LVGL 原生桌面。</p><p><strong>开发</strong> · 用 C 和 LVGL 编写原生界面和应用。</p><p><strong>验证</strong> · 在 Apps → Test 检查准入、配额和仪表帧间隔。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/UI">启动指南</a> · <a href="tests/frame-intervals/base.json">验收证据</a></p></article><article><h4>Web UI</h4><p><strong>启动</strong> · 启动带三级 WAP 运行时的 LVGL 桌面。</p><p><strong>开发</strong> · 用 HTML、CSS、JavaScript 和可选的 Node.js 后台编写 WAP 应用。</p><p><strong>验证</strong> · 在 Files 打开示例，保存笔记并在冷启动后读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">启动指南</a> · <a href="screenshots/web-ui-wap-rotate.png">验收证据</a></p></article></div>
+<h3>启动、开发与验证</h3><div class="grid editions-grid"><article><h4>CLI</h4><p><strong>启动</strong> · 通过单核 Cortex-A35 QEMU 进入串口命令行。</p><p><strong>开发</strong> · 用 C 编译独立 Test，以二级或三级 EL0 应用运行。</p><p><strong>验证</strong> · 检查配额，并验证笔记在冷启动后能读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/CLI">启动指南</a> · <a href="tests/cli-4m/disk-boot-2.log">验收证据</a></p></article><article><h4>UI</h4><p><strong>启动</strong> · 启动 1280 × 800 的 LVGL 原生桌面。</p><p><strong>开发</strong> · 用 C 和 LVGL 编写原生界面和应用。</p><p><strong>验证</strong> · 在 Apps → Test 检查准入、配额和仪表帧间隔。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/UI">启动指南</a> · <a href="tests/frame-intervals/base.json">验收证据</a></p></article><article><h4>Web UI</h4><p><strong>启动</strong> · 启动带三级 WAP 运行时的 LVGL 桌面。</p><p><strong>开发</strong> · 用 HTML、CSS、JavaScript 和可选的 Node.js 后台编写 WAP 应用。</p><p><strong>验证</strong> · 在 Files 打开示例，保存任务并在冷启动后读回。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">启动指南</a> · <a href="screenshots/web-ui-todo.png">验收证据</a></p></article></div>
 <h3>发行版示例</h3><div class="edition-pair edition-examples"><div><figure><pre class="cli-transcript" tabindex="0"><code>Quota OS CLI 016 | ARM64 | 4096 KiB RAM
 
 quota&gt; run Test
@@ -45,7 +45,7 @@ quota&gt; run Test t2
 Test: EL0 completed
 
 quota&gt; events
-period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI · Mac 上运行 QEMU 的串口实录 · <a href="tests/cli-layout/4M.log">完整串口日志</a></figcaption></figure></div><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="UI · 二级任务准入"></a><figcaption>UI · 二级任务准入</figcaption></figure></div><div><figure><a class="capture" href="screenshots/web-ui-wap-rotate.png"><img loading="lazy" src="screenshots/web-ui-wap-rotate.png" width="1280" height="800" alt="Web UI · 已保存笔记与 90° 旋转"></a><figcaption>Web UI · 已保存笔记与 90° 旋转</figcaption></figure></div></div>
+period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI · Mac 上运行 QEMU 的串口实录 · <a href="tests/cli-layout/4M.log">完整串口日志</a></figcaption></figure></div><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="UI · 二级任务准入"></a><figcaption>UI · 二级任务准入</figcaption></figure></div><div><figure><a class="capture" href="screenshots/web-ui-todo.png"><img loading="lazy" src="screenshots/web-ui-todo.png" width="1280" height="800" alt="Web UI · Todo 任务清单"></a><figcaption>Web UI · Todo 任务清单</figcaption></figure></div></div>
 </section>
 <section class="wrap section" id="compare">
 <h2>系统对比</h2><p>同样是预留 CPU 时间，给一组线程分配最低份额、给单个线程设置周期预算、为整个分区排定时间窗，解决的是不同的问题。下表从分配对象和运行规则比较五种做法。</p>
@@ -95,16 +95,14 @@ bash tools/run-files.sh</code></pre>
 <h3>Web UI · WAP</h3>
 <p>Web UI 保留原生桌面，WAP 应用在三级共享池内运行。Blink 渲染 HTML 和 CSS，V8 执行页面 JavaScript，可选的 Node.js 进程处理后台逻辑。页面与后台使用同一套系统 V8 构建。</p>
 <ol>
-<li><strong>启动 Web UI。</strong>按下方构建与启动指南运行 1 GiB 镜像。为本次测试使用一块专用数据盘，后续重启复用同一文件。</li>
-<li><strong>先运行现成示例。</strong>打开 Apps → ZIP，导出 <code>demo.wap</code>（2,010 字节）。在 Files 找到它并双击，等页面显示 <code>Ready</code>。关闭其他应用窗口后，点击 Rotate，观察箭头旋转至 90°、方块颜色逐渐变化。再点一次回到 0°。</li>
-<li><strong>保存并重启验证。</strong>输入一小段文字，点击 Save，等到 <code>Saved</code>。完全退出 QEMU，用同一镜像和同一数据盘重新启动，再从 Files 打开 <code>demo.wap</code> 核对原文。</li>
-<li><strong>从示例源码改起。</strong>打开 Web-UI 分支的 <code>examples/demo/</code>。在 <code>app.json</code> 保留 <code>{"tier":3}</code>，在 <code>app.html</code> 写 HTML、CSS 与页面 JS，可选的 <code>app.js</code> 放 Node.js 后台逻辑。构建镜像后，再用 ZIP 应用导出修改后的示例。</li>
-<li><strong>绑定 RPC。</strong>一端用 <code>await rpc.set(name, handler)</code> 注册，另一端用 <code>await rpc.get(name, ...args)</code> 调用。示例由后台注册 <code>save</code> 和 <code>load</code>，页面注册 <code>saved</code>。同一个 WAP 内方法名不能重复，<code>set</code> 和 <code>get</code> 为保留名。</li>
+<li>打开 Apps → ZIP，导出 <code>todo.wap</code>，再从 Files 双击打开 <strong>Todo</strong>。</li>
+<li>用 Add 添加任务，勾选完成，用 Open only 筛选，或用 Delete 删除。</li>
+<li>等到 <code>Saved</code> 后退出 QEMU。用同一镜像和数据盘重启，再打开 Todo，核对任务与完成状态。</li>
+<li>从 <code>examples/todo/</code> 的三份源码改起。重打包并替换内置的 <code>todo.wap</code> 后，重新构建镜像。</li>
 </ol>
 <p>核对 WAP 包时，确认 <code>app.json</code> 和 <code>app.html</code> 位于 ZIP 根目录，按需加入 <code>app.js</code>。ZIP 使用存储模式，扩展名为 <code>.wap</code>。如果冷启动后读不到原文，确认首次保存显示了 <code>Saved</code>，且第二次使用同一数据盘。</p>
-<p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">构建与启动</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo">示例源码</a> · <a href="screenshots/web-ui-wap-rotate.png">示例截图</a> · <a href="tests/frame-intervals/web.json">帧间隔结果</a></p>
-<div class="showcase"><figure><a class="capture" href="screenshots/web-ui-wap-rotate.png"><img src="screenshots/web-ui-wap-rotate.png" width="1280" height="800" loading="lazy" alt="Web UI · WAP 控件与已保存的笔记"></a><figcaption>Web UI · WAP 控件与已保存的笔记</figcaption></figure></div></article></div>
-<div class="dev-grid"><article class="sample-note"><h3>任务清单示例</h3><p>用 Add 添加任务，勾选完成，或用 Open only 筛选。每次修改由 Node.js 后台写盘。使用构建脚本生成的专用数据盘启动，重启时复用同一块盘即可恢复列表。当前 Files 中的入口仍显示为 <code>demo.wap</code>。</p><p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/tasks">源码与启动步骤</a></p></article><figure class="showcase"><a class="capture" href="screenshots/web-ui-task-list.png"><img src="screenshots/web-ui-task-list.png" width="665" height="310" loading="lazy" alt="任务清单示例"></a></figure></div>
+<p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">构建与启动</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo">示例源码</a> · <a href="screenshots/web-ui-todo.png">示例截图</a> · <a href="tests/frame-intervals/web.json">帧间隔结果</a></p>
+<div class="showcase"><figure><a class="capture" href="screenshots/web-ui-todo.png"><img src="screenshots/web-ui-todo.png" width="1280" height="800" loading="lazy" alt="Web UI · Todo 任务清单"></a><figcaption>Web UI · Todo 任务清单</figcaption></figure></div></article></div>
 <h3>从源码构建桌面</h3>
 <p>在装好 Homebrew LLVM 和 LLD 的 macOS 上，从仓库根目录执行以下命令。QEMU 使用单核 Cortex-A35 和 64 MiB 内存运行构建出的内核。</p>
 <pre><code>bash tools/build-lvgl-macos.sh
