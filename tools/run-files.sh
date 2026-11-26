@@ -29,7 +29,7 @@ if [[ -n ${QUOTA_ROOT_DISK:-} && "$QUOTA_ROOT_DISK" -ef "$disk" ]]; then
     exit 1
 fi
 exec /bin/bash tools/run-qemu-gui.sh -machine virt,gic-version=2 -cpu cortex-a35 -m "$ram" -nic none \
-    -global virtio-mmio.force-legacy=false "${root_args[@]}" -drive "if=none,id=notes,format=raw,file=${disk//,/,,}" \
+    -global virtio-mmio.force-legacy=false ${root_args[@]+"${root_args[@]}"} -drive "if=none,id=notes,format=raw,file=${disk//,/,,}" \
     -device virtio-blk-device,bus=virtio-mmio-bus.29,drive=notes,serial=QUOTA-NOTES \
     -device ramfb -device virtio-tablet-device -device virtio-rng-device -device virtio-keyboard-device \
     -icount shift=4,sleep=off -kernel "$kernel" -append "$bootargs" -serial stdio -monitor none "$@"
