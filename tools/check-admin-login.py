@@ -78,6 +78,7 @@ for boot in (1, 2):
             wait("[session] state=2")
             enter(password)
         wait("[session] state=4")
+        time.sleep(.5)
         q.call("screendump", {"filename": str(out / f"login-{boot}.ppm")})
         enter("wrong")
         time.sleep(.8)
@@ -85,6 +86,7 @@ for boot in (1, 2):
         enter(password, touch=boot == 2)
         wait("[session] state=5")
         assert "[menu] button" not in read()
+        time.sleep(.5)
         q.call("screendump", {"filename": str(out / f"desktop-{boot}.ppm")})
         # Normal boot has Apps and System in the dock and no foreground app.
         click(517, 1470)
