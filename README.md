@@ -8,7 +8,7 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 
 ## 两个发行版怎么选
 
-| | [C LVGL 版](https://github.com/leiquan/Quota-OS/tree/C-LVGL) | [Web Node 版](https://github.com/leiquan/Quota-OS/tree/Web-Node) |
+| | [C LVGL 版](https://github.com/leiquan/Quota-OS/tree/LVGL) | [Web Node 版](https://github.com/leiquan/Quota-OS/tree/Web-Node) |
 |---|---|---|
 | 镜像大小 | 701,852 B · 685.4 KiB | 374,867,224 B · 357.5 MiB |
 | QEMU 验证内存 | 64 MiB | 1 GiB |
@@ -187,4 +187,4 @@ In the earlier live-checks regression, 100 lifecycle cold boots and 100 desktop-
 
 This branch builds the LVGL desktop. WebKit and JavaScriptCore development lives on [Desktop-Webkit-120X800](https://github.com/leiquan/Quota-OS/tree/Desktop-Webkit-120X800). Earlier design notes, build instructions and historical experiments are in the [technical notes](TECHNICAL-NOTES.md). [Apache 2.0 license](LICENSE)
 
-公共内核和 LVGL 桌面的改动先提交到 `C-LVGL`。在 `Web-Node` 合并基础版后，分别验证 64 MiB 桌面配额场景和 1 GiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-Node` 维护。
+公共内核和 LVGL 桌面的改动先提交到 `LVGL`。在 `Web-Node` 合并基础版后，分别验证 64 MiB 桌面配额场景和 1 GiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-Node` 维护。
