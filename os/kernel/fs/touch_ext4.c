@@ -37,7 +37,7 @@ int touch_ext4_enabled(void)
     return 0;
 #endif
 }
-static uint64_t begin;
+static uint64_t begin, next_request;
 static struct sched_system_info before;
 static struct app_display_stats first_display;
 static unsigned recorded, dropped;
@@ -242,6 +242,7 @@ void touch_ext4_poll(void)
     if (!running) return;
     if (!pending) {
         uint64_t submitted = ticks_now();
+        if (submitted < next_request) return;
         int rc = root_service_submit(steps[step].op, steps[step].name,
                                      steps[step].op == ROOT_SAVE ? steps[step].input : NULL,
                                      steps[step].op == ROOT_SAVE ? steps[step].bytes : 0);
@@ -274,5 +275,8 @@ void touch_ext4_poll(void)
     if (++step == sizeof steps / sizeof steps[0]) {
         printf("[touch-ext4] io-start ticks=%lu mount=0\n", (unsigned long)begin);
         finish(1, 0);
+    } else {
+        /* Continue exercising the disk across multiple visible swipe frames. */
+        next_request = ticks_now() + us_to_ticks(350000);
     }
 }
