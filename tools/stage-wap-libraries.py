@@ -92,10 +92,10 @@ def main():
         if not options.system_font or not options.system_font.is_file():
             args.error("the page renderer requires a readable --system-font")
         libraries["fonts/System-Regular.ttf"] = options.system_font.resolve()
-        libraries["fonts.conf"] = Path(__file__).resolve().parents[1] / "port/quotaos/fonts/fonts.conf"
+        libraries["fonts.conf"] = Path(__file__).resolve().parents[1] / "port/fonts/fonts.conf"
 
     if options.blink_renderer:
-        port = Path(__file__).resolve().parents[1] / "port/quotaos"
+        port = Path(__file__).resolve().parents[1] / "port"
         core = port / "wap/rpc.js"
         backend = port / "node/rpc-backend.cjs"
         preload = options.output.parent / "quota-node-preload.cjs"
@@ -117,7 +117,7 @@ def main():
                 raise FileNotFoundError(path)
             libraries[name] = path.resolve()
 
-        shell = Path(__file__).resolve().parents[1] / "port/quotaos/electron"
+        shell = Path(__file__).resolve().parents[1] / "port/electron"
         adapter = options.output.parent / "libquota-entropy.so"
         subprocess.run([options.clang, "--target=aarch64-linux-gnu", "-fPIC", "-shared",
                         "-nostdlib", "-fno-builtin", "-O2", f"-fuse-ld={options.lld}",

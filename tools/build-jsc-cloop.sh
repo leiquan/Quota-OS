@@ -7,7 +7,7 @@
 # Flags: ENABLE_JIT=0 ENABLE_C_LOOP=1 ENABLE_YARR_JIT=0 ENABLE_WEBASSEMBLY=0
 #        asserts on (no NDEBUG), so the generated LLInt matches OFFLINE_ASM_ASSERT_ENABLED.
 #
-# The tree needs the patch port/quotaos/patches/jsc-cloop-7625.2.8.18.3.patch
+# The tree needs the patch port/patches/jsc-cloop-7625.2.8.18.3.patch
 # (16-bit CLoop register accessors, storeh lowering, return helpers 32-37).
 set -euo pipefail
 
@@ -21,7 +21,7 @@ pin=$(git -C "$WEBKIT_SRC" rev-parse HEAD)
 test "$pin" = "4d967f4ca7bdd75319e732247e714c2bc634555e"
 
 if ! grep -q 'llint_cloop_did_return_from_js_37' "$WEBKIT_SRC/Source/JavaScriptCore/bytecode/BytecodeList.rb"; then
-    git -C "$WEBKIT_SRC" apply "$ROOT/port/quotaos/patches/jsc-cloop-7625.2.8.18.3.patch"
+    git -C "$WEBKIT_SRC" apply "$ROOT/port/patches/jsc-cloop-7625.2.8.18.3.patch"
 fi
 
 mkdir -p "$OUT/gen" "$OUT/include/JavaScriptCore"

@@ -1655,7 +1655,7 @@ static void clean_code(void *p, uint64_t n)
     asm volatile("dsb ish; ic iallu; dsb ish; isb" ::: "memory");
 }
 
-#include "../port/quotaos/wap/linux_process.inc"
+#include "../port/wap/linux_process.inc"
 
 static int64_t spawn_image(const struct elf_mapping *image, const char *code, unsigned bytes, const unsigned char *data, unsigned data_size, const unsigned char *headers, unsigned header_count, unsigned entry, enum console_abi console, const char *name, uint64_t role, uint64_t limit, uint64_t foreign_pa,
                    uint64_t fb_pa, uint64_t kern_va, uint16_t vx, uint16_t vy,

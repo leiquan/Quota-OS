@@ -11,7 +11,7 @@ EXTRA_CFLAGS=${EXTRA_CFLAGS:-}
 image_name=quotaos-lvgl
 source_lists=(kernel/sources.list)
 embed_payload=
-source_lists+=(port/quotaos/wap/sources.list)
+source_lists+=(port/wap/sources.list)
 if [[ -n "${QUOTA_NODE_WEB_OUT:-}${QUOTA_WAP_PAGE_ELF:-}${QUOTA_WAP_INTERPRETER:-}" ]]; then
     source tools/wap-runtime.sh
     configure_wap_runtime

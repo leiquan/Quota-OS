@@ -3,17 +3,17 @@ Web Node edition
 The LVGL branch is the base for shared kernel and desktop work. Keep shared
 fixes in their own commits so Web-Node can take them without importing a
 runtime into LVGL. Both editions use tools/build-desktop-image.sh. The Web
-Node entry point adds port/quotaos/wap/sources.list and a runtime payload
+Node entry point adds port/wap/sources.list and a runtime payload
 hook. ZIP decoding and manifest validation belong to the WAP extension.
 
 The LVGL desktop owns the file picker, windows and input. Files passes an open
-request to wap_open_saved() in port/quotaos/wap/app.c. That module validates the
+request to wap_open_saved() in port/wap/app.c. That module validates the
 ZIP and manifest, restores an existing app or asks the process service to start
 its tier-3 processes. The desktop displays the published surface. The Demo
 application lives in examples/demo; its HTML and scripts are ordinary app files.
 
-port/quotaos/blink implements the Blink embedder, input and software paint.
-port/quotaos/node provides the Node adapter. Both ends use port/quotaos/wap/rpc.js
+port/blink implements the Blink embedder, input and software paint.
+port/node provides the Node adapter. Both ends use port/wap/rpc.js
 for local RPC. The kernel owns admission, process identity, memory protection,
 file access and IPC. The Linux ABI and ELF loader currently live in kernel/proc.c.
 
@@ -52,7 +52,7 @@ Quota OS layers. Dependencies point downward.
    tier-1 slot. The WebKit guest runs on the tier-3 shell, so its CPU
    is the tier-3 quantum.
 
-3. Platform adaptation (port/quotaos/, tools/generate-webcore-derived.sh)
+3. Platform adaptation (port/, tools/generate-webcore-derived.sh)
    The only place that includes upstream WebCore. It calls kernel
    services. It does not talk to the UART, GIC, or page tables.
    Upstream generators write build/webcore-derived. Settings flags that

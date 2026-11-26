@@ -27,10 +27,10 @@ $CXX -std=c++23 -Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack
     -DGIGACAGE_ENABLED=0 -DUSE_SYSTEM_MALLOC=1 \
     -I /tmp/jsc-build/include -I /tmp/jsc-build/gen \
     $INCS -idirafter /usr/include \
-    -c port/quotaos/jsc_guest.cpp -o build/jsc_guest.o
+    -c port/jsc_guest.cpp -o build/jsc_guest.o
 $CXX -std=c++23 -Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-stack-protector \
     -ffunction-sections -fdata-sections -w \
-    -c port/quotaos/jsc_link_stubs.cpp -o build/jsc_link_stubs.o
+    -c port/jsc_link_stubs.cpp -o build/jsc_link_stubs.o
 
 python3 - << 'PY'
 import os
