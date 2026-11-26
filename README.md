@@ -12,6 +12,10 @@ Quota OS 是一个以资源配额为核心的 ARM64 实验操作系统。一级�
 
 [Music Player pressure results / 音乐播放器掉帧实测](docs/tests/music-pressure/) · [官网实验截图](https://www.quotaos.org/zh.html#music-pressure)
 
+## Shell root directory · Shell 根目录
+
+登录后打开 Apps → Shell。`ls` 和 `ls /` 均列出当前 ext4 根盘，`cat /文件名` 读取该盘根目录中的文本文件。普通启动和 macOS 启动共用根盘设置。首次创建默认根盘需要 e2fsprogs 的 `mke2fs`。要换盘，可在启动前将 `QUOTA_ROOT_DISK` 设为已有兼容 ext4 镜像的路径，保留原来的 Notes 和账号盘。
+
 ## Quota OS editions · 四个发行版
 
 CLI, GUI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. GUI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js. Touch UI provides a 900 × 1600 portrait desktop with full-screen applications and a bottom gesture bar.
@@ -21,8 +25,8 @@ CLI, GUI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the ser
 | Edition · 发行版 | Default QEMU RAM · 默认内存 | ARM64 boot image · 启动镜像 |
 |---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 111.5 KiB |
-| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | 64 MiB | 764.8 KiB |
-| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 512 MiB | 874.2 KiB + runtime volume · 另附运行时卷 |
+| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | 64 MiB | 780.3 KiB |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 512 MiB | 886.5 KiB + runtime volume · 另附运行时卷 |
 | [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 512 MiB | 825.0 KiB (LVGL) |
 
 Graphical launchers default to two vCPUs. CLI uses one vCPU. The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective GUI and runtime components.
