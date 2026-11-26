@@ -44,10 +44,20 @@ enum wap_open_result wap_open_saved(int64_t *handle)
     return WAP_STARTED;
 }
 
-int wap_export_todo(void)
+static int install_todo(void)
 {
     unsigned size = (uintptr_t)todo_package_end - (uintptr_t)todo_package;
-    int ok = size <= NOTE_DISK_PACKAGE_CAPACITY && note_disk_save_package(todo_package, size) == 0;
-    printf("[zip-app] export queued=%d bytes=%u\n", ok, size);
-    return ok;
+    return size <= NOTE_DISK_PACKAGE_CAPACITY && note_disk_save_package(todo_package, size) == 0;
+}
+
+void wap_install_default_todo(void)
+{
+    if (!note_disk_package_initialized() && install_todo())
+        printf("[files] default todo.wap queued\n");
+}
+
+int wap_export_todo(void)
+{
+    unsigned size;
+    return note_disk_package(&size) || install_todo();
 }

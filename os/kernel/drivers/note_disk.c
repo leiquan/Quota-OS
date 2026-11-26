@@ -178,7 +178,9 @@ void note_disk_poll(void)
             int valid = document == NOTE_DATA_SLOT
                 ? transfer.magic == NOTE_DATA_MAGIC && transfer.length <= LEGACY_BYTES
                 : (document == 2 || document == PACKAGE_EXT)
-                ? transfer.magic == PACKAGE_MAGIC && transfer.length && transfer.length <= (document == PACKAGE_EXT ? sizeof transfer.text : LEGACY_BYTES)
+                ? transfer.magic == PACKAGE_MAGIC && (document == PACKAGE_EXT
+                    ? transfer.length <= sizeof transfer.text
+                    : transfer.length && transfer.length <= LEGACY_BYTES)
                 : (transfer.magic == MAGIC || (document == 1 && transfer.magic == SOURCE_MAGIC &&
                     transfer.length < LEGACY_BYTES - SOURCE_NAME &&
                     valid_source_name(transfer.text + LEGACY_BYTES - SOURCE_NAME))) &&
@@ -268,6 +270,19 @@ int note_disk_save_package(const unsigned char *bytes, unsigned length)
     return length ? save_binary(document_count > PACKAGE_EXT ? PACKAGE_EXT : 2, PACKAGE_MAGIC, bytes, length) : -1;
 }
 
+int note_disk_package_initialized(void)
+{
+    return documents[PACKAGE_EXT].magic || documents[2].magic;
+}
+
+int note_disk_remove_package(void)
+{
+    unsigned length;
+    /* An empty record in the extended bank masks both previous banks and the legacy slot. */
+    return document_count > PACKAGE_EXT && note_disk_package(&length)
+        ? save_binary(PACKAGE_EXT, PACKAGE_MAGIC, (const unsigned char *)"", 0) : -1;
+}
+
 int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_t *generation)
 {
     if (!generation || save_binary(NOTE_DATA_SLOT, NOTE_DATA_MAGIC, bytes, length))
@@ -298,7 +313,7 @@ const unsigned char *note_disk_package(unsigned *length)
 {
     const struct record *r = documents[PACKAGE_EXT].magic ? &documents[PACKAGE_EXT] : &documents[2];
     *length = r->length;
-    return r->magic ? (const unsigned char *)r->text : NULL;
+    return r->magic && r->length ? (const unsigned char *)r->text : NULL;
 }
 
 int note_disk_save(const char *text) { return save_document(text, 0, NULL); }

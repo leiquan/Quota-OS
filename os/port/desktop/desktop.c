@@ -789,6 +789,7 @@ static void select_package_view(lv_obj_t *view)
 
 static lv_obj_t *context_layer;
 static void dismiss_context(lv_event_t *event);
+static void open_context(int tier, lv_point_t point);
 
 static lv_obj_t *login_screen, *desktop_screen, *password_box, *login_status, *login_prompt;
 static lv_group_t *login_group;
@@ -1070,13 +1071,13 @@ static void on_group(lv_event_t *e)
     }
     if (id == 239) {
         int ok = wap_export_todo();
-        lv_label_set_text(zip_status, ok ? "Export queued. Open Files to see the saved package."
+        lv_label_set_text(zip_status, ok ? "todo.wap is available on the desktop and in Files."
                                         : "Export unavailable. Check the Notes disk.");
         return;
     }
     if (id == 240) {
         lv_obj_t *view = lv_event_get_current_target(e);
-        if (selected_package_view != view) {
+        if (view == package_entry && selected_package_view != view) {
             select_package_view(view);
             return;
         }
@@ -1099,7 +1100,7 @@ static void on_group(lv_event_t *e)
         demo_frame.data = NULL;
         lv_label_set_text(demo_status, demo_handle > 0 ? "Loading app.html..."
             : result == WAP_LOAD_FAILED ? "Quota OS could not load the page process."
-                    : "The page runtime is missing from this system image.");
+                    : "Open todo.wap in Touch UI with the Web runtime or in Web UI.");
         show_demo_window();
         printf("[wap] page process handle=%ld\n", (long)demo_handle);
         return;
@@ -1326,7 +1327,8 @@ static lv_obj_t *desktop_file(lv_obj_t *screen, int x, int y, const char *name,
     lv_obj_set_style_bg_color(button, lv_color_hex(0x14213a), LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(button, LV_OPA_50, LV_STATE_PRESSED);
     lv_obj_set_style_shadow_width(button, 0, 0);
-    lv_obj_add_event_cb(button, on_group, LV_EVENT_CLICKED, (void *)(uintptr_t)action);
+    lv_obj_add_event_cb(button, on_group, action == 240 ? LV_EVENT_SHORT_CLICKED : LV_EVENT_CLICKED,
+                        (void *)(uintptr_t)action);
 
     lv_obj_t *paper = lv_obj_create(button);
     lv_obj_set_size(paper, 42, 50);
@@ -1561,6 +1563,14 @@ static const char *task_display_name(const char *name)
     return name;
 }
 
+static void package_long_press(lv_event_t *event)
+{
+    lv_point_t point;
+    lv_indev_get_point(lv_event_get_indev(event), &point);
+    select_package_view(NULL);
+    open_context(0, point);
+}
+
 static lv_obj_t *context_button, *context_label;
 static lv_obj_t *stopped_rows[2];
 static int context_tier, context_start;
@@ -1575,6 +1585,15 @@ static void dismiss_context(lv_event_t *event)
 static void apply_context(lv_event_t *event)
 {
     (void)event;
+    if (!context_tier) {
+        if (note_disk_remove_package()) {
+            lv_label_set_text(context_label, "Try again");
+            return;
+        }
+        printf("[files] todo.wap removal queued\n");
+        dismiss_context(NULL);
+        return;
+    }
     int result = vehicle_app_set_running(context_tier, context_start);
     printf("[system] tier=%d start=%d result=%d\n", context_tier, context_start, result);
     if (result) {
@@ -1604,8 +1623,11 @@ static void open_context(int tier, lv_point_t point)
         lv_obj_center(context_label);
     }
     context_tier = tier;
-    context_start = !vehicle_app_running(tier);
-    if (tier == TIER1 || tier == 4) {
+    context_start = tier && !vehicle_app_running(tier);
+    if (!tier) {
+        lv_obj_remove_state(context_button, LV_STATE_DISABLED);
+        lv_label_set_text(context_label, "Delete todo.wap");
+    } else if (tier == TIER1 || tier == 4) {
         lv_label_set_text(context_label, tier == TIER1 ? "Protected by kernel" : "Hosts desktop UI");
         lv_obj_add_state(context_button, LV_STATE_DISABLED);
     } else {
@@ -2129,6 +2151,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     lv_obj_set_style_bg_color(package_icon, lv_color_hex(0x324a68), LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(package_icon, LV_OPA_COVER, LV_STATE_CHECKED);
     monitor_visible(package_icon, 0);
+    lv_obj_add_event_cb(package_icon, package_long_press, LV_EVENT_LONG_PRESSED, NULL);
+    lv_obj_add_event_cb(package_entry, package_long_press, LV_EVENT_LONG_PRESSED, NULL);
     monitor_visible(source_entry, 0);
     monitor_visible(source_icon, 0);
     monitor_visible(note_icon, 0);
@@ -2273,6 +2297,7 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
                 lv_label_set_text(login_status,"Account storage unavailable.");
             continue;
         }
+        wap_install_default_todo();
         touch_ext4_poll();
         const char *ext4_reply = touch_ext4_shell_poll();
         if (ext4_reply) shell_append(ext4_reply);
@@ -2303,7 +2328,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
             unsigned package_size;
             int has_package = note_disk_package(&package_size) != NULL;
             monitor_visible(package_entry, has_package);
-            lv_obj_set_y(package_icon, name ? (has_note ? 262 : 164) : 66);
+            lv_obj_set_y(source_icon, has_package ? 164 : 66);
+            lv_obj_set_y(note_icon, 66 + (has_package + (name != NULL)) * 98);
             monitor_visible(package_icon, has_package);
             lv_obj_set_x(package_entry, 20 + (has_note + (name != NULL)) * 96);
             monitor_visible(file_empty, !has_note && !name && !has_package);
