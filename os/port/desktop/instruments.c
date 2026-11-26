@@ -35,10 +35,20 @@ static lv_obj_t *app_card(lv_obj_t *screen, int y, const char *title, const char
 
 void instruments_create(lv_obj_t *screen, int apps)
 {
-    app_cards[0] = app_card(screen, 116, app_speed, "Simulated speed (km/h)", "Tier 1", LV_SYMBOL_CHARGE, 0x69dfbd);
-    app_cards[1] = app_card(screen, 281, app_video, apps == 2 ?
+    lv_obj_t *status = app_card(screen, 48, "System status", "", "Tier 1", LV_SYMBOL_SETTINGS, 0x69dfbd);
+    lv_obj_set_height(status, 139);
+    lv_obj_set_y(lv_obj_get_child(status, 0), 5);
+    lv_obj_set_y(lv_obj_get_child(status, 2), 12);
+    lv_obj_align(lv_obj_get_child(status, 3), LV_ALIGN_TOP_RIGHT, -50, 9);
+    const char *const labels[] = {"CPU busy (%)", "Reserved / total (KiB)", "Tasks", "Tier 1 misses", "Tier 2 shortfalls"};
+    for (unsigned i = 0; i < 5; ++i) {
+        lv_obj_t *label = desk_label(status, 16, 35 + i * 18, labels[i], 0xc7d7e6);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    }
+    app_cards[0] = app_card(screen, 194, app_speed, "Simulated speed (km/h)", "Tier 1", LV_SYMBOL_CHARGE, 0x69dfbd);
+    app_cards[1] = app_card(screen, 359, app_video, apps == 2 ?
              "Simulated road  /  25 fps" : "Optional  /  Not running", "Tier 2", LV_SYMBOL_VIDEO, 0x8fcdf5);
-    app_cards[2] = app_card(screen, 446, app_music, "Entertainment  /  Simulated playback", "Tier 3", LV_SYMBOL_AUDIO, 0xd8afff);
+    app_cards[2] = app_card(screen, 524, app_music, "Entertainment  /  Simulated playback", "Tier 3", LV_SYMBOL_AUDIO, 0xd8afff);
     lv_obj_t *scale = lv_scale_create(app_cards[0]);
     lv_scale_set_mode(scale, LV_SCALE_MODE_HORIZONTAL_TOP);
     lv_scale_set_label_show(scale, false);

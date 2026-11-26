@@ -12,6 +12,7 @@
 
 #define LV_CONF_INCLUDE_SIMPLE
 #include "desktop.h"
+#include "../../kernel/apps/system_status.h"
 
 #include <stddef.h>
 
@@ -222,19 +223,24 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
     for (int32_t y = area->y1; y <= area->y2; y++) {
         uint32_t *dst = fb_px + (uint32_t)y * stride_px;
         int end = area->x2 + 1;
+        int left = APP_DRAW_X;
         int reserved = 0;
         if (mode) {
-            if (y >= APP_DASH_Y && y < APP_DASH_Y + APP_DASH_H)
+            if (y >= APP_STATUS_Y && y < APP_STATUS_Y + STATUS_STEP * STATUS_ROWS &&
+                (y-APP_STATUS_Y) % STATUS_STEP < STATUS_HEIGHT) {
+                left = APP_STATUS_X;
+                reserved = STATUS_WIDTH;
+            } else if (y >= APP_DASH_Y && y < APP_DASH_Y + APP_DASH_H)
                 reserved = APP_DASH_W;
             else if (mode == 2 && y >= APP_VIDEO_Y && y < APP_VIDEO_Y + APP_METER_H)
                 reserved = APP_METER_W;
             else if (y >= APP_MUSIC_Y && y < APP_MUSIC_Y + APP_MUSIC_SIZE)
                 reserved = APP_MUSIC_SIZE;
         }
-        if (reserved && area->x1 < APP_DRAW_X + reserved && end > APP_DRAW_X) {
-            if (area->x1 < APP_DRAW_X)
-                memcpy(dst + area->x1, px, (size_t)(APP_DRAW_X - area->x1) * 4u);
-            int right = APP_DRAW_X + reserved;
+        if (reserved && area->x1 < left + reserved && end > left) {
+            if (area->x1 < left)
+                memcpy(dst + area->x1, px, (size_t)(left - area->x1) * 4u);
+            int right = left + reserved;
             if (right < end)
                 memcpy(dst + right, px + (right - area->x1) * 4u,
                        (size_t)(end - right) * 4u);
