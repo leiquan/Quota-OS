@@ -2024,7 +2024,8 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
     }
     for (int tier = 1; apps && tier <= 3; tier++)
         if (vehicle_app_running(tier)) dock_state(APP_SPEED + tier - 1, OPEN);
-    dock_state(APP_SYSTEM, OPEN);
+    monitor_visible(page_home, 0);
+    sync_dock();
     build_cursor();
     lv_obj_t *cursor = lv_image_create(lv_layer_sys());
     lv_image_set_src(cursor, &cursor_dsc);
