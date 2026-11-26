@@ -11,7 +11,7 @@ void kmain(uint64_t dtb)
     proc_init();
     printf("\nQuota OS microkernel\n");
     printf("Version: %s (%s)\n", QUOTAOS_VERSION, QUOTAOS_COMMIT);
-    printf("基于三级资源声明的微内核，\n一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。\n");
+    printf("Tier 1 uses fixed slots. Tier 2 reserves a minimum budget. Tier 3 shares the remainder.\n");
     {
         uint64_t cel, sctlr, spsel;
         asm volatile("mrs %0, CurrentEL" : "=r"(cel));

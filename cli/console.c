@@ -1,3 +1,4 @@
+#include "commit.h"
 #include "quotaos.h"
 
 extern const unsigned char __cli_module[];
@@ -41,45 +42,70 @@ static void run_test(int tier)
     printf("%s\n", result ? result : "Test exited without output");
 }
 
+static void show_commands(void)
+{
+    printf("System   uname          Show kernel version and architecture\n"
+           "         uptime         Show elapsed guest time\n"
+           "         mem / free     Show RAM and available application budget\n"
+           "         tasks / ps     List active tasks and their tiers\n"
+           "         quota / events Show scheduling counters\n"
+           "Files    pwd            Show the root directory\n"
+           "         ls             List saved files\n"
+           "         cat Note.txt   Read the saved note\n"
+           "         write TEXT     Save a note to the attached disk\n"
+           "         disk           Show disk status and saved note size\n"
+           "Apps     run Test       Run Test in Tier 3\n"
+           "         run Test t2    Request a Tier 2 budget for Test\n"
+           "Console  echo TEXT      Print text\n"
+           "         clear          Clear the terminal screen\n"
+           "         help           Show this command guide\n");
+}
+
+static void show_welcome(void)
+{
+    printf("\033[2J\033[HQuota OS CLI  |  %s (%s)\n"
+           "ARM64  |  %lu KiB RAM  |  Serial console\n\n"
+           "Common commands\n",
+           QUOTAOS_VERSION, QUOTAOS_COMMIT, resource_ram_kb());
+    show_commands();
+    printf("\n");
+}
+
 void shell_main(void)
 {
     char line[128];
     klog_flush();
     note_disk_init();
+    show_welcome();
     for (;;) {
         printf("quota> ");
         readline(line, sizeof line);
-        if (!strcmp(line, "help"))
-            printf("help mem tasks quota events ls cat Note.txt write TEXT run Test [t2]\n");
-        else if (!strcmp(line, "run Test"))
-            run_test(TIER3);
-        else if (!strcmp(line, "run Test t2"))
-            run_test(TIER2);
-        else if (!strcmp(line, "mem")) {
-            uint64_t ram;
-            uint32_t cpu;
-            resource_app_available(&cpu, &ram);
-            printf("RAM %lu KiB system %u KiB tier1 %u KiB app_available %lu KiB\n",
-                   resource_ram_kb(), system_reserve_kb(), resource_t1_mem_kb(), ram);
-        } else if (!strcmp(line, "tasks")) {
-            for (int i = 0; i < MAX_TASKS; i++) {
-                struct task *t = sched_task_at(i);
-                if (t && t->state != TASK_DEAD)
-                    printf("%s tier=%d jobs=%u misses=%u\n", t->name, t->tier, t->jobs, t->misses);
-            }
-        } else if (!strcmp(line, "quota") || !strcmp(line, "events")) {
-            struct sched_system_info s;
-            sched_read_system_info(&s);
-            printf("period=%lu tier1_misses=%lu tier2_short=%lu tier3_over=%lu\n", s.period,
-                   s.tier1_misses, s.tier2_short, s.tier3_over);
-        } else if (!strcmp(line, "ls"))
-            printf("%s\n", note_disk_text() ? "Note.txt" : "");
-        else if (!strcmp(line, "cat Note.txt"))
-            printf("%s\n", note_disk_text() ? note_disk_text() : "File not found");
-        else if (line[0] == 'w' && line[1] == 'r' && line[2] == 'i' && line[3] == 't' &&
-                 line[4] == 'e' && line[5] == ' ') {
-            if (note_disk_save(line + 6))
-                printf("Disk unavailable\n");
+        char *command = line;
+        while (*command == ' ')
+            ++command;
+        char *arg = command;
+        while (*arg && *arg != ' ')
+            ++arg;
+        if (*arg)
+            *arg++ = 0;
+        while (*arg == ' ')
+            ++arg;
+        if (!*command)
+            continue;
+        if (!strcmp(command, "echo")) {
+            printf("%s\n", arg);
+        } else if (!strcmp(command, "cat")) {
+            if (!*arg)
+                printf("Usage: cat Note.txt\n");
+            else if (strcmp(arg, "Note.txt") || !note_disk_text())
+                printf("File not found: %s\n", arg);
+            else
+                printf("%s\n", note_disk_text());
+        } else if (!strcmp(command, "write")) {
+            if (!*arg)
+                printf("Usage: write TEXT\n");
+            else if (note_disk_save(arg))
+                printf("Cannot save: %s\n", note_disk_status());
             else {
                 while (!note_disk_power_ready()) {
                     note_disk_poll();
@@ -87,8 +113,48 @@ void shell_main(void)
                 }
                 printf("%s\n", note_disk_status());
             }
-        } else if (*line)
-            printf("Unknown command. Type help.\n");
+        } else if (!strcmp(command, "run")) {
+            if (!strcmp(arg, "Test"))
+                run_test(TIER3);
+            else if (!strcmp(arg, "Test t2"))
+                run_test(TIER2);
+            else
+                printf("Usage: run Test [t2]\n");
+        } else if (*arg)
+            printf("Unexpected arguments. Type help for usage.\n");
+        else if (!strcmp(command, "help"))
+            show_commands();
+        else if (!strcmp(command, "clear"))
+            printf("\033[2J\033[H");
+        else if (!strcmp(command, "uname"))
+            printf("Quota OS CLI %s (%s) aarch64\n", QUOTAOS_VERSION, QUOTAOS_COMMIT);
+        else if (!strcmp(command, "uptime"))
+            printf("Uptime: %lu ms (guest clock)\n", ticks_to_us(ticks_now()) / 1000);
+        else if (!strcmp(command, "pwd"))
+            printf("/\n");
+        else if (!strcmp(command, "disk"))
+            printf("%s | Note.txt: %u bytes\n", note_disk_status(), note_disk_bytes());
+        else if (!strcmp(command, "mem") || !strcmp(command, "free")) {
+            uint64_t ram;
+            uint32_t cpu;
+            resource_app_available(&cpu, &ram);
+            printf("RAM %lu KiB system %u KiB tier1 %u KiB app_available %lu KiB\n",
+                   resource_ram_kb(), system_reserve_kb(), resource_t1_mem_kb(), ram);
+        } else if (!strcmp(command, "tasks") || !strcmp(command, "ps")) {
+            for (int i = 0; i < MAX_TASKS; i++) {
+                struct task *t = sched_task_at(i);
+                if (t && t->state != TASK_DEAD)
+                    printf("%s tier=%d jobs=%u misses=%u\n", t->name, t->tier, t->jobs, t->misses);
+            }
+        } else if (!strcmp(command, "quota") || !strcmp(command, "events")) {
+            struct sched_system_info s;
+            sched_read_system_info(&s);
+            printf("period=%lu tier1_misses=%lu tier2_short=%lu tier3_over=%lu\n", s.period,
+                   s.tier1_misses, s.tier2_short, s.tier3_over);
+        } else if (!strcmp(command, "ls"))
+            printf("%s\n", note_disk_text() ? "Note.txt" : "No saved files.");
+        else
+            printf("Unknown command: %s. Type help.\n", command);
     }
 }
 
