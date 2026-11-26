@@ -21,6 +21,7 @@ html = (source / "app.html").read_text()
 html = re.sub(r"<script>(.*?)</script>", lambda m: "<script>" + minify(m[1]) + "</script>",
               html, flags=re.S)
 html = re.sub(r">\s+<", "><", html).strip()
+html = re.sub(r"<style>(.*?)</style>", lambda m: "<style>" + m[1].replace("}\n", "}").rstrip() + "\n</style>", html, flags=re.S)
 package = io.BytesIO()
 with zipfile.ZipFile(package, "w", zipfile.ZIP_STORED) as archive:
     for name, data in [("app.json", (source / "app.json").read_text().strip()),
