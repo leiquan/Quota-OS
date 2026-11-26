@@ -42,6 +42,9 @@ void kmain(uint64_t dtb)
     timer_init();
     printf("[boot] CNTFRQ %lu Hz (1 tick = %lu ns), virtual timer PPI 27\n", timer_freq(),
            1000000000ull / timer_freq());
+#ifdef QUOTA_TOUCH_SMP
+    smp_boot();
+#endif
     clock_detect();
     dev_init();
     printf("[boot] simulated device IRQ line: EL1 physical timer, PPI 30\n");

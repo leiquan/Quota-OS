@@ -1,0 +1,3 @@
+boot/secondary.S
+kernel/smp.c
+user/record_hash.S

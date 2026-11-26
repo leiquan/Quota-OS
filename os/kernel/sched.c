@@ -100,6 +100,172 @@ void sched_print_t3_pool(void)
 }
 
 static uint64_t epoch, pk, pstart;
+#ifdef QUOTA_TOUCH_SMP
+/* CPU0 owns this reservation. The remote worker only publishes timestamps. */
+static uint64_t host_timer_guard, remote_guard;
+struct smp_wave {
+    unsigned first_worker, workers;
+    uint64_t period, grant_per_worker, cpu0, cap, boundary;
+    uint64_t sample_start[32], sample_end[32];
+    unsigned finished, samples, dropped, settled;
+    uint64_t held;
+};
+static struct {
+    struct task *owner;
+    uint64_t entry, requested;
+    unsigned waves, assigned, periods, cpu0_over;
+    uint64_t worst_excess, worst_period;
+    struct smp_wave wave[SMP_MAX_CPUS-1];
+} probe;
+
+static struct smp_wave *current_wave(void)
+{
+    if (!probe.owner || !probe.waves) return NULL;
+    struct smp_wave *w = &probe.wave[probe.waves-1];
+    return w->period == pk ? w : NULL;
+}
+
+static int request_worker(uint64_t code, uint64_t entry, unsigned seed, const char *input, unsigned length)
+{
+    if (!smp_online() || cur->tier != TIER3 || entry >= 4096 || (entry & 3)) return -1;
+    if (probe.owner || !smp_prepare(code)) return 0;
+    if (input) smp_hash_input(seed, input, length);
+    probe.worst_excess = probe.worst_period = 0;
+    probe.entry = entry;
+    probe.owner = cur;
+    probe.requested = pk;
+    probe.waves = probe.assigned = probe.periods = probe.cpu0_over = 0;
+    return 1;
+}
+
+int sched_smp_probe(uint64_t code, uint64_t entry)
+{
+    return request_worker(code, entry, 0, NULL, 0);
+}
+
+/* Reclaim only completed leases, once. CPU0 alone modifies the pool. */
+static void smp_settle(void)
+{
+    struct smp_wave *w = current_wave();
+    if (!w || w->finished) return;
+    for (unsigned j=0;j<w->workers;j++) {
+        if (w->settled & (1u<<j)) continue;
+        uint64_t used = smp_used(w->first_worker+j);
+        if (used == UINT64_MAX) continue;
+        if (!clock_is_icount() && used > us_to_ticks(500)) {
+            uint64_t delay = used - us_to_ticks(500) + us_to_ticks(120);
+            if (delay > remote_guard)
+                remote_guard = delay < P/3 ? delay : P/3;
+        }
+        if (used <= w->grant_per_worker) {
+            uint64_t refund = w->grant_per_worker - used;
+            t3_limit += refund;
+            w->held -= refund;
+        } else {
+            /* Charge a late worker before CPU0 receives another slice. Transfer
+             * only existing capacity so held + limit stays the original cap.
+             * The report sums actual worker ticks even beyond that cap. */
+            uint64_t extra = used - w->grant_per_worker;
+            if (extra > t3_limit) extra = t3_limit;
+            t3_limit -= extra;
+            w->held += extra;
+        }
+        w->settled |= 1u<<j;
+    }
+}
+
+int sched_smp_pending(void)
+{
+    if (cur != probe.owner || pk-probe.requested >= 64) return 0;
+    if (probe.assigned < (unsigned)smp_online()) return 1;
+    for (unsigned i=0; i<probe.assigned; i++)
+        if (smp_used(i)==UINT64_MAX) return 1;
+    return 0;
+}
+
+static void smp_on_dispatch(struct task *next)
+{
+    if (next != probe.owner || probe.assigned == (unsigned)smp_online() || current_wave()) return;
+    uint64_t now = ticks_now(), slice = us_to_ticks(500);
+    uint64_t guard = clock_is_icount() ? 0 : host_timer_guard;
+    uint64_t tail = clock_is_icount() ? slice : us_to_ticks(2000);
+    if (!clock_is_icount() && remote_guard > tail) tail = remote_guard;
+    uint64_t grant = slice + tail;
+    uint64_t held = t3_used + slice + us_to_ticks(IPC_HEADROOM_US) + guard;
+    if (now + grant >= pstart + P || now + slice >= k_arm_abs ||
+        k_arm_rel < slice || t3_limit <= held) return;
+    unsigned n = (unsigned)((t3_limit-held)/grant);
+    unsigned remaining = (unsigned)smp_online()-probe.assigned;
+    if (n > remaining) n = remaining;
+    if (!n) return;
+    struct smp_wave *w = &probe.wave[probe.waves++];
+    w->workers = n;
+    w->first_worker = probe.assigned;
+    w->period = pk;
+    w->boundary = pstart + P;
+    w->grant_per_worker = grant;
+    w->settled = w->samples = w->dropped = w->finished = 0;
+    w->held = n * grant;
+    t3_limit -= n * grant;
+    uint64_t cpu0_room = t3_limit - t3_used - guard - us_to_ticks(IPC_HEADROOM_US);
+    if (k_arm_rel > cpu0_room) k_arm_rel = cpu0_room;
+    smp_submit(w->first_worker, n, pstart + P - tail, slice, probe.entry);
+    probe.assigned += n;
+}
+
+void sched_smp_report(void)
+{
+    if (!probe.owner) return;
+    uint64_t timeout = ticks_now() + P * 3;
+    while (current_wave() && !current_wave()->finished && ticks_now()<timeout)
+        asm volatile("wfi" ::: "memory");
+    for (unsigned j=0;j<probe.waves;j++) {
+        struct smp_wave *w = &probe.wave[j];
+        uint64_t remote=0;
+        for (unsigned i=w->first_worker;i<w->first_worker+w->workers;i++) {
+            uint64_t start,end,iterations,compare,trap;
+            if (!smp_result(i,&start,&end,&iterations,&compare,&trap)) {
+                printf("[smp] missing worker=%u\n",i);
+                continue;
+            }
+            uint64_t overlap=0;
+            for (unsigned k=0;k<w->samples;k++) {
+                uint64_t lo = w->sample_start[k]>start ? w->sample_start[k] : start;
+                uint64_t hi = w->sample_end[k]<end ? w->sample_end[k] : end;
+                if (hi>lo) overlap+=hi-lo;
+            }
+            printf("[worker] index=%u affinity=%lu period=%lu first=%lu last=%lu ticks=%lu grant=%lu overlap=%lu iterations=%lu compare=%lu trap=%lu\n",
+                   i,smp_affinity(i),w->period,start,end,end-start,w->grant_per_worker,overlap,iterations,compare,trap);
+            remote+=end-start;
+        }
+        printf("[wave] period=%lu cpu0_t3=%lu remote=%lu total=%lu cap=%lu period_end=%lu dropped=%u finished=%u\n",
+               w->period,w->cpu0,remote,w->cpu0+remote,w->cap,w->boundary,w->dropped,w->finished);
+    }
+    printf("[smp] periods=%u cpu0_over=%u assigned=%u worst_period=%lu excess=%lu\n",probe.periods,probe.cpu0_over,probe.assigned,probe.worst_period,probe.worst_excess);
+    probe.owner = NULL;
+}
+/* -1 selects the synchronous implementation, 0 leaves the write
+ * pending, 1 returns the completed result charged to the shared pool. */
+int sched_record_hash(unsigned seed, const char *input, unsigned length, unsigned *result)
+{
+    extern const char record_hash_page[];
+    static struct task *owner;
+    if (smp_online() != 1 || length > 2048) return -1;
+    if (!owner) {
+        if (request_worker((uintptr_t)record_hash_page, 0, seed, input, length) != 1) return -1;
+        owner = cur;
+        return 0;
+    }
+    if (cur != owner) return 0;
+    if (!probe.assigned && pk - probe.requested < 64) return 0;
+    if (probe.assigned && (smp_used(0) == UINT64_MAX || current_wave())) return 0;
+    int completed = probe.assigned && smp_hash_result(result);
+    sched_smp_report();
+    owner = NULL;
+    if (completed) printf("[record-hash] cpu=1 bytes=%u fnv=%u\n", length, *result);
+    return completed ? 1 : -1;
+}
+#endif
 static int nslots;
 static uint64_t slot_off[MAX_SLOTS], slot_len[MAX_SLOTS];
 static const char *slot_name[MAX_SLOTS];
@@ -655,6 +821,15 @@ static void charge(struct task *t, uint64_t a, uint64_t b)
 {
     if (!t || b <= a)
         return;
+#ifdef QUOTA_TOUCH_SMP
+    struct smp_wave *wave = current_wave();
+    if (wave && probe.owner == t) {
+        if (wave->samples < 32) {
+            wave->sample_start[wave->samples] = a;
+            wave->sample_end[wave->samples++] = b;
+        } else wave->dropped++;
+    }
+#endif
     slot_overlap(t, a, b);
     if (t == idle_task)
         return;
@@ -910,6 +1085,25 @@ static void capture_pressure_period(int skipped)
 static void end_period(uint64_t now, int skipped)
 {
     obs_now = now;
+#ifdef QUOTA_TOUCH_SMP
+    smp_settle();
+    if (probe.owner) {
+        probe.periods++;
+        if (t3_used > t3_limit) {
+            probe.cpu0_over++;
+            if (t3_used-t3_limit > probe.worst_excess) {
+                probe.worst_excess=t3_used-t3_limit;
+                probe.worst_period=pk;
+            }
+        }
+    }
+    struct smp_wave *wave = current_wave();
+    if (wave) {
+        wave->cpu0 = t3_used;
+        wave->cap = t3_limit + wave->held;
+        wave->finished = 1;
+    }
+#endif
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) || defined(SYSTEM_STATUS_ENABLED)
     capture_pressure_period(skipped);
 #endif
@@ -1004,6 +1198,23 @@ static void end_period(uint64_t now, int skipped)
         t->bw_frac = 0;
         t->bw_hit = 0;
     }
+#ifdef QUOTA_TOUCH_SMP
+    /* A host scheduling pause is visible on CNTVCT. Keep the lifetime peak
+     * for diagnostics, but size the next reserve from recent periods. */
+    if (smp_online() && !clock_is_icount()) {
+        static uint64_t previous_peak, current_peak;
+        if (!(pk % 32)) {
+            previous_peak = current_peak;
+            current_peak = 0;
+        }
+        if (k_this_period > current_peak) current_peak = k_this_period;
+        uint64_t peak = previous_peak > current_peak ? previous_peak : current_peak;
+        uint64_t freq = timer_freq();
+        uint64_t target = (peak * 1200000ull + freq - 1) / freq;
+        if (target < SYS_RESERVE_US) target = SYS_RESERVE_US;
+        kernel_target_us = target > PERIOD_US ? PERIOD_US : (uint32_t)target;
+    }
+#endif
     for (int i = 0; i <= rec; i++) {
         ks[i].periods++;
         ks[i].k_sum += k_this_period;
@@ -1013,7 +1224,11 @@ static void end_period(uint64_t now, int skipped)
             if (i == 0) {
                 uint64_t freq = timer_freq();
                 uint64_t target = (k_this_period * 1200000ull + freq - 1) / freq;
-                if (target > kernel_target_us)
+                int track_lifetime_peak = 1;
+#ifdef QUOTA_TOUCH_SMP
+                track_lifetime_peak = !smp_online() || clock_is_icount();
+#endif
+                if (track_lifetime_peak && target > kernel_target_us)
                     kernel_target_us = target > UINT32_MAX ? UINT32_MAX : (uint32_t)target;
                 kworst.period = pk;
                 kworst.label = cur_label;
@@ -1136,8 +1351,27 @@ static struct task *chain_end(struct task *t)
     return t->state == TASK_READY ? t : 0;
 }
 
+#ifdef QUOTA_TOUCH_SMP
+/* The single serial shell polls child completion and quota counters once per
+ * period. Keep it off the run queue while it waits for the next sample. */
+static struct task *sleeping_shell;
+static uint64_t shell_sleep_period;
+
+void sched_cli_wait_period(void)
+{
+    uint64_t flags = irq_save();
+    sleeping_shell = cur;
+    shell_sleep_period = pk;
+    irq_restore(flags);
+    asm volatile("svc #0" ::: "memory");
+}
+#endif
+
 static int runnable(struct task *t)
 {
+#ifdef QUOTA_TOUCH_SMP
+    if (t == sleeping_shell && pk == shell_sleep_period) return 0;
+#endif
     return chain_end(t) != 0;
 }
 
@@ -1213,7 +1447,14 @@ static struct task *pick_t3(void)
         return 0;
     }
     /* Leave room for timer entry and an in-flight IPC kernel path. */
+#ifdef QUOTA_TOUCH_SMP
+    smp_settle();
+#endif
     uint64_t margin = us_to_ticks(IPC_HEADROOM_US);
+#ifdef QUOTA_TOUCH_SMP
+    if (smp_online() && !clock_is_icount())
+        margin += host_timer_guard;
+#endif
     uint64_t room_pool = t3_used < t3_limit ? t3_limit - t3_used : 0;
     if (room_pool <= margin + MIN_REL_T) {
         if (!t3_blocked && n3) {
@@ -1563,6 +1804,14 @@ static uint64_t schedule(uint64_t sp, int timer)
                 ks[r].exit_max = eret - disp_now;
     if (entry >= k_cval) {
         uint64_t l = entry - k_cval;
+#ifdef QUOTA_TOUCH_SMP
+        if (smp_online() && !clock_is_icount() && timer == 1 && prev->tier == TIER3) {
+            uint64_t ceiling = us_to_ticks(PERIOD_US / 4);
+            uint64_t observed = l + us_to_ticks(100);
+            if (observed > host_timer_guard)
+                host_timer_guard = observed < ceiling ? observed : ceiling;
+        }
+#endif
         for (int r = 0; timer == 1 && r <= rec; r++) {
             ks[r].irq_n++;
             if (l < ks[r].irq_lat_min)
@@ -1651,6 +1900,12 @@ static uint64_t schedule(uint64_t sp, int timer)
     prev_entry = entry;
     prev_kind = timer == 1 ? KC_TIMER : timer == 2 ? KC_DEVIRQ : op ? KC_SVC_IPC : KC_SVC_OTHER;
     proc_on_switch(next);
+#ifdef QUOTA_TOUCH_SMP
+    if (!host_timer_guard && smp_online() && !clock_is_icount())
+        /* Cold host-timer deliveries on either CPU can take two quanta. */
+        host_timer_guard = us_to_ticks(2 * T3_QUANTUM_US);
+    smp_on_dispatch(next);
+#endif
     return next->sp;
 }
 
