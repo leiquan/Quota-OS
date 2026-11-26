@@ -20,6 +20,11 @@ if [[ ${CLI_TEST:-1} == 1 ]]; then
            -device "loader,file=$image,addr=$addr,force-raw=on"
            -device "loader,addr=$((addr+4096)),data=$((size)),data-len=4")
 fi
+if [[ -n ${CLI_ROOT_DISK:-} ]]; then
+    args+=(-global virtio-mmio.force-legacy=false
+           -drive "if=none,id=root,format=raw,readonly=on,file=$CLI_ROOT_DISK"
+           -device virtio-blk-device,drive=root,serial=QUOTA-ROOT)
+fi
 if [[ -n ${CLI_DISK:-} ]]; then
     args+=(-global virtio-mmio.force-legacy=false -drive "if=none,id=notes,format=raw,file=$CLI_DISK" -device virtio-blk-device,drive=notes,serial=QUOTA-NOTES)
 fi

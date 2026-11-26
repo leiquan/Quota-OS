@@ -1,5 +1,6 @@
 #include "commit.h"
 #include "quotaos.h"
+#include "root_disk.h"
 
 extern const unsigned char __cli_module[];
 extern const unsigned __cli_module_size;
@@ -43,6 +44,24 @@ static void run_test(int tier)
     printf("%s\n", result ? result : "Test exited without output");
 }
 
+static struct ext4_volume root_volume;
+static unsigned char root_file[4096];
+
+static int print_root_name(void *context, const char *name, unsigned length)
+{
+    (void)context;
+    for (unsigned i = 0; i < length; ++i) printf("%c", name[i]);
+    printf("\n");
+    return 0;
+}
+
+static int ensure_root(void)
+{
+    int rc = root_volume.read ? EXT4_OK : root_disk_mount(&root_volume);
+    if (rc) printf("ext4 mount failed (%d)\n", rc);
+    return rc;
+}
+
 static void show_commands(void)
 {
     printf("System   uname          Show kernel version and architecture\n"
@@ -55,6 +74,8 @@ static void show_commands(void)
            "         cat FILE       Read test.c or Note.txt\n"
            "         write TEXT     Save a note to the attached disk\n"
            "         disk           Show disk status and saved note size\n"
+           "         rootls         List the read-only ext4 root\n"
+           "         rootcat FILE   Read a file from the ext4 root\n"
            "Apps     run test.c     Run the compiled sample in Tier 3\n"
            "         run Test t2    Request a Tier 2 budget for Test\n"
            "Console  echo TEXT      Print text\n"
@@ -101,6 +122,21 @@ void shell_main(void)
                 printf("File not found: %s\n", arg);
             else
                 printf("%s\n", note_disk_text());
+        } else if (!strcmp(command, "rootls") && !*arg) {
+            if (!ensure_root()) {
+                int rc = ext4_list_root(&root_volume, print_root_name, NULL);
+                if (rc) printf("ext4 directory read failed (%d)\n", rc);
+            }
+        } else if (!strcmp(command, "rootcat") && *arg) {
+            if (!ensure_root()) {
+                size_t bytes;
+                int rc = ext4_read_root(&root_volume, arg, root_file, sizeof root_file, &bytes);
+                if (rc) printf("ext4 file read failed (%d)\n", rc);
+                else {
+                    for (size_t i = 0; i < bytes; ++i) printf("%c", root_file[i]);
+                    printf("\n");
+                }
+            }
         } else if (!strcmp(command, "write")) {
             if (!*arg)
                 printf("Usage: write TEXT\n");

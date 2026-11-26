@@ -56,6 +56,8 @@ void note_disk_init(void)
     int n = dtb_find_bases("virtio,mmio", nodes, 32);
     for (int i = 0; i < n; ++i) {
         if (mmio_rd(nodes[i]+8) == 2 && mmio_rd(nodes[i]+4) == 2) {
+            mmio_wr(nodes[i] + 0x14, 0);
+            if (mmio_rd(nodes[i] + 0x10) & (1u << 5)) continue;
             base = nodes[i];
             break;
         }
