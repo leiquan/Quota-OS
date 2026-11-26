@@ -82,23 +82,30 @@ bash tools/run-files.sh</code></pre>
 <h2>开发应用</h2>
 <div class="dev-grid">
 <div id="native-dev"><h3>原生 C 应用</h3>
-<p>在空白的 Notes 文档中点击 <strong>C Example</strong> 插入示例，也可以手动输入下方代码。选择 <strong>Save As...</strong>，命名为 <code>demo.c</code>。打开 Apps → Shell，在 quota&gt; 提示符下输入命令，按回车执行。单独输入 <code>cc</code> 会显示使用当前文件名的命令示例。</p>
+<ol>
+<li><strong>打开 Notes。</strong>在空白文档点击 <strong>C Example</strong>，或粘贴下面的代码。</li>
+<li><strong>保存源码。</strong>选择 <strong>Save As...</strong>，输入 <code>demo.c</code> 并按回车。等到显示已保存，再打开 Apps → Shell。</li>
+<li><strong>核对文件。</strong>输入 <code>ls</code>，确认列表里有 <code>demo.c</code>。如果用了别的文件名，先输入 <code>cc</code> 查看对应的编译命令。</li>
+<li><strong>编译并运行。</strong>依次输入下方两条命令，每条按一次回车。先确认 Shell 显示 <code>Compiled demo.c to hello.cap</code>，再运行。成功时输出 <code>Hello, Quota OS!</code>。</li>
+</ol>
 <pre><code>int main(void) {
     puts("Hello, Quota OS!");
     return 0;
 }</code></pre>
-<pre><code>cc demo.c -o hello
-./hello</code></pre>
-<p>首版支持不含头文件的 <code>int main(void)</code>，函数体可包含一次 <code>puts</code> 调用和 <code>return 0</code>。程序按三级启动，当前不支持二级启动参数。</p>
+<pre><code>cc demo.c -o hello.cap
+./hello.cap</code></pre>
+<p>当前内置编译器支持上面这种 C 子集。保留示例结构，暂时省略头文件。Shell 将程序按三级启动。若编译失败，回 Notes 核对代码和保存的文件名。</p>
 </div><div id="web-ui">
 <h3>Web UI · WAP</h3>
 <p>Web UI 保留原生桌面，WAP 应用在三级共享池内运行。Blink 渲染 HTML 和 CSS，V8 执行页面 JavaScript，可选的 Node.js 进程处理后台逻辑。页面与后台使用同一套系统 V8 构建。</p>
 <ol>
-<li><strong>声明应用。</strong>在包根目录放置 <code>app.json</code>，声明三级。</li>
-<li><strong>编写界面。</strong>在 <code>app.html</code> 中编写页面、样式和浏览器端 JavaScript。</li>
-<li><strong>按需添加后台。</strong>在 <code>app.js</code> 中编写本地处理逻辑。示例通过 <code>rpc.get('save', text)</code> 和 <code>rpc.get('load')</code> 在页面与 Node.js 之间传递保存和读取请求。</li>
+<li><strong>启动 Web UI。</strong>按下方构建与启动指南运行 1 GiB 镜像。为本次测试使用一块专用数据盘，后续重启复用同一文件。</li>
+<li><strong>先运行现成示例。</strong>打开 Apps → ZIP，导出 <code>demo.wap</code>。在 Files 找到它并双击，等页面的笔记输入框和 Save 按钮可用。</li>
+<li><strong>保存并重启验证。</strong>输入一小段文字，点击 Save，等到 <code>Saved</code>。完全退出 QEMU，用同一镜像和同一数据盘重新启动，再从 Files 打开 <code>demo.wap</code> 核对原文。</li>
+<li><strong>从示例源码改起。</strong>打开 Web-UI 分支的 <code>examples/demo/</code>。在 <code>app.json</code> 保留 <code>{"tier":3}</code>，在 <code>app.html</code> 写 HTML、CSS 与页面 JS，可选的 <code>app.js</code> 放 Node.js 后台逻辑。构建镜像后，再用 ZIP 应用导出修改后的示例。</li>
+<li><strong>绑定 RPC。</strong>一端用 <code>await rpc.set(name, handler)</code> 注册，另一端用 <code>await rpc.get(name, ...args)</code> 调用。示例由后台注册 <code>save</code> 和 <code>load</code>，页面注册 <code>saved</code>。同一个 WAP 内方法名不能重复，<code>set</code> 和 <code>get</code> 为保留名。</li>
 </ol>
-<p>在 Files 中打开 <code>demo.wap</code>，保存笔记。保留同一数据盘重启后，再打开应用即可读回原文。已验证的 QEMU 配置为单核 Cortex-A35 和 1 GiB RAM。</p>
+<p>核对 WAP 包时，确认 <code>app.json</code> 和 <code>app.html</code> 位于 ZIP 根目录，按需加入 <code>app.js</code>。ZIP 使用存储模式，扩展名为 <code>.wap</code>。如果冷启动后读不到原文，确认首次保存显示了 <code>Saved</code>，且第二次使用同一数据盘。</p>
 <p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">构建与启动</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo">示例源码</a> · <a href="screenshots/web-node-cold.png">冷启动读回</a> · <a href="tests/frame-intervals/web.json">帧间隔结果</a></p>
 </div></div>
 <div class="dev-grid"><div class="showcase"><div class="gallery" tabindex="0" aria-label="在便笺中保存 demo.c"><figure><a class="capture" href="screenshots/dev-source.png"><img src="screenshots/dev-source.png?v=desktop" width="1280" height="800" loading="lazy" alt="在便笺中保存 demo.c"></a><figcaption>在便笺中保存 demo.c</figcaption></figure><figure><a class="capture" href="screenshots/dev-compile.png"><img src="screenshots/dev-compile.png?v=desktop" width="1280" height="800" loading="lazy" alt="在终端中编译 demo.c"></a><figcaption>在终端中编译 demo.c</figcaption></figure><figure><a class="capture" href="screenshots/dev-run.png"><img src="screenshots/dev-run.png?v=desktop" width="1280" height="800" loading="lazy" alt="用户态运行结果"></a><figcaption>用户态运行结果</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><div class="indicators"></div><output>1 / 3</output><button data-step="1" aria-label="下一张">→</button><button type="button" class="playback"></button></div></div><div class="showcase"><figure><a class="capture" href="screenshots/web-node-cold.png"><img src="screenshots/web-node-cold.png" width="1280" height="800" loading="lazy" alt="Web UI · WAP 冷启动读回"></a><figcaption>Web UI · WAP 冷启动读回</figcaption></figure></div></div>
