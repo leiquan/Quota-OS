@@ -42,6 +42,14 @@ def verify(text):
             require(p['seq'] == periods[i-1]['seq'] + 1 and
                     p['start'] - periods[i-1]['start'] == freq//100, f"period gap at {p['seq']}")
     gc = rows('v8-major')
+    # Only count GC overlap inside periods with a measured exhausted T3 pool.
+    # start_hi and end_lo exclude the clock calibration uncertainty.
+    saturated = {p['start'] for p in periods if p['throttled'] and p['t3'] <= p['cap']}
+    period_ticks = freq // 100
+    require(len(saturated) == len(periods), 'T3 throttling not recorded in every complete period')
+    first = periods[0]['start'] if periods else 0
+    def under_load(release):
+        return first + (release-first)//period_ticks*period_ticks in saturated
     streams = {}
     for stream, name in enumerate(('speed', 'camera')):
         limit = freq//100 * (1 if stream == 0 else 4)
@@ -56,7 +64,7 @@ def verify(text):
                     and latency <= limit and window['begin'] <= commit <= window['end'],
                     f'{name} release={release} gap={gap} latency={latency}')
             max_gap, max_latency = max(max_gap, gap), max(max_latency, latency)
-            if any(g['start_hi_ns']*freq <= release*10**9 <= g['end_lo_ns']*freq for g in gc):
+            if under_load(release) and any(g['start_hi_ns']*freq <= release*10**9 <= g['end_lo_ns']*freq for g in gc):
                 overlap += 1
             prev = commit
         require(overlap > 0, name+' has no release during confirmed major GC')
