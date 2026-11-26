@@ -31,6 +31,14 @@ The graphical memory figures describe their listed QEMU launch configurations. C
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
+## Touch UI screenshots · 触屏版实拍
+
+900 × 1600 QEMU captures · 900 × 1600 QEMU 竖屏实拍
+
+| Home · 主屏 | Apps · 应用列表 | Notes · 全屏便笺 |
+|---|---|---|
+| <img src="docs/screenshots/touch-ui-home.png" width="220" alt="Touch UI home screen · 触屏版主屏"> | <img src="docs/screenshots/touch-ui-apps.png" width="220" alt="Touch UI Apps · 触屏版应用列表"> | <img src="docs/screenshots/touch-ui-notes.png" width="220" alt="Touch UI full-screen Notes · 触屏版全屏便笺"> |
+
 ### 开发与验证
 
 - **CLI**：在串口运行基础命令，用 C 编译独立 EL0 Test，并在默认 4 MiB 下验证二三级运行与磁盘读回。[启动指南](https://github.com/leiquan/Quota-OS/tree/CLI) · [验收日志](docs/tests/cli-4m/)
