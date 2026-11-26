@@ -67,7 +67,7 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <h3 id="music-pressure">Music Player 空闲与受压实测</h3>
 <p>空闲时，Music Player 用三级剩余算力尽快提交。三级 CPU、内存、磁盘同时受压后，两版的整段平均分别降到 204.5 FPS 和 198.9 FPS。两版均记录到一级零遗漏、二级零欠配额，GPS Speed 和 Flight Camera 最大提交间隔为 10 ms 和 40 ms。</p>
 <div class="evidence-grid"><figure><a class="capture" href="screenshots/music-pressure-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-ui.png" alt="UI · 左：空闲 480 FPS。右：受压采样 80 FPS。"></a><figcaption>UI · 左：空闲 480 FPS。右：受压采样 80 FPS。</figcaption></figure><figure><a class="capture" href="screenshots/music-pressure-web-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-web-ui.png" alt="Web UI · 左：空闲 448 FPS。右：受压采样 197 FPS。"></a><figcaption>Web UI · 左：空闲 448 FPS。右：受压采样 197 FPS。</figcaption></figure></div>
-<p>FPS 为来宾提交速率。<a href="tests/music-pressure/">完整结果与复现步骤</a> · <a href="tests/music-pressure/ui.log">UI 日志</a> · <a href="tests/music-pressure/web-ui.log">Web UI 日志</a></p>
+<p>FPS 为来宾提交速率。<a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/docs/tests/music-pressure">完整结果与复现步骤</a> · <a href="tests/music-pressure/ui.log">UI 日志</a> · <a href="tests/music-pressure/web-ui.log">Web UI 日志</a></p>
 </section>
 <section class="wrap section" id="run">
 <h2>启动模拟器</h2>

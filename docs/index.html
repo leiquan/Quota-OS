@@ -67,7 +67,7 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <h3 id="music-pressure">Music Player under Tier 3 pressure</h3>
 <p>Music Player submits as fast as the Tier 3 pool allows. With competing CPU, memory and disk load, it averaged 204.5 FPS in UI and 198.9 FPS in Web UI. Both runs recorded zero Tier 1 misses and Tier 2 shortfalls. GPS Speed and Flight Camera stayed within 10 ms and 40 ms between commits.</p>
 <div class="evidence-grid"><figure><a class="capture" href="screenshots/music-pressure-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-ui.png" alt="UI · Idle 480 FPS (left). Pressure sample 80 FPS (right)."></a><figcaption>UI · Idle 480 FPS (left). Pressure sample 80 FPS (right).</figcaption></figure><figure><a class="capture" href="screenshots/music-pressure-web-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-web-ui.png" alt="Web UI · Idle 448 FPS (left). Pressure sample 197 FPS (right)."></a><figcaption>Web UI · Idle 448 FPS (left). Pressure sample 197 FPS (right).</figcaption></figure></div>
-<p>FPS measures guest frame submissions. <a href="tests/music-pressure/">Results and reproduction</a> · <a href="tests/music-pressure/ui.log">UI log</a> · <a href="tests/music-pressure/web-ui.log">Web UI log</a></p>
+<p>FPS measures guest frame submissions. <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/docs/tests/music-pressure">Results and reproduction</a> · <a href="tests/music-pressure/ui.log">UI log</a> · <a href="tests/music-pressure/web-ui.log">Web UI log</a></p>
 </section>
 <section class="wrap section" id="run">
 <h2>Run in QEMU</h2>
