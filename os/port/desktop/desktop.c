@@ -1768,6 +1768,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         refresh_clock();
     }
 
+#ifdef SYSTEM_STATUS_ENABLED
+    system_status_create(screen);
+#endif
     int apps = app_desktop_mode();
     if (apps) instruments_create(screen, apps, BAR_HEIGHT);
     page_home = desktop_page_create(screen, app_monitor);
@@ -2236,6 +2239,9 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         if (panel_at && panel_now - panel_at < 100000)
             continue;
         panel_at = panel_now;
+#ifdef SYSTEM_STATUS_ENABLED
+        if (!active_page.view) system_status_refresh();
+#endif
         if (clock_label)
             refresh_clock();
         static uint64_t tasks_at;

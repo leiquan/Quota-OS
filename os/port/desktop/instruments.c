@@ -167,3 +167,53 @@ void instruments_refresh(void)
     }
     previous = current;
 }
+
+#if defined(SYSTEM_STATUS_ENABLED)
+enum status_field { STATUS_CPU, STATUS_RAM, STATUS_TASKS, STATUS_TIER1, STATUS_TIER2, STATUS_FIELDS };
+static lv_obj_t *status_values[STATUS_FIELDS];
+
+void system_status_create(lv_obj_t *screen)
+{
+    lv_obj_t *panel = lv_obj_create(screen);
+    lv_obj_set_size(panel, DISPLAY_WIDTH - 72, 248);
+    lv_obj_align(panel, LV_ALIGN_TOP_MID, 0, STATUS_BAR_HEIGHT + 26);
+    lv_obj_set_style_radius(panel, 20, 0);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(0x162640), 0);
+    lv_obj_set_style_border_width(panel, 1, 0);
+    lv_obj_set_style_border_color(panel, lv_color_hex(0x596c91), 0);
+    lv_obj_set_style_pad_all(panel, 0, 0);
+    lv_obj_remove_flag(panel, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *title = desk_label(panel, 28, 20, "System status", 0xf4f7fe);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+
+    static const char *const labels[STATUS_FIELDS] = {
+        "CPU busy", "Memory reserved / total (KiB)", "Tasks",
+        "Tier 1 deadline misses", "Tier 2 quota shortfalls",
+    };
+    for (unsigned i = 0; i < STATUS_FIELDS; i++) {
+        int y = 63 + (int)i * 34;
+        desk_label(panel, 28, y, labels[i], 0xc3d0e4);
+        status_values[i] = desk_label(panel, 365, y, "--", 0xf4f7fe);
+        lv_obj_set_width(status_values[i], DISPLAY_WIDTH - 465);
+        lv_obj_set_style_text_align(status_values[i], LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_set_style_text_font(status_values[i], &lv_font_unscii_16, 0);
+    }
+}
+
+void system_status_refresh(void)
+{
+    static uint64_t previous;
+    struct sched_status_snapshot sample;
+    if (!sched_system_status_read(&sample) || sample.generation == previous)
+        return;
+    previous = sample.generation;
+    uint64_t busy = sample.window_ticks ? sample.busy_ticks * 1000u / sample.window_ticks : 0;
+    lv_label_set_text_fmt(status_values[STATUS_CPU], "%3lu.%lu%%",
+                          (unsigned long)(busy / 10), (unsigned long)(busy % 10));
+    lv_label_set_text_fmt(status_values[STATUS_RAM], "%lu / %lu",
+                          (unsigned long)sample.reserved_kb, (unsigned long)sample.total_kb);
+    lv_label_set_text_fmt(status_values[STATUS_TASKS], "%u", sample.tasks);
+    lv_label_set_text_fmt(status_values[STATUS_TIER1], "%lu", (unsigned long)sample.tier1_misses);
+    lv_label_set_text_fmt(status_values[STATUS_TIER2], "%lu", (unsigned long)sample.tier2_short);
+}
+#endif

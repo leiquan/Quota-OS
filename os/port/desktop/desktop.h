@@ -8,3 +8,8 @@ lv_obj_t *desk_label(lv_obj_t *parent, int x, int y, const char *text, uint32_t 
 void instruments_create(lv_obj_t *screen, int mode, int bottom_inset);
 lv_obj_t *instruments_page(int index);
 void instruments_refresh(void);
+
+#if defined(SYSTEM_STATUS_ENABLED)
+void system_status_create(lv_obj_t *screen);
+void system_status_refresh(void);
+#endif
