@@ -831,7 +831,8 @@ int disp_drain(int max)
          * Kill may cancel queued work, but cannot free a pinned draw page. */
         p->active_draws++;
         irq_off_end(span);
-        blit(work.pa, work.x, work.y, work.w, work.h);
+        if (auth_state() == AUTH_OPEN)
+            blit(work.pa, work.x, work.y, work.w, work.h);
         irq_off_begin(&span);
         p->active_draws--;
         p->hold--;

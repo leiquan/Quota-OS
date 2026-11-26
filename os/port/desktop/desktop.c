@@ -218,7 +218,7 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
 {
     int32_t w = lv_area_get_width(area);
     uint32_t stride_px = fb_stride / 4u;
-    int mode = app_desktop_mode();
+    int mode = auth_state() == AUTH_OPEN ? app_desktop_mode() : 0;
     for (int32_t y = area->y1; y <= area->y2; y++) {
         uint32_t *dst = fb_px + (uint32_t)y * stride_px;
         int end = area->x2 + 1;
@@ -731,28 +731,54 @@ static void login_screen_init(lv_indev_t *keypad, lv_group_t *group)
     session_keyboard = keypad;
     login_group = lv_group_create();
     login_screen = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(login_screen, lv_color_hex(0x182840), 0);
+    lv_obj_set_style_bg_color(login_screen, lv_color_hex(0x122138), 0);
+    lv_obj_set_style_bg_grad_color(login_screen, lv_color_hex(0x244855), 0);
+    lv_obj_set_style_bg_grad_dir(login_screen, LV_GRAD_DIR_VER, 0);
+    lv_obj_remove_flag(login_screen, LV_OBJ_FLAG_SCROLLABLE);
+
     lv_obj_t *card = lv_obj_create(login_screen);
-    lv_obj_set_size(card, 400, 280);
+    lv_obj_set_size(card, 436, 318);
     lv_obj_center(card);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_set_style_radius(card, 22, 0);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0xf4f8f9), 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_shadow_width(card, 32, 0);
+    lv_obj_set_style_shadow_color(card, lv_color_hex(0x08141c), 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_40, 0);
+    lv_obj_set_style_shadow_ofs_y(card, 12, 0);
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-    desk_label(card, 12, 8, "Quota OS  /  admin", 0x142d47);
-    login_prompt = desk_label(card, 12, 54, "Opening account storage...", 0x435574);
+
+    lv_obj_t *title = desk_label(card, 32, 26, "Quota OS", 0x162739);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_t *account = desk_label(card, 0, 0, "admin", 0x3c5964);
+    lv_obj_align(account, LV_ALIGN_TOP_RIGHT, -32, 34);
+    login_prompt = desk_label(card, 32, 89, "Opening account storage...", 0x3c5964);
     password_box = lv_textarea_create(card);
-    lv_obj_set_pos(password_box, 12, 85);
-    lv_obj_set_size(password_box, 336, 50);
+    lv_obj_set_pos(password_box, 32, 116);
+    lv_obj_set_size(password_box, 372, 52);
+    lv_obj_set_style_radius(password_box, 12, 0);
+    lv_obj_set_style_border_color(password_box, lv_color_hex(0xc0d0d4), 0);
+    lv_obj_set_style_border_color(password_box, lv_color_hex(0x438f8b), LV_STATE_FOCUSED);
     lv_textarea_set_one_line(password_box, true);
     lv_textarea_set_password_mode(password_box, true);
     lv_textarea_set_password_show_time(password_box, 0);
     lv_textarea_set_max_length(password_box, 64);
     lv_group_add_obj(login_group, password_box);
     lv_obj_add_event_cb(password_box, login_action, LV_EVENT_READY, NULL);
+
     lv_obj_t *button = lv_button_create(card);
-    lv_obj_set_pos(button, 12, 150);
-    lv_obj_set_size(button, 132, 38);
+    lv_obj_set_pos(button, 32, 190);
+    lv_obj_set_size(button, 372, 50);
+    lv_obj_set_style_radius(button, 12, 0);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x176d68), 0);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x0b524f), LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(button, 0, 0);
     lv_obj_center(desk_label(button, 0, 0, "Continue", 0xffffff));
     lv_obj_add_event_cb(button, login_action, LV_EVENT_CLICKED, NULL);
-    login_status = desk_label(card, 12, 205, "", 0x883333);
+    login_status = desk_label(card, 32, 263, "", 0x8b3434);
+    lv_obj_set_width(login_status, 372);
     lv_indev_set_group(keypad, login_group);
     lv_screen_load(login_screen);
 }
