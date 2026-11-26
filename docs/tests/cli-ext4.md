@@ -9,12 +9,12 @@ From the CLI checkout, with the existing guest toolchain, QEMU and e2fsprogs on 
 ```sh
 bash tools/build-cli.sh
 bash tools/make-cli-root-disk.sh build/cli-root.ext4
-dd if=/dev/zero of=build/cli-ext4.notes bs=1024 count=1024
+python3 tools/init-admin-disk.py build/cli-ext4.notes
 CLI_TEST=0 CLI_ROOT_DISK="$PWD/build/cli-root.ext4" \
   CLI_DISK="$PWD/build/cli-ext4.notes" bash tools/run-cli.sh --quiet
 ```
 
-Create the scratch Notes disk once. Reuse it for the second boot. At the first prompt, use `ls`, `cat /hello.txt`, `run /Test.elf`, `note ext4-note`, and `events`. Shut down QEMU after `Saved`. Run the same launch command again and use `note`, `run /Test.elf`, and `events`. `CLI_TEST=0` disables the existing QEMU Test preload so `Test: EL0 completed` after `run /Test.elf` comes from the disk ELF. With the preload enabled, `run test.c` and `run Test t2` retain their usual paths. Omit `--quiet` to capture the boot memory ledger and use `mem` for application budget. The fixture generator records the installed e2fsprogs version, selected features and image hash. New fixture builds can have different filesystem UUIDs and timestamps.
+Create the scratch account and Notes disk once. Set and confirm the administrator password, then sign in. Reuse it for the second boot. At the first prompt, use `ls`, `cat /hello.txt`, `run /Test.elf`, `note ext4-note`, and `events`. Shut down QEMU after `Saved`. Run the same launch command again and use `note`, `run /Test.elf`, and `events`. `CLI_TEST=0` disables the existing QEMU Test preload so `Test: EL0 completed` after `run /Test.elf` comes from the disk ELF. With the preload enabled, `run test.c` and `run Test t2` retain their usual paths. Omit `--quiet` to capture the boot memory ledger and use `mem` for application budget. The fixture generator records the installed e2fsprogs version, selected features and image hash. New fixture builds can have different filesystem UUIDs and timestamps.
 
 ## Supported profile
 
@@ -33,14 +33,14 @@ Copy the fixture before enabling writes. The generator adds a preallocated
 
 ```sh
 cp build/rw-root.ext4 build/rw-test.ext4 # use a fresh copy for each run
-dd if=/dev/zero of=build/rw-notes.raw bs=1024 count=1024
+python3 tools/init-admin-disk.py build/rw-notes.raw
 CLI_RAM=4M CLI_TEST=0 CLI_ROOT_RW=1 CLI_ROOT_DISK="$PWD/build/rw-test.ext4" \
   CLI_DISK="$PWD/build/rw-notes.raw" bash tools/run-cli.sh --quiet
 ```
 
 Generate `build/rw-root.ext4` with
 `bash tools/make-cli-root-disk.sh build/rw-root.ext4` if you are building locally.
-At the prompt, run `mem`, `cat scratch.txt`,
+Set the admin password and sign in before running the manual commands. At the prompt, run `mem`, `cat scratch.txt`,
 `write scratch.txt after--ext4-write`, `cat scratch.txt`,
 `run /Test.elf`, `note rw-notes-marker`, and `events`.
 After both saves report success, stop QEMU and use the same launch command

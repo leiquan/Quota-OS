@@ -1,7 +1,7 @@
 # CLI deadline and interference probe
 
 Build `bash tools/build-cli.sh` with the normal guest toolchain. Use
-`CLI_RAM=4M CLI_TEST=1 bash tools/run-cli.sh --quiet` and enter `timing`
+`CLI_RAM=4M CLI_TEST=1 CLI_ROOT_DISK= bash tools/run-cli.sh --quiet`. Sign in as admin and enter `timing`
 and `events`. The probe runs the existing Tier 1 timer service and admits
 the EL0 Test with its existing Tier 2 CPU minimum. Use a fresh QEMU instance
 for each case so the boot-cumulative timing peaks and event counts reset.
@@ -9,7 +9,7 @@ for each case so the boot-cumulative timing peaks and event counts reset.
 - Disk case: attach an ext4 fixture and a scratch Notes disk using the
   commands in [cli-ext4.md](cli-ext4.md). Keep `CLI_TEST=1` and enter
   `timing disk` before any root read, then `events`. Mount and file reads
-  occur during the trace. Notes counters include startup reads.
+  occur during the trace. The disk case expects a fixture containing `hello.txt`. Notes counters include startup reads.
 - Fault case: add `CLI_TIMING_TEST=1`, then enter `timing block` and
   `events`. The Tier 3 shell masks interrupts once for about 22 ms
   on this disposable boot. An observed missed Tier 1 commit and a
