@@ -34,7 +34,7 @@ CLI, UI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the seri
 
 The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective UI and runtime components.
 
-图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `todo.wap` 为 **2,021 字节**。
+图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 的只读运行时卷包含共享运行时、动态库、字体和启动数据，示例 `todo.wap` 为 **2,021 字节**。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
@@ -65,8 +65,8 @@ Web UI 的按需加载配置默认使用 256 MiB 来宾内存。Blink、Node.js 
 
 ```sh
 bash tools/build-lvgl-guest.sh
-python3 examples/todo/build.py build/todo-example
-python3 tools/init-admin-disk.py build/todo-data.raw --from-legacy build/todo-example/todo.raw
+test -e build/todo-example/todo.raw || python3 examples/todo/build.py build/todo-example
+test -e build/todo-data.raw || python3 tools/init-admin-disk.py build/todo-data.raw --from-legacy build/todo-example/todo.raw
 QUOTA_NOTES_DISK=build/todo-data.raw bash tools/run-files.sh
 ```
 
