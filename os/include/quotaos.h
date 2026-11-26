@@ -562,6 +562,16 @@ int runtime_volume_io_pending(void);
 int runtime_volume_index_entry(unsigned index, char name[RUNTIME_VOLUME_NAME_BYTES],
                                struct runtime_volume_file *file);
 int proc_prepare_volume_catalog(void);
+struct runtime_volume_elf {
+    struct runtime_volume_file file;
+    unsigned char header[64];
+    unsigned char programs[32 * 56];
+};
+int64_t proc_spawn_volume_wap(const struct runtime_volume_elf *blink,
+                              const struct runtime_volume_elf *node,
+                              const unsigned char *html, unsigned html_size,
+                              const unsigned char *backend, unsigned backend_size);
+int proc_volume_users_active(void);
 int proc_prepare_volume_interpreter(const struct runtime_volume_file *file);
 #endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST

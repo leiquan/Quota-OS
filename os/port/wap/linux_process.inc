@@ -289,13 +289,23 @@ static const struct runtime_file *runtime_lookup(struct proc *p, uint64_t addres
             return &shm_objects[j].file;
     if (make_handle(p) == page_owner && !strcmp(path, window_device.name)) return &window_device;
     if (!strcmp(path, "/etc/fonts/fonts.conf")) {
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        const struct runtime_file *fonts = disk_catalog_lookup("fonts.conf");
+        if (fonts) return fonts;
+#endif
         for (const struct runtime_file *f = wap_libs_start; f < wap_libs_end; ++f)
             if (!strcmp(f->name, "fonts.conf")) return f;
     }
 #ifdef QUOTA_NODE_WEB
     if (p->page_executable && !strcmp(path, "/proc/self/exe")) return p->page_executable;
 #endif
-    if (!strcmp(path, SYSTEM_RUNTIME_PATH) || !strcmp(path, "/proc/self/exe")) return &system_executable;
+    if (!strcmp(path, SYSTEM_RUNTIME_PATH) || !strcmp(path, "/proc/self/exe")) {
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+        if (p->disk_segment_count)
+            return disk_catalog_lookup("node");
+#endif
+        return &system_executable;
+    }
     for (unsigned j = 0; j < sizeof runtime_dirs / sizeof *runtime_dirs; ++j)
         if (!strcmp(path, runtime_dirs[j].name)) return &runtime_dirs[j];
 #endif
@@ -2592,7 +2602,9 @@ static int64_t runtime_syscall(struct proc *p, struct irq_frame *f)
 #if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
         const struct runtime_volume_file *disk_file = disk_file_extent(file);
         if (disk_file) {
-            uint8_t buffer[512];
+            /* ld.so reads an initial ELF window in one syscall. SVCs
+             * serialize access to this scratch page on the single core. */
+            static uint8_t buffer[4096];
             if (pos >= disk_file->size || !f->r[2])
                 return 0;
             uint64_t bytes = disk_file->size - pos;

@@ -48,6 +48,16 @@ _Static_assert(sizeof(struct runtime_elf_segment) == 56, "ELF64 program header s
 
 static unsigned next_component;
 static int volume_pending;
+#if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+static struct runtime_volume_elf blink_image, node_image;
+static unsigned pending_package_size;
+static int volume_running;
+
+static struct runtime_volume_elf *prepared_volume_image(void)
+{
+    return next_component == 0 ? &blink_image : next_component == 2 ? &node_image : NULL;
+}
+#endif
 static struct runtime_volume_file file;
 static uint64_t text_offset;
 static struct runtime_elf_header header;
@@ -142,6 +152,11 @@ static int prepare_component(void)
         if (!strcmp(runtime_components[next_component], "quota-disk-elf-test"))
             probe_headers[next_segment] = segment;
 #endif
+#if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+        struct runtime_volume_elf *image = prepared_volume_image();
+        if (image)
+            memcpy(image->programs + next_segment * sizeof segment, &segment, sizeof segment);
+#endif
         ++next_segment;
         return 0;
     }
@@ -171,6 +186,13 @@ static int prepare_component(void)
         return result == 1 ? proc_prepare_volume_catalog() : result;
     }
 #endif
+#if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+    struct runtime_volume_elf *image = prepared_volume_image();
+    if (image) {
+        image->file = file;
+        memcpy(image->header, &header, sizeof header);
+    }
+#endif
     uint32_t instruction;
     int result = runtime_volume_read_file(&file, text_offset - 1, &instruction, sizeof instruction);
     if (result == 1)
@@ -193,8 +215,14 @@ static void reset_component(void)
 #endif
 }
 
-int wap_volume_prepare_poll(void)
+int wap_volume_prepare_poll(int64_t *handle)
 {
+#if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+    if (volume_running && !proc_volume_users_active() && runtime_volume_trim())
+        volume_running = 0;
+#else
+    (void)handle;
+#endif
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
     if (probe_handle > 0 && proc_pid(probe_handle) < 0 && runtime_volume_trim())
         probe_handle = 0;
@@ -212,6 +240,26 @@ int wap_volume_prepare_poll(void)
 #ifdef QUOTA_RUNTIME_VOLUME_PAGER_TEST
     if (probe_handle > 0)
         return result;
+#endif
+#if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+    if (result > 0) {
+        static struct app_zip package;
+        const struct app_zip_entry *ui, *backend;
+        if (!app_zip_read(running_package, pending_package_size, &package) &&
+            !app_zip_launch_entries(&package, &ui, &backend))
+            *handle = proc_spawn_volume_wap(&blink_image, &node_image, ui->data, ui->size,
+                                            backend ? backend->data : NULL, backend ? backend->size : 0);
+        if (*handle > 0) {
+            running_size = pending_package_size;
+            volume_running = 1;
+            return 1;
+        }
+        result = -1;
+    }
+    if (proc_volume_users_active()) {
+        volume_running = 1;
+        return result;
+    }
 #endif
     runtime_volume_trim();
     return result;
@@ -231,6 +279,10 @@ enum wap_open_result wap_open_saved(int64_t *handle)
     printf("[wap] launch entries tier=3 ui=%s bytes=%u backend=%s bytes=%u\n",
            ui->name, ui->size, backend ? backend->name : "-", backend ? backend->size : 0);
     uintptr_t start = (uintptr_t)wap_worker_start, end = (uintptr_t)wap_worker_end;
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+    if (!start && proc_volume_users_active())
+        return WAP_RESTORED;
+#endif
     running_size = 0;
     *handle = -1;
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
@@ -240,6 +292,12 @@ enum wap_open_result wap_open_saved(int64_t *handle)
             return WAP_VOLUME_PENDING;
 #endif
         if (!volume_pending) {
+#if defined(QUOTA_NODE_WEB) && !defined(QUOTA_RUNTIME_VOLUME_PAGER_TEST)
+            if (size > sizeof running_package)
+                return WAP_LOAD_FAILED;
+            memcpy(running_package, data, size);
+            pending_package_size = size;
+#endif
             next_component = 0;
             runtime_volume_init();
             volume_pending = 1;

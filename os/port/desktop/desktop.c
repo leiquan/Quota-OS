@@ -2069,10 +2069,10 @@ int lvgl_demo_run(uint32_t *pixels, uint32_t w, uint32_t h, uint32_t stride)
         note_disk_poll();
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
         runtime_volume_poll();
-        int volume_status = wap_volume_prepare_poll();
+        int volume_status = wap_volume_prepare_poll(&demo_handle);
         if (volume_status)
             lv_label_set_text(demo_status, volume_status > 0
-                ? "Runtime volume verified. Launcher integration pending."
+                ? (demo_handle > 0 ? "Loading app.html..." : "Runtime volume verified.")
                 : "Runtime volume unavailable or quota insufficient.");
 #endif
         touch_pressure_memory();

@@ -22,7 +22,11 @@
 #endif
 
 #ifdef QUOTA_WAP_FULL_RUNTIME
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+#define EL0_SLOTS 4
+#else
 #define EL0_SLOTS 10
+#endif
 #else
 #define EL0_SLOTS 2
 #endif
@@ -2013,7 +2017,11 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
 #ifdef QUOTA_NODE_WEB
             /* Blink's component build consumes over 52 MiB of private DSO
              * pages before Oilpan creates its first normal allocation page. */
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+            const unsigned extra_pages = 8192; /* 80 MiB on the external runtime candidate. */
+#else
             const unsigned extra_pages = 12288; /* 96 MiB total private cap */
+#endif
 #else
             const unsigned extra_pages = 2048;
 #endif
@@ -2108,6 +2116,11 @@ static int64_t spawn_image(const struct elf_mapping *image, const char *code, un
 #ifdef QUOTA_NODE_WEB
     p->page_executable = image && (image->role == WAP_FRONTEND || image->role == WAP_PAGE_ONLY)
                          ? blink_executable() : NULL;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    if (image && image->volume_file &&
+        (image->role == WAP_FRONTEND || image->role == WAP_PAGE_ONLY))
+        p->page_executable = disk_catalog_lookup("quota-blink");
+#endif
 #endif
     p->document_size = console == CONSOLE_PAGE ? data_size : 0;
     memset(p->package_files, 0, sizeof p->package_files);
@@ -2559,6 +2572,85 @@ int64_t proc_spawn_page_elf(const unsigned char *elf, unsigned bytes,
     return document ? spawn_elf(elf, bytes, document, size, NULL, 0, WAP_SINGLE) : -1;
 }
 
+#ifdef QUOTA_LINUX_APP_RUNTIME
+static int64_t connect_wap_pair(int64_t ui, int64_t js)
+{
+    uint64_t flags = irq_save();
+    struct proc *front = from_handle(ui, 1), *back = from_handle(js, 1);
+    struct packet_socket *ends[2];
+    unsigned n = 0;
+    for (unsigned i = 0; i < WAP_OBJECT_SLOTS && n < 2; ++i)
+        if (!packet_sockets[i].refs) ends[n++] = &packet_sockets[i];
+    if (!front || !back || n != 2) {
+        irq_restore(flags);
+        proc_kill(ui); proc_kill(js);
+        return -1;
+    }
+    struct proc *members[] = {front, back};
+    for (unsigned i = 0; i < 2; ++i) {
+        ends[i]->refs = 1;
+        ends[i]->stream = 0;
+        ends[i]->nonblock = 0x800;
+        ends[i]->passcred = ends[i]->shut = ends[i]->packets = ends[i]->packet_head = 0;
+        ends[i]->peer = ends[i^1];
+        members[i]->files[0].identity = ++next_fd_identity;
+        members[i]->files[0].socket = ends[i];
+        members[i]->files[0].event_flags = FD_PACKET;
+    }
+    backend_owner = js; backend_ui = ui; backend_line_ready = 0;
+    back->files[1].event_flags = FD_WAP_NOTE;
+    back->pending_note = back->note_writer_tid = 0;
+    page_owner = ui;
+    page_rows = 0;
+#ifdef QUOTA_LINUX_APP_RUNTIME
+    electron_generation = input_count = input_head = 0;
+#endif
+    task_ready(front->task);
+    task_ready(back->task);
+    irq_restore(flags);
+    printf("[wap] launched pair frontend=%ld backend=%ld ipc_fd=3\n", ui, js);
+    return ui;
+}
+#endif
+
+#if defined(QUOTA_RUNTIME_VOLUME_BOOT) && defined(QUOTA_NODE_WEB)
+int proc_volume_users_active(void)
+{
+    for (unsigned i = 0; i < EL0_SLOTS; ++i)
+        if ((procs[i].alive || procs[i].draining) && procs[i].disk_segment_count)
+            return 1;
+    return 0;
+}
+
+static int64_t spawn_volume_role(const struct runtime_volume_elf *elf,
+                                 const unsigned char *html, unsigned html_size,
+                                 const unsigned char *backend, unsigned backend_size,
+                                 enum wap_role role)
+{
+    if (elf->file.size > UINT32_MAX)
+        return -1;
+    return spawn_elf_source(elf->header, elf->file.size, html, html_size,
+                            backend, backend_size, role, elf->programs, &elf->file);
+}
+
+int64_t proc_spawn_volume_wap(const struct runtime_volume_elf *blink,
+                              const struct runtime_volume_elf *node,
+                              const unsigned char *html, unsigned html_size,
+                              const unsigned char *backend, unsigned backend_size)
+{
+    int64_t ui = spawn_volume_role(blink, html, html_size, backend, backend_size,
+                                   backend ? WAP_FRONTEND : WAP_PAGE_ONLY);
+    if (ui <= 0 || !backend)
+        return ui;
+    int64_t js = spawn_volume_role(node, html, html_size, backend, backend_size, WAP_BACKEND);
+    if (js <= 0) {
+        proc_kill(ui);
+        return js;
+    }
+    return connect_wap_pair(ui, js);
+}
+#endif
+
 int64_t proc_spawn_wap_elf(const unsigned char *elf, unsigned bytes,
                            const unsigned char *html, unsigned html_size,
                            const unsigned char *backend, unsigned backend_size)
@@ -2582,41 +2674,7 @@ int64_t proc_spawn_wap_elf(const unsigned char *elf, unsigned bytes,
         if (ui <= 0) return ui;
         int64_t js = spawn_elf(elf, bytes, html, html_size, backend, backend_size, WAP_BACKEND);
         if (js <= 0) { proc_kill(ui); return js; }
-        uint64_t flags = irq_save();
-        struct proc *front = from_handle(ui, 1), *back = from_handle(js, 1);
-        struct packet_socket *ends[2];
-        unsigned n = 0;
-        for (unsigned i = 0; i < WAP_OBJECT_SLOTS && n < 2; ++i)
-            if (!packet_sockets[i].refs) ends[n++] = &packet_sockets[i];
-        if (!front || !back || n != 2) {
-            irq_restore(flags);
-            proc_kill(ui); proc_kill(js);
-            return -1;
-        }
-        struct proc *members[] = {front, back};
-        for (unsigned i = 0; i < 2; ++i) {
-            ends[i]->refs = 1;
-            ends[i]->stream = 0;
-            ends[i]->nonblock = 0x800;
-            ends[i]->passcred = ends[i]->shut = ends[i]->packets = ends[i]->packet_head = 0;
-            ends[i]->peer = ends[i^1];
-            members[i]->files[0].identity = ++next_fd_identity;
-            members[i]->files[0].socket = ends[i];
-            members[i]->files[0].event_flags = FD_PACKET;
-        }
-        backend_owner = js; backend_ui = ui; backend_line_ready = 0;
-        back->files[1].event_flags = FD_WAP_NOTE;
-        back->pending_note = back->note_writer_tid = 0;
-        page_owner = ui;
-        page_rows = 0;
-#ifdef QUOTA_LINUX_APP_RUNTIME
-        electron_generation = input_count = input_head = 0;
-#endif
-        task_ready(front->task);
-        task_ready(back->task);
-        irq_restore(flags);
-        printf("[wap] launched pair frontend=%ld backend=%ld ipc_fd=3\n", ui, js);
-        return ui;
+        return connect_wap_pair(ui, js);
     }
 #endif
 #ifdef QUOTA_LINUX_APP_RUNTIME

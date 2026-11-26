@@ -5,5 +5,5 @@ enum wap_open_result { WAP_INVALID, WAP_MISSING_RUNTIME, WAP_LOAD_FAILED, WAP_ST
 enum wap_open_result wap_open_saved(int64_t *handle);
 int wap_export_todo(void);
 #ifdef QUOTA_RUNTIME_VOLUME_BOOT
-int wap_volume_prepare_poll(void);
+int wap_volume_prepare_poll(int64_t *handle);
 #endif
