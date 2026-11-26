@@ -10,12 +10,12 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 
 | | [C LVGL 版](https://github.com/leiquan/Quota-OS/tree/C-LVGL) | [Web Node 版](https://github.com/leiquan/Quota-OS/tree/Web-Node) |
 |---|---|---|
-| 镜像大小 | 701,852 B · 685.4 KiB | 374,863,128 B · 357.5 MiB |
+| 镜像大小 | 701,852 B · 685.4 KiB | 374,867,224 B · 357.5 MiB |
 | QEMU 验证内存 | 64 MiB | 1 GiB |
 | 系统实现 | C · AArch64 ASM · LVGL | C · AArch64 ASM · LVGL · C++ (Blink, V8, Node.js) |
 | 应用开发 | C + LVGL | C + LVGL + HTML / CSS / JS / Node.js |
 
-镜像大小取自 2026-11-26 构建的未压缩 ARM64 启动文件。内存一行是 QEMU 实测配置。Web Node 镜像包含系统共享运行时、ICU 数据、V8 快照、字体及动态依赖；本次导出的 Web Node Demo 应用包为 **1,653 字节**。
+镜像大小取自 2026-11-26 构建的未压缩 ARM64 启动文件。内存一行是 QEMU 实测配置。Web Node 镜像包含系统共享运行时、ICU 数据、V8 快照、字体及动态依赖；本次导出的 Web Node Demo 应用包为 **1,705 字节**。
 
 两个版本都使用同一套三级配额机制。一级仪表有固定 CPU 时间槽，二级任务通过准入后获得预算，三级应用共享封顶的剩余时间。C LVGL 适合原生仪表和资源紧张的设备；需要网页布局、页面脚本和 Node 文件 API 时选 Web Node。
 
