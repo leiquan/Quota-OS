@@ -461,6 +461,9 @@ static struct {
     struct app_display_stats display;
     struct running_app *reservation, *pressure_memory;
     struct task *task;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    struct running_app *pressure_probe;
+#endif
     unsigned pressure_kib;
     int64_t process;
 } trial;
@@ -571,6 +574,29 @@ static void begin_trial(int number, int approved)
             }
         }
     }
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    if (trial.pressure_memory) {
+        const struct app_manifest manifest = {"volume-t2", "Continuously runnable", 0, 0, 400, 400};
+        struct running_app *app = resource_commit(&manifest);
+        struct task *probe = app ? task_try_create("volume-t2", TIER2, KIND_SPIN) : NULL;
+        if (!probe) {
+            unsigned completed;
+            if (app) resource_release(app);
+            note_disk_scrub_stop(&completed);
+            resource_release(trial.pressure_memory);
+            trial.pressure_memory = NULL;
+            proc_kill(trial.process);
+            trial_result(number, "FAIL  Unable to admit the Tier 2 pressure probe.");
+            return;
+        }
+        app->task = probe;
+        probe->min_t = probe->sugg_t = us_to_ticks(400);
+        probe->deadline_t = us_to_ticks(PERIOD_US);
+        trial.pressure_probe = app;
+        task_start(probe);
+        sched_volume_pressure_begin(probe);
+    }
+#endif
     trial.active = number;
     trial.period = sched_period_now();
     if (number == 5) update_busy_loop_countdown(trial_periods(number) * PERIOD_US / 1000000);
@@ -617,6 +643,15 @@ static void poll_trial(void)
     int ok = peak && frames + 1 >= elapsed && !misses && !crossings && !shortfalls && !over;
     int combined = trial.pressure_memory != NULL;
     if (combined) {
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+        sched_volume_pressure_end();
+        task_kill(trial.pressure_probe->task);
+        resource_release(trial.pressure_probe);
+        trial.pressure_probe = NULL;
+        printf("[load-result] t1_misses=%lu t2_short=%lu t2_over=%lu t3_over=%lu t3_throttled=%lu\n",
+               sys.tier1_misses - trial.before.tier1_misses, shortfalls, over, crossings,
+               sys.tier3_throttled - trial.before.tier3_throttled);
+#endif
         unsigned completed_requests;
         unsigned submitted_requests = note_disk_scrub_stop(&completed_requests);
         uint32_t cpu_available;
@@ -663,7 +698,12 @@ static void poll_trial(void)
         frames, misses, camera, display.max_gap_us, display.video_max_gap_us, shortfalls, over, crossings,
         display.frames[2] - trial.display.frames[2], timing, speed_late, camera_late);
     trial.active = 0;
-    if (combined) app_frame_trace_dump();
+    if (combined) {
+        app_frame_trace_dump();
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+        sched_volume_pressure_dump();
+#endif
+    }
     trial_result(number, result);
 }
 

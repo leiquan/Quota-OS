@@ -794,9 +794,66 @@ static void check_slot_ends(uint64_t seen, uint64_t now)
     }
 }
 
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+/* Freeze one row per complete period, and write serial output outside IRQs. */
+static struct {
+    uint64_t first;
+    unsigned count, dropped;
+    struct task *probe;
+    struct {
+        uint64_t seq, start, used, minimum, grant, pool_used, pool_limit;
+        unsigned skipped, runnable, throttled;
+    } rows[1100];
+} volume_pressure;
+
+void sched_volume_pressure_begin(struct task *probe)
+{
+    uint64_t flags = irq_save();
+    volume_pressure.count = volume_pressure.dropped = 0;
+    volume_pressure.first = pk + 1;
+    volume_pressure.probe = probe;
+    irq_restore(flags);
+}
+
+void sched_volume_pressure_end(void)
+{
+    uint64_t flags = irq_save();
+    volume_pressure.probe = NULL;
+    irq_restore(flags);
+}
+
+void sched_volume_pressure_dump(void)
+{
+    for (unsigned i = 0; i < volume_pressure.count; ++i) {
+        const __typeof__(volume_pressure.rows[0]) *row = &volume_pressure.rows[i];
+        printf("[load-period] seq=%lu start=%lu used=%lu min=%lu grant=%lu t3=%lu cap=%lu skipped=%u runnable=%u throttled=%u\n",
+               row->seq, row->start, row->used, row->minimum, row->grant,
+               row->pool_used, row->pool_limit, row->skipped, row->runnable, row->throttled);
+    }
+    printf("[load-end] count=%u dropped=%u\n", volume_pressure.count, volume_pressure.dropped);
+}
+
+static void capture_pressure_period(int skipped)
+{
+    struct task *probe = volume_pressure.probe;
+    if (!probe || pk < volume_pressure.first) return;
+    if (volume_pressure.count == sizeof volume_pressure.rows / sizeof volume_pressure.rows[0]) {
+        ++volume_pressure.dropped;
+        return;
+    }
+    __typeof__(volume_pressure.rows[0]) *row = &volume_pressure.rows[volume_pressure.count++];
+    *row = (__typeof__(*row)){pk, pstart, probe->used_t, probe->min_t, probe->period_grant_t,
+                           t3_used, t3_limit, skipped,
+                           probe->state == TASK_RUNNING || probe->state == TASK_READY, t3_blocked};
+}
+#endif
+
 static void end_period(uint64_t now, int skipped)
 {
     obs_now = now;
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+    capture_pressure_period(skipped);
+#endif
     for (int i = 0; i < 3; i++)
         last_tier_ticks[i] = tier_ticks[i];
     last_kernel_ticks = k_this_period;

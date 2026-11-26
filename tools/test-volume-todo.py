@@ -10,13 +10,19 @@ import struct
 import subprocess
 import time
 
+from check_volume_pressure import verify
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("kernel", type=Path)
 parser.add_argument("runtime", type=Path)
 parser.add_argument("seed", type=Path, help="clean Todo disk from examples/todo/build.py")
 parser.add_argument("output", type=Path, help="new evidence directory")
 parser.add_argument("--shift", type=int, choices=(1, 4), default=1)
+parser.add_argument("--pressure-rounds", type=int, default=0,
+                    help="run 1 to 100 pressure trials after cold readback (QA runtime required)")
 args = parser.parse_args()
+if not 0 <= args.pressure_rounds <= 100:
+    parser.error("--pressure-rounds must be 0 to 100")
 out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=False)
 disk = out / "todo.raw"
@@ -106,6 +112,41 @@ def boot(number):
             return at//3 % 1280, at//3 //1280
         if "process stopped" in serial.read_text(errors="replace"):
             raise RuntimeError("Guest process exited before Todo became usable")
+    def pressure_rounds(x, y):
+        # A separate saved row arms the real major-GC observer after cold readback.
+        click(x-50, y+8)
+        for char in 'gcstress':
+            qmp("send-key", {"keys": [{"type":"qcode","data":char}], "hold-time":60})
+            time.sleep(.8)
+        click(x+10, y+8)
+        until(lambda: "[v8-major]" in serial.read_text(errors="replace"), 180, "major GC")
+        click(376, 742)
+        until(lambda: "[desktop] Apps opened" in serial.read_text(errors="replace"), 60, "Apps")
+        click(404, 457)
+        until(lambda: "[desktop] Test opened" in serial.read_text(errors="replace"), 60, "Test")
+        for index in range(1, args.pressure_rounds+1):
+            folder = out / f"round-{index:03d}"
+            folder.mkdir()
+            with serial.open("rb") as log:
+                offset = log.seek(0, 2)
+                def tail():
+                    log.seek(offset)
+                    return log.read().decode(errors="replace")
+                try:
+                    click(194, 484)
+                    until(lambda: "[quota-test] 5 " in tail(), 90, "registered pressure input")
+                    until(lambda: "Long gaps: GPS Speed" in tail(), 240, "completed trial")
+                    # Node posts PerformanceObserver entries after the collector returns.
+                    after = len(tail())
+                    until(lambda: "[v8-major]" in tail()[after:], 180, "post-window GC record")
+                    report = verify(tail())
+                finally:
+                    (folder / "serial.log").write_text(tail())
+            report.update(round=index, sha256=hashes, ram_mib=256, icount_shift=args.shift)
+            (folder / "result.json").write_text(json.dumps(report, indent=2))
+            print(f"round={index} passed={report['passed']}", flush=True)
+            if not report['passed']:
+                raise RuntimeError(f"Pressure verification failed in {folder}")
     try:
         json.loads(vm.stdout.readline())
         qmp("qmp_capabilities")
@@ -131,6 +172,8 @@ def boot(number):
             click(193, y+40)
         generation = until(lambda: record([[text, number == 2]]), 90, "committed Todo record")
         screenshot("committed")
+        if number == 2 and args.pressure_rounds:
+            pressure_rounds(x, y)
         return dict(boot=number, pid=vm.pid, prelaunch_runtime_read_bytes=reads, generation=generation)
     finally:
         vm.terminate()

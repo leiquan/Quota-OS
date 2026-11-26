@@ -306,6 +306,11 @@ struct app_display_stats {
 };
 void app_display_read(struct app_display_stats *stats);
 void app_display_core_frame(uint64_t release);
+#ifdef QUOTA_RUNTIME_VOLUME_BOOT
+void sched_volume_pressure_begin(struct task *probe);
+void sched_volume_pressure_end(void);
+void sched_volume_pressure_dump(void);
+#endif
 void app_frame_trace_start(void);
 void app_frame_trace_dump(void);
 void app_desktop_stall_probe(void);
