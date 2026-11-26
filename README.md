@@ -1,5 +1,7 @@
 # Quota OS · Web UI 版
 
+**Quick links** · [Run Web UI](#启动本地-web-ui-构建) · [Three editions](#quota-os-editions--三个发行版) · [Documentation and evidence](docs/README.md) · [Official website](https://www.quotaos.org/)
+
 C UI 版（`C-UI`）提供 C 应用和 LVGL 桌面。Web UI 版（`Web-UI`）在同一桌面上增加三级 WAP 应用，由 Blink 渲染页面、Node.js 运行后台。两版共用分级配额内核，串口提供命令行入口。
 
 从 Files 双击 `demo.wap`，Blink 在普通桌面窗口中渲染 HTML/CSS 并执行页面 JS，Node 后台通过本地消息处理保存请求。两个来宾进程加载同一份系统 V8。示例只包含 [app.json](examples/demo/app.json)、[app.html](examples/demo/app.html) 和 [app.js](examples/demo/app.js)。
@@ -69,7 +71,7 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 Install Git and QEMU with ARM system emulation (macOS: `brew install git qemu`; Ubuntu/Debian: `sudo apt install git qemu-system-arm qemu-system-gui`). From a graphical desktop, run:
 
 ```sh
-git clone https://github.com/leiquan/Quota-OS.git
+git clone --branch C-UI https://github.com/leiquan/Quota-OS.git
 cd Quota-OS
 bash tools/run-files.sh
 ```
@@ -168,7 +170,7 @@ Choose **Save** in Notes and wait for **Saved** before shutting down. Two altern
 
 ![Notes displaying the contents of Note.txt](docs/screenshots/notes.png)
 
-## Run
+## Notes disk configuration
 
 With QEMU for ARM64 installed, run this command from the repository root.
 
