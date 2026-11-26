@@ -57,7 +57,7 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <ol>
 <li><strong>Describe the app.</strong> Put <code>app.json</code> at the package root and declare Tier 3.</li>
 <li><strong>Build the interface.</strong> Put the page, styles and browser JavaScript in <code>app.html</code>.</li>
-<li><strong>Add a backend when needed.</strong> Put local processing in <code>app.js</code>. The demo uses <code>rpc.save()</code> and <code>rpc.load()</code> across the page and Node.js boundary.</li>
+<li><strong>Add a backend when needed.</strong> Put local processing in <code>app.js</code>. The demo uses <code>rpc.get('save', text)</code> and <code>rpc.get('load')</code> across the page and Node.js boundary.</li>
 </ol>
 <p>Open <code>demo.wap</code> from Files. Save a note, then reboot with the same data disk and reopen the app to see the saved text. The verified QEMU profile uses one Cortex-A35 core and 1 GiB of RAM.</p>
 <p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">Build and boot</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/demo">Demo source</a> · <a href="screenshots/web-node-cold.png">Cold boot readback</a> · <a href="tests/frame-intervals/web.json">Frame timing results</a></p>
