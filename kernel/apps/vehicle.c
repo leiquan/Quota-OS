@@ -134,9 +134,24 @@ static uint64_t publish_instrument(const uint32_t *pixels, unsigned width,
                                    unsigned height, unsigned y, uint64_t target,
                                    uint64_t *copy_start)
 {
+    /* Use the virtual timer for the final microsecond. Preserve the scheduler
+     * compare value and never postpone an earlier scheduled interrupt. */
+    uint64_t lead = us_to_ticks(1);
+    while (ticks_now() + lead < target)
+        asm volatile("" ::: "memory");
+    uint64_t flags = irq_save(), compare;
+    asm volatile("mrs %0, cntv_cval_el0" : "=r"(compare));
+    if (compare > target && ticks_now() < target) {
+        asm volatile("msr cntv_cval_el0, %0; isb" :: "r"(target) : "memory");
+        do {
+            asm volatile("wfi" ::: "memory");
+        } while (ticks_now() < target);
+        asm volatile("msr cntv_cval_el0, %0; isb" :: "r"(compare) : "memory");
+    }
+    irq_restore(flags);
     while (ticks_now() < target)
         asm volatile("" ::: "memory");
-    *copy_start = trace_active ? ticks_now() : 0;
+    *copy_start = ticks_now();
     typedef uint64_t pixel_pair __attribute__((may_alias));
     for (unsigned row = 0; row < height; row++) {
         uint32_t *line = app_surface + (y + row) * app_stride + APP_DRAW_X;
