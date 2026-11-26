@@ -251,7 +251,9 @@ int sched_record_hash(unsigned seed, const char *input, unsigned length, unsigne
 {
     extern const char record_hash_page[];
     static struct task *owner;
-    if (smp_online() != 1 || length > NOTE_DISK_PACKAGE_CAPACITY) return -1;
+    /* Large packages exceed one isolated slice on a busy two-core guest.
+     * Keep the remote path for actual Notes and Todo data records. */
+    if (smp_online() != 1 || length > 2048) return -1;
     if (!owner) {
         if (request_worker((uintptr_t)record_hash_page, 0, seed, input, length) != 1) return -1;
         owner = cur;
