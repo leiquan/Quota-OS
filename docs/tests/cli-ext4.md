@@ -14,7 +14,7 @@ CLI_TEST=0 CLI_ROOT_DISK="$PWD/build/cli-root.ext4" \
   CLI_DISK="$PWD/build/cli-ext4.notes" bash tools/run-cli.sh --quiet
 ```
 
-Create the scratch Notes disk once. Reuse it for the second boot. At the first prompt, use `rootls`, `rootcat /hello.txt`, `run /Test.elf`, `write ext4-note`, and `events`. Shut down QEMU after `Saved`. Run the same launch command again and use `cat Note.txt`, `run /Test.elf`, and `events`. `CLI_TEST=0` disables the existing QEMU Test preload so `Test: EL0 completed` after `run /Test.elf` comes from the disk ELF. With the preload enabled, `run test.c` and `run Test t2` retain their usual paths. Omit `--quiet` to capture the boot memory ledger and use `mem` for application budget. The fixture generator records the installed e2fsprogs version, selected features and image hash. New fixture builds can have different filesystem UUIDs and timestamps.
+Create the scratch Notes disk once. Reuse it for the second boot. At the first prompt, use `ls`, `rootcat /hello.txt`, `run /Test.elf`, `write ext4-note`, and `events`. Shut down QEMU after `Saved`. Run the same launch command again and use `cat Note.txt`, `run /Test.elf`, and `events`. `CLI_TEST=0` disables the existing QEMU Test preload so `Test: EL0 completed` after `run /Test.elf` comes from the disk ELF. With the preload enabled, `run test.c` and `run Test t2` retain their usual paths. Omit `--quiet` to capture the boot memory ledger and use `mem` for application budget. The fixture generator records the installed e2fsprogs version, selected features and image hash. New fixture builds can have different filesystem UUIDs and timestamps.
 
 ## Supported profile
 

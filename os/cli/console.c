@@ -63,17 +63,31 @@ static int print_root_name(void *context, const char *name, unsigned length)
     return 0;
 }
 
-static int ensure_root(void)
+static int ensure_root(int allow_missing)
 {
     int rc = root_volume.read ? EXT4_OK : root_disk_mount(&root_volume);
-    if (rc) printf("ext4 mount failed: %s\n", rc == EXT4_NOT_FOUND ?
-                   "no ext4 root disk" : ext4_result_text(rc));
+    if (rc && !(allow_missing && rc == EXT4_NOT_FOUND))
+        printf("ext4 mount failed: %s\n", rc == EXT4_NOT_FOUND ?
+               "no ext4 root disk" : ext4_result_text(rc));
     return rc;
+}
+
+static void list_files(int allow_missing)
+{
+    int rc = ensure_root(allow_missing);
+    if (!rc) {
+        rc = ext4_list_root(&root_volume, print_root_name, NULL);
+        if (rc) printf("ext4 directory read failed: %s\n", ext4_result_text(rc));
+    } else if (allow_missing && rc == EXT4_NOT_FOUND) {
+        if (__cli_source[0]) printf("test.c\n");
+        if (note_disk_text()) printf("Note.txt\n");
+        else if (!__cli_source[0]) printf("No files.\n");
+    }
 }
 
 static void run_root(const char *name)
 {
-    if (ensure_root()) return;
+    if (ensure_root(0)) return;
     unsigned size;
     int rc = cli_read_root_elf(&root_volume, name, root_file, sizeof root_file, &size);
     if (rc)
@@ -93,7 +107,7 @@ static void overwrite_root(char *arg)
     *data++ = 0;
     size_t bytes = 0;
     while (data[bytes]) ++bytes;
-    if (ensure_root()) return;
+    if (ensure_root(0)) return;
     int rc = root_disk_overwrite(&root_volume, arg, data, bytes);
     if (rc)
         printf("ext4 overwrite failed: %s\n", ext4_result_text(rc));
@@ -109,11 +123,10 @@ static void show_commands(void)
            "         tasks / ps     List active tasks and their tiers\n"
            "         quota / events Show scheduling counters\n"
            "Files    pwd            Show the root directory\n"
-           "         ls             List files in /\n"
+           "         ls             List the root directory\n"
            "         cat FILE       Read test.c or Note.txt\n"
            "         write TEXT     Save a note to the attached disk\n"
            "         disk           Show disk status and saved note size\n"
-           "         rootls         List the ext4 root\n"
            "         rootcat FILE   Read a file from the ext4 root\n"
            "         rootwrite FILE TEXT  Save to an enabled ext4 test disk\n"
            "         rootrm FILE    Remove a file from a journaled test disk\n"
@@ -174,12 +187,9 @@ void shell_main(void)
             else
                 printf("%s\n", note_disk_text());
         } else if (!strcmp(command, "rootls") && !*arg) {
-            if (!ensure_root()) {
-                int rc = ext4_list_root(&root_volume, print_root_name, NULL);
-                if (rc) printf("ext4 directory read failed: %s\n", ext4_result_text(rc));
-            }
+            list_files(0);
         } else if (!strcmp(command, "rootcat") && *arg) {
-            if (!ensure_root()) {
+            if (!ensure_root(0)) {
                 size_t bytes;
                 int rc = ext4_read_root(&root_volume, arg, root_file, sizeof root_file, &bytes);
                 if (rc) printf("ext4 file read failed: %s\n", ext4_result_text(rc));
@@ -198,7 +208,7 @@ void shell_main(void)
         } else if (!strcmp(command, "rootrm")) {
             if (!*arg)
                 printf("Usage: rootrm FILE\n");
-            else if (!ensure_root()) {
+            else if (!ensure_root(0)) {
                 int rc = root_disk_remove(&root_volume, arg);
                 if (rc) printf("ext4 remove failed: %s\n", ext4_result_text(rc));
                 else printf("ext4 removed\n");
@@ -253,9 +263,7 @@ void shell_main(void)
             printf("period=%lu tier1_misses=%lu tier2_short=%lu tier3_over=%lu\n", s.period,
                    s.tier1_misses, s.tier2_short, s.tier3_over);
         } else if (!strcmp(command, "ls")) {
-            if (__cli_source[0]) printf("test.c\n");
-            if (note_disk_text()) printf("Note.txt\n");
-            else if (!__cli_source[0]) printf("No files.\n");
+            list_files(1);
         } else
             printf("Unknown command: %s. Type help.\n", command);
     }
