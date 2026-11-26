@@ -26,3 +26,5 @@ At the prompt, use `help`, `mem`, `tasks`, `quota` or `events`. Use `write TEXT`
 ## Tested memory configurations
 
 With the QEMU icount virtual clock, the serial prompt responded at 3, 4, 8 and 16 MiB. Test was refused at these sizes. Both modes of Test completed at 17, 18, 20, 24 and 32 MiB. The kernel reserve was 2 MiB and Tier 1 declared 13 MiB. At 17 MiB, 480 KiB remained available for applications after cache-color padding. At 2 MiB QEMU could not place the device tree. The default demo uses 32 MiB.
+
+[Shared documentation and validation logs · 共享文档与验收日志](docs/README.md)
