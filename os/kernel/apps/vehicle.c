@@ -18,7 +18,7 @@ enum desktop_probe_state { PROBE_OFF, PROBE_ARMED, PROBE_SPINNING, PROBE_DONE };
 static volatile enum desktop_probe_state desktop_probe;
 static uint64_t probe_period;
 static volatile uint64_t display_commit_tick, display_max_gap;
-static volatile uint32_t display_max_gap_us;
+static uint64_t stall_speed_gap, stall_camera_gap;
 static uint32_t probe_frames, probe_misses, probe_video;
 static uint64_t probe_pool_exceeded, probe_video_over, probe_video_misses;
 
@@ -46,8 +46,9 @@ void app_desktop_stall_probe(void)
     printf("[peaks] busy_us=%lu kernel_us=%lu start_late_us=%lu returned_us=%lu pool_us=%lu\n",
            stall_info.peak_busy_us, stall_info.peak_kernel_us, stall_info.max_start_late_us,
            stall_info.returned_us, stall_info.tier3_limit_us);
-    printf("[desktop-stall] periods=%lu dashboard_commits=%u misses=%u max_gap_us=%u dashcam_commits=%u pool_exceeded=%u\n",
-           stall_periods, dn, dm, display_max_gap_us, vn, stall_exceeds);
+    printf("[desktop-stall] periods=%lu dashboard_commits=%u misses=%u max_gap_us=%lu dashcam_commits=%u pool_exceeded=%u speed_gap_ticks=%lu camera_gap_ticks=%lu tick_hz=%lu\n",
+           stall_periods, dn, dm, ticks_to_us(stall_speed_gap), vn, stall_exceeds,
+           stall_speed_gap, stall_camera_gap, timer_freq());
     printf("[desktop-stall] %s\nQA DONE\n", stall_ok ? "PASS" : "FAIL");
 }
 
@@ -238,7 +239,7 @@ static void observe_desktop_stall(uint64_t period)
         probe_pool_exceeded = info.tier3_over;
         probe_video_over = info.tier2_over;
         probe_video_misses = video_demo->task->misses;
-        display_max_gap = 0;
+        display_max_gap = video_max_gap = 0;
         return;
     }
     if (period - probe_period < 100)
@@ -249,12 +250,14 @@ static void observe_desktop_stall(uint64_t period)
     dn = dashboard_frames - probe_frames;
     dm = dashboard_demo->misses - probe_misses;
     vn = video_frames - probe_video;
-    display_max_gap_us = ticks_to_us(display_max_gap);
+    stall_speed_gap = display_max_gap;
+    stall_camera_gap = video_max_gap;
     unsigned exceeds = info.tier3_over - probe_pool_exceeded;
     int ok = period - probe_period == 100 && dn == 100 && dm == 0 &&
              vn == 25 && exceeds == 0 && info.tier2_over == probe_video_over &&
              video_demo->task->misses == probe_video_misses &&
-             display_max_gap_us > 0 && display_max_gap_us < 11000;
+             stall_speed_gap > 0 && stall_speed_gap <= us_to_ticks(10000) &&
+             stall_camera_gap > 0 && stall_camera_gap <= us_to_ticks(40000);
     ok = ok && info.reserve_us == info.reserve_target_us && info.reserve_us >= SYS_RESERVE_US &&
          info.reserve_us >= info.peak_kernel_us * 6 / 5 && info.returned_us > 0 && info.returned_us <= 600;
     stall_info = info;
