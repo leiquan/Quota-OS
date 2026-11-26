@@ -111,6 +111,26 @@ int smp_prepare(uint64_t code)
     return count;
 }
 
+/* The worker's data page is private to this request. CPU0 publishes it
+ * before command release and reads it only after completion acquire. */
+void smp_hash_input(unsigned seed, const char *input, unsigned length)
+{
+    uint32_t *page = (void *)(uintptr_t)(workers[0]->storage + 4 * 4096);
+    page[0] = seed;
+    page[1] = length;
+    page[3] = 0;
+    memcpy(page + 4, input, length);
+}
+
+int smp_hash_result(unsigned *result)
+{
+    if (__atomic_load_n(&workers[0]->command, __ATOMIC_ACQUIRE) != 2) return 0;
+    uint32_t *page = (void *)(uintptr_t)(workers[0]->storage + 4 * 4096);
+    if (page[3] != 1) return 0;
+    *result = page[2];
+    return 1;
+}
+
 void smp_submit(unsigned first, unsigned n, uint64_t deadline, uint64_t slice, uint64_t entry)
 {
     for (unsigned i = first; i < first + n; i++) {

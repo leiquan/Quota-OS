@@ -18,13 +18,15 @@ python3 examples/todo/build.py build/todo-preview
 
 The new directory contains a stored ZIP named `todo.wap` and a fresh `todo.raw` data disk with that package installed. Use an unused output directory. Supply `--terser PATH` if Terser is outside PATH.
 
-From the repository root, initialize a separate account-enabled copy and start the Touch UI with the Web runtime:
+Use the standard Touch UI Web runtime entry, which defaults to two virtual CPUs and 512 MiB. Prepare the read-only runtime volume at `build/runtime.raw` and run these commands from the repository root.
 
 ```sh
+QUOTA_RUNTIME_VOLUME_BOOT=1 bash tools/build-lvgl-guest.sh
 python3 tools/init-admin-disk.py build/todo-preview/account.raw --from-legacy build/todo-preview/todo.raw
-QUOTA_KERNEL=build/quotaos-node-web.bin QUOTA_QEMU_RAM=1G \
-  QUOTA_NOTES_DISK=build/todo-preview/account.raw bash tools/run-files.sh -append apps-video
+QUOTA_NOTES_DISK=build/todo-preview/account.raw bash tools/run-web-node-volume.sh
 ```
+
+The launcher creates an independent `touch-ui-root.ext4` beside the account disk. Set `QUOTA_ROOT_DISK=none` to use the Notes compatibility mode.
 
 Sign in and tap **todo.wap**. Reuse the same account disk to keep the task list across restarts.
 

@@ -18,7 +18,7 @@ static volatile struct { uint16_t flags, idx; struct {uint32_t id, len;} ring[8]
 static struct { uint32_t type, reserved; uint64_t sector; } header;
 static volatile uint8_t status;
 static char serial[21];
-static struct record transfer, documents[DOCUMENT_COUNT];
+static struct record transfer, readback, documents[DOCUMENT_COUNT];
 static unsigned document, document_count = PACKAGE_EXT;
 #define saved (documents[document])
 static uint64_t base, submitted, last_period;
@@ -26,7 +26,7 @@ static unsigned submitted_once, inflight;
 static uint16_t completed;
 static int slots[DOCUMENT_COUNT];
 #define slot (slots[document])
-enum phase { OFFLINE, IDENTIFY, AUTH_READ, AUTH_WRITE, AUTH_FLUSH, AUTH_CHECK, READ_A, READ_B, READY, WRITE, FLUSH, VERIFY, SCRUB, FAILED };
+enum phase { OFFLINE, IDENTIFY, AUTH_READ, AUTH_WRITE, AUTH_FLUSH, AUTH_CHECK, READ_A, READ_B, READY, WRITE, FLUSH, READBACK, VERIFY, SCRUB, FAILED };
 static enum phase phase;
 static uint8_t credential_sector[512];
 int auth_disk_store(const uint8_t data[512])
@@ -149,7 +149,7 @@ static void submit(void)
     int writing = phase == WRITE || phase == AUTH_WRITE;
     int credential = phase >= AUTH_READ && phase <= AUTH_CHECK;
     header.type = phase == IDENTIFY ? 8 : writing ? 1 : flush ? 4 : 0;
-    header.sector = phase == READ_B || (phase == WRITE && !slot);
+    header.sector = phase == READ_B || ((phase == WRITE || phase == READBACK) && !slot);
     if (phase == VERIFY) header.sector = slot;
     if (document == PACKAGE_LARGE) header.sector = 18 + 8 * header.sector;
     else if (document == PACKAGE_EXT) header.sector = 8 + 4 * header.sector;
@@ -160,7 +160,7 @@ static void submit(void)
     if (credential && !flush) header.sector = 63;
     status = 255;
     desc[0] = (struct descriptor){(uintptr_t)&header, sizeof header, 1, flush ? 2 : 1};
-    desc[1] = (struct descriptor){phase == IDENTIFY ? (uintptr_t)serial : credential ? (uintptr_t)credential_sector : (uintptr_t)&transfer,
+    desc[1] = (struct descriptor){phase == IDENTIFY ? (uintptr_t)serial : credential ? (uintptr_t)credential_sector : phase == READBACK ? (uintptr_t)&readback : (uintptr_t)&transfer,
         phase == IDENTIFY ? 20 : credential ? BLOCK : record_bytes(document), writing ? 1 : 3, 2};
     desc[2] = (struct descriptor){(uintptr_t)&status, 1, 2, 0};
     avail.ring[avail.idx % 8] = 0;
@@ -229,7 +229,15 @@ void note_disk_poll(void)
                 checksum(&transfer) == saved.checksum && !transfer.text[transfer.length] ? 1 : -1;
             phase = READY;
         } else if (phase == WRITE) phase = FLUSH;
-        else if (phase == FLUSH) {
+        else if (phase == FLUSH) phase = READBACK;
+        else if (phase == READBACK) {
+            /* Publish the new generation only after verifying what the disk stored. */
+            const unsigned char *expected = (const unsigned char *)&transfer;
+            const unsigned char *actual = (const unsigned char *)&readback;
+            for (unsigned i = 0; i < record_bytes(document); ++i)
+                if (expected[i] != actual[i]) { phase = FAILED; return; }
+            printf("[files] verified slot=%u generation=%u bytes=%u checksum=%u\n",
+                   document, transfer.generation, transfer.length, transfer.checksum);
             saved = transfer;
             slot ^= 1;
             document = 0;
@@ -239,6 +247,17 @@ void note_disk_poll(void)
     }
     uint64_t period = sched_period_now();
     if (submitted_once && period == last_period) return;
+    if (phase == WRITE) {
+#ifdef QUOTA_TOUCH_SMP
+        if (transfer.magic != SOURCE_MAGIC) {
+            uint32_t seed = (2166136261u ^ transfer.generation) * 16777619u;
+            int done = sched_record_hash(seed, transfer.text, transfer.length, &transfer.checksum);
+            if (!done) return;
+            if (done < 0) transfer.checksum = checksum(&transfer);
+        } else
+#endif
+        transfer.checksum = checksum(&transfer);
+    }
     last_period = period;
     submitted_once = 1;
     if (phase == READY) {
@@ -264,7 +283,6 @@ static int save_document(const char *text, unsigned index, const char *name)
     transfer.length = n;
     memcpy(transfer.text, text, n);
     if (name) str_copy(transfer.text + limit, name, SOURCE_NAME);
-    transfer.checksum = checksum(&transfer);
     phase = WRITE;
     return 0;
 }
@@ -280,7 +298,6 @@ static int save_binary(unsigned index, uint32_t magic, const unsigned char *byte
     transfer.generation = saved.generation + 1;
     transfer.length = length;
     memcpy(transfer.text, bytes, length);
-    transfer.checksum = checksum(&transfer);
     phase = WRITE;
     return 0;
 }
@@ -312,13 +329,13 @@ int note_disk_save_wap_note(const unsigned char *bytes, unsigned length, uint32_
     return 0;
 }
 
-/* A write is acknowledged only once virtio-blk completed its flush. */
+/* A write is acknowledged only after flush and byte-for-byte readback. */
 int note_disk_wap_note_committed(uint32_t generation)
 {
     const struct record *record = &documents[NOTE_DATA_SLOT];
     if (record->magic == NOTE_DATA_MAGIC && record->generation == generation)
         return 1;
-    if (document == NOTE_DATA_SLOT && (phase == WRITE || phase == FLUSH) &&
+    if (document == NOTE_DATA_SLOT && (phase == WRITE || phase == FLUSH || phase == READBACK) &&
         transfer.generation == generation)
         return 0;
     return -1;
@@ -364,7 +381,7 @@ const char *note_disk_text(void) { return documents[0].magic ? documents[0].text
 const char *note_disk_status(void)
 {
     if (phase == READY || phase == SCRUB) return documents[0].magic || documents[1].magic || note_disk_package_initialized() ? "Saved" : "Ready";
-    if (phase == WRITE || phase == FLUSH) return "Saving...";
+    if (phase == WRITE || phase == FLUSH || phase == READBACK) return "Saving...";
     if (phase == FAILED) return "Disk error";
     if (phase == VERIFY) return "Verifying...";
     if (phase == OFFLINE) return "No Notes disk";

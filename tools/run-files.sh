@@ -24,16 +24,6 @@ if [[ -n ${QUOTA_RUNTIME_VOLUME:-} ]]; then
     disks+=(-drive "if=none,id=runtime,format=raw,readonly=on,file=${runtime//,/,,}"
             -device virtio-blk-device,bus=virtio-mmio-bus.28,drive=runtime,serial=QUOTA-RUNTIME)
 fi
-if [[ -n ${QUOTA_ROOT_DISK:-} ]]; then
-    bootargs=apps-ext4
-    test -f "$QUOTA_ROOT_DISK" || { echo "Root disk not found: $QUOTA_ROOT_DISK" >&2; exit 1; }
-    if [[ -n ${runtime:-} && "$QUOTA_ROOT_DISK" -ef "$runtime" ]]; then
-        echo "Root and runtime must use different disk images." >&2
-        exit 1
-    fi
-    disks+=(-drive "if=none,id=root,format=raw,cache=writeback,werror=report,rerror=report,file=${QUOTA_ROOT_DISK//,/,,}"
-            -device virtio-blk-device,bus=virtio-mmio-bus.30,drive=root,serial=QUOTA-ROOT)
-fi
 kernel=${QUOTA_KERNEL:-$default_kernel}
 test -f "$kernel" || { echo "Kernel image not found: $kernel" >&2; exit 1; }
 disk=${QUOTA_NOTES_DISK:-"${XDG_DATA_HOME:-$HOME/.local/share}/quota-os/touch-ui-account.raw"}
@@ -42,10 +32,14 @@ if [ ! -e "$disk" ]; then
     python3 tools/init-admin-disk.py "$disk"
 fi
 test "$(wc -c < "$disk")" -ge 32768 || { echo "Use tools/init-admin-disk.py NEW --from-legacy OLD to create an account-enabled copy" >&2; exit 1; }
-if [[ ( -n ${QUOTA_ROOT_DISK:-} && "$QUOTA_ROOT_DISK" -ef "$disk" ) ||
-      ( -n ${runtime:-} && "$runtime" -ef "$disk" ) ]]; then
+if [[ -n ${runtime:-} && "$runtime" -ef "$disk" ]]; then
     echo "Notes must use a separate disk image." >&2
     exit 1
+fi
+source tools/root-volume.sh
+if [[ -n ${root_disk:-} ]]; then
+    bootargs=apps-ext4
+    disks+=("${root_args[@]}")
 fi
 
 exec /bin/bash tools/run-qemu-gui.sh "${cpu_args[@]}" -m "$ram" -smp "$cpus" -nic none \
