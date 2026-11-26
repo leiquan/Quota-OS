@@ -27,6 +27,10 @@ static uint64_t begin;
 static struct sched_system_info before;
 static struct app_display_stats first_display;
 static unsigned recorded, dropped;
+static struct {
+    uint64_t submitted, completed;
+    int result;
+} io_trace[sizeof steps / sizeof steps[0]];
 static uint64_t scroll_ticks[1024];
 
 static int matches(const char *expected, const char *actual, size_t size)
@@ -50,6 +54,12 @@ static void finish(int pass, int cold)
            last_display.speed_misses - first_display.speed_misses, last_display.video_missed - first_display.video_missed,
            (unsigned long)(after.tier2_short - before.tier2_short), (unsigned long)(after.tier3_over - before.tier3_over));
     app_frame_trace_dump();
+    for (unsigned i = 0; i < sizeof io_trace / sizeof io_trace[0]; ++i) {
+        if (!io_trace[i].completed) break;
+        printf("[touch-ext4] request=%u op=%u start=%lu end=%lu result=%d\n",
+               i, steps[i].op, (unsigned long)io_trace[i].submitted,
+               (unsigned long)io_trace[i].completed, io_trace[i].result);
+    }
     printf("[touch-ext4] scroll-trace count=%u dropped=%u\n", recorded, dropped);
     for (unsigned i = 0; i < recorded; ++i)
         printf("[touch-ext4] scroll-step ticks=%lu\n", (unsigned long)scroll_ticks[i]);
@@ -81,11 +91,13 @@ void touch_ext4_poll(void)
 {
     if (!running) return;
     if (!pending) {
+        uint64_t submitted = ticks_now();
         int rc = root_service_submit(steps[step].op, steps[step].name,
                                      steps[step].op == ROOT_SAVE ? steps[step].input : NULL,
                                      steps[step].op == ROOT_SAVE ? steps[step].bytes : 0);
         if (rc < 0) finish(0, 0);
         if (rc) return;
+        io_trace[step].submitted = submitted;
         pending = 1;
     }
     static char data[ROOT_SERVICE_BYTES];
@@ -94,6 +106,8 @@ void touch_ext4_poll(void)
     int got = root_service_take(data, sizeof data, &bytes, &result);
     if (got < 0) { finish(0, 0); return; }
     if (!got) return;
+    io_trace[step].completed = ticks_now();
+    io_trace[step].result = result;
     pending = 0;
     if (step == 0 && result == EXT4_OK) {
         printf("[touch-ext4] io-start ticks=%lu mount=0\n", (unsigned long)begin);
