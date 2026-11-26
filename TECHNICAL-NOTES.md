@@ -8,6 +8,8 @@ AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中�
 
 License: [Apache-2.0](LICENSE)
 
+初次阅读建议从 [内核入门](docs/kernel-guide.md) 开始。
+
 ## 当前维护记录
 
 - **发行版**。当前发布的 CLI、UI 和 Web UI 仍使用 QEMU 单核配置。CLI 多核开发分支已有 `icount` 验证，宿主并行时钟下仍出现派发与超时问题，因此尚未纳入发行配置。

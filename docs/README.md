@@ -6,6 +6,7 @@ The three editions share this directory. Each branch's top-level README describe
 
 | Area · 内容 | Files · 位置 |
 |---|---|
+| Kernel walkthrough · 内核入门 | [从启动到调度](kernel-guide.md) |
 | Official website · 官网 | [English](index.html) · [简体中文](zh.html) · [CSS](site.css) · [JavaScript](site.js) |
 | Screenshots · 截图 | [screenshots/](screenshots/) |
 | Current desktop frame evidence · 桌面帧间隔证据 | [UI summary](tests/frame-intervals/base.json) · [Web UI summary](tests/frame-intervals/web.json) · [serial logs](tests/frame-intervals/) |

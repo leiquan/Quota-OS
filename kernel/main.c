@@ -5,6 +5,7 @@ extern char __image_start[], __image_end[];
 
 void kmain(uint64_t dtb)
 {
+    /* 启动期间屏蔽 IRQ，先建立串口、页表和进程状态。 */
     asm volatile("msr daifset, #2" ::: "memory");
     uart_init();
     mmu_init();
@@ -27,6 +28,7 @@ void kmain(uint64_t dtb)
 
     _Static_assert(sizeof(struct irq_frame) == 272, "irq frame must match vectors.S");
 
+    /* 用设备树提供的物理内存建立资源账户，再初始化中断来源。 */
     uint64_t ram = dtb_ram_bytes(dtb);
     resource_init(ram);
     color_init(ram);
@@ -41,6 +43,7 @@ void kmain(uint64_t dtb)
     dev_init();
     printf("[boot] simulated device IRQ line: EL1 physical timer, PPI 30\n");
 
+    /* 标定设备开销之后，才将实时服务绑定到调度器并进入 Shell。 */
     sched_init();
     printf("[boot] calibration stage; realtime services not admitted yet\n");
     if (decl_prepare_devices() != 0) {

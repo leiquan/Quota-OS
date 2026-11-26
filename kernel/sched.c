@@ -1350,6 +1350,7 @@ static void ipc_op(struct task *t, int op)
 
 static uint64_t schedule(uint64_t sp, int timer)
 {
+    /* 异常入口记录的 tick 与上次 eret 的 tick 划分内核和任务用时。 */
     uint64_t entry = k_entry_ts;
     uint64_t eret = k_eret_ts;
     struct task *prev = cur;
@@ -1440,6 +1441,7 @@ static uint64_t schedule(uint64_t sp, int timer)
             jump_add(k_cval, entry);
     }
 
+    /* 保存上一任务的现场并记账，然后处理本次进入内核的请求。 */
     prev->sp = sp;
     charge(prev, eret, entry);
     if (prev->state == TASK_RUNNING)
@@ -1503,6 +1505,7 @@ static uint64_t schedule(uint64_t sp, int timer)
             asm volatile("" ::: "memory");
         pend_spin += ticks_now() - s0;
     }
+    /* 返回下一个任务的栈地址，异常汇编入口负责恢复寄存器。 */
     struct task *next = dispatch(disp_now);
     if (next->kind == KIND_JOB && next->job_open && !next->job_started) {
         next->job_started = 1;
