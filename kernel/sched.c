@@ -28,6 +28,7 @@ extern volatile uint64_t k_entry_ts, k_eret_ts, k_release_at, k_spin_late;
 extern volatile uint64_t k_arm_abs, k_arm_rel, k_cval;
 
 static struct task tasks[MAX_TASKS];
+static int starts_pending;
 static uint8_t stacks[MAX_TASKS][STACK_SIZE] __attribute__((aligned(16)));
 /* LVGL layout runs on the shell. The other tasks stay on the 8 KB stack. */
 static uint8_t shell_stack[32 * 1024] __attribute__((aligned(16)));
@@ -522,9 +523,10 @@ void task_ready(struct task *t)
 void task_start(struct task *t)
 {
     uint64_t irq_flags = irq_save();
-    if (t->tier == TIER2 && t->kind == KIND_SPIN && t->state == TASK_BLOCKED)
+    if (t->tier == TIER2 && t->kind == KIND_SPIN && t->state == TASK_BLOCKED) {
         t->start_next_period = 1;
-    else
+        starts_pending = 1;
+    } else
         task_ready(t);
     irq_restore(irq_flags);
 }
@@ -931,12 +933,21 @@ static void ipc_release_held(void);
 static void begin_period(void)
 {
     t3_reset_period();
-    for (int i = 0; i < MAX_TASKS; i++) {
-        struct task *t = &tasks[i];
-        if (t->start_next_period && t->state == TASK_BLOCKED) {
-            t->start_next_period = 0;
-            task_ready(t);
+    if (starts_pending) {
+        int started = 0;
+        starts_pending = 0;
+        for (int i = 0; i < MAX_TASKS; i++) {
+            struct task *t = &tasks[i];
+            if (!t->start_next_period || t->state == TASK_DEAD) continue;
+            if (t->state == TASK_BLOCKED) {
+                t->start_next_period = 0;
+                t->state = TASK_READY;
+                started = 1;
+            } else {
+                starts_pending = 1;
+            }
         }
+        if (started) rebuild_lists();
     }
     dev_period();
     ipc_release_held();
