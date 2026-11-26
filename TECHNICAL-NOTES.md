@@ -1,5 +1,9 @@
 # Quota OS（版本 016）
 
+UI, Web UI and Touch UI each use 512 MiB of QEMU RAM by default. CLI uses 4 MiB. Web UI loads its runtime from a separate read-only disk. Historical results below retain their original RAM settings.
+
+UI、Web UI 和 Touch UI 默认使用 512 MiB QEMU 内存（`-m 512M`），CLI 为 4 MiB。Web UI 从独立只读卷加载 Blink、V8 和 Node.js。下方历史测试保留各自的内存配置。
+
 ## Touch UI 竖屏版
 
 [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) 与 CLI、UI、Web UI 共用 ARM64 配额内核，提供 900 × 1600 LVGL 竖屏和全屏应用。底部 Bar 支持单次返回、双次回主屏并保留应用现场。当前触控证据来自 QEMU 虚拟平板，实体屏和多点触控待验证。[输入链路与验证范围](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui)
@@ -50,7 +54,7 @@ Dock 首位的 Apps 列出镜像内置应用。System 的 Task、Info、Test 三
 
 ## 虚拟平台验收
 
-默认验收配置为 QEMU TCG、Cortex-A72、virt/GICv2、128 MiB，使用 `-icount shift=4,sleep=off`。运行 `python3 tools/optimization-cycle.py prebuilt/quotaos.bin /tmp/quota-acceptance --rounds 100`。
+该轮验收配置为 QEMU TCG、Cortex-A72、virt/GICv2、128 MiB，使用 `-icount shift=4,sleep=off`。运行 `python3 tools/optimization-cycle.py prebuilt/quotaos.bin /tmp/quota-acceptance --rounds 100`。
 
 - 100 轮 GUI 压力窗口必须全部完成。一级截止期错过、二级最低 CPU 时间不足及二级作业错过均须为零。
 - 任务管理器开启，驱动发送指针事件，桌面必须完成负载操作。现有测试覆盖此交互路径，未规定所有 GUI 操作的最大响应时延。
