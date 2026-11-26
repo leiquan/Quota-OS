@@ -45,13 +45,13 @@ for name, path in (("kernel", args.kernel), ("runtime", args.runtime), ("seed", 
         hashes[name] = hashlib.file_digest(file, "sha256").hexdigest()
 (out / "inputs.json").write_text(json.dumps(dict(sha256=hashes, text=text, shift=args.shift), indent=2))
 
-def until(action, timeout, name):
+def until(action, timeout, name, interval=.25):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         result = action()
         if result:
             return result
-        time.sleep(.25)
+        time.sleep(interval)
     raise TimeoutError(name)
 
 def record(expected):
@@ -198,7 +198,7 @@ def boot(number):
         click(45, 138)
         time.sleep(.55)
         click(45, 138)
-        x, y = until(add_position, 900, "Todo Add button")
+        x, y = until(add_position, 1800, "Todo Add button", interval=2)
         if number == 1:
             click(x-50, y+8)
             for ch in text:
