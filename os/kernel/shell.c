@@ -1,3 +1,4 @@
+#include "auth.h"
 #include "quotaos.h"
 #include "shell.h"
 
@@ -96,12 +97,14 @@ int shell_power(int reboot)
 void shell_serial(void)
 {
     note_disk_init();
+    auth_serial_login();
     for (;;) {
         while (!note_disk_power_ready()) { note_disk_poll(); asm volatile("wfi"); }
         printf("quota> ");
         char line[544], out[2048];
         readline(line,sizeof line);
         if (!line[0]) continue;
+        if (!strcmp(line,"logout")) { auth_logout(); auth_serial_login(); continue; }
         enum shell_action action=shell_execute(line,out,sizeof out);
         if (action==SHELL_CLEAR) printf("\033[2J\033[H");
         else if (action==SHELL_REBOOT || action==SHELL_OFF) {
