@@ -10,7 +10,7 @@ Quota OS 是一个以资源配额为核心的单核 ARM64 实验操作系统。�
 
 | | [C LVGL 版](https://github.com/leiquan/Quota-OS/tree/C-LVGL) | [Web Node 版](https://github.com/leiquan/Quota-OS/tree/Web-Node) |
 |---|---|---|
-| 镜像大小 | 701,836 B · 685.4 KiB | 375,547,160 B · 358.1 MiB |
+| 镜像大小 | 701,852 B · 685.4 KiB | 374,863,128 B · 357.5 MiB |
 | QEMU 验证内存 | 64 MiB | 1 GiB |
 | 系统实现 | C · AArch64 ASM · LVGL | C · AArch64 ASM · LVGL + C++ (Blink, V8, Node.js) |
 | 应用开发 | C + LVGL | C + LVGL / HTML + CSS + JS / Node.js |
