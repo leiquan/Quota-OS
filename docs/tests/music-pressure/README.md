@@ -1,8 +1,8 @@
 # Music Player under Tier 3 pressure · 音乐播放器三级压力实测
 
-One combined CPU, memory and disk pressure run per edition on QEMU, using one Cortex-A35 vCPU and `icount`. UI used 64 MiB and Web UI used 1 GiB. Music Player runs at the rate allowed by the shared Tier 3 pool and bounded display queue.
+Historical single-core measurement. One combined CPU, memory and disk pressure run per edition on QEMU, using one Cortex-A35 vCPU and `icount`. UI used 64 MiB and Web UI used 1 GiB. Music Player runs at the rate allowed by the shared Tier 3 pool and bounded display queue.
 
-两版各进行一轮三级 CPU、内存和磁盘组合压力测试。使用 QEMU 单核 Cortex-A35 和 `icount`，UI 为 64 MiB，Web UI 为 1 GiB。Music Player 以三级共享池和有界绘制队列允许的速度提交画面。
+本记录采用历史单核配置。两版各进行一轮三级 CPU、内存和磁盘组合压力测试。使用 QEMU 单核 Cortex-A35 和 `icount`，UI 为 64 MiB，Web UI 为 1 GiB。Music Player 以三级共享池和有界绘制队列允许的速度提交画面。
 
 | Edition | Idle screenshot | Pressure screenshot | Pressure commits / guest time | Pressure average |
 |---|---:|---:|---:|---:|
