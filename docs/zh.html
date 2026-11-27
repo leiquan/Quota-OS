@@ -25,7 +25,7 @@
 <dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">Web UI 版</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（双核）</dd></div><div><dt>内存</dt><dd>512 MiB</dd></div><div><dt>启动镜像</dt><dd>886.5 KiB，另附运行时卷</dd></div><div><dt>交互与计时</dt><dd>1600 × 900 · LVGL / ramfb · QEMU TCG / icount</dd></div></dl>
 <dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/Touch-UI">Touch UI</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（双核）</dd></div><div><dt>内存</dt><dd>512 MiB</dd></div><div><dt>启动镜像</dt><dd>825.0 KiB（LVGL）</dd></div><div><dt>交互与计时</dt><dd>900 × 1600 · LVGL / ramfb · QEMU 虚拟平板</dd></div></dl>
 <p class="platform-note">表中列出目标配置和未压缩的 ARM64 镜像大小。CLI、GUI 和 Web UI 已采用表中的启动配置，Touch UI 的双核配置在做发布验收。前三版均支持用 <code>ls</code> 和 <code>ls /</code> 列出 ext4 根目录，用 <code>cat /文件名</code> 读取当前根盘的文本文件。</p>
-<p class="platform-note">应用包支持目标为 CLI、GUI 运行原生 C 应用（.cap），Web UI、Touch UI 运行 .cap 和 .wap。GUI 候选版已独立验证 CAP 安装、更新及重启后读回应用数据。Web UI 候选版已在开发自测中安装两类包，两类应用同盘重启读回仍待独立验收。</p>
+<p class="platform-note">四版候选镜像均通过应用包功能独立验收。CLI 可在命令行运行原生 C 应用（<code>.cap</code>），GUI 可通过 App Hub 安装和更新图形 CAP。两者使用各自的应用二进制接口。Web UI 和 Touch UI 均可在同一块盘上安装 <code>.cap</code> 与 <code>.wap</code>，从桌面分别运行，关机重启后读回各自的数据。满载时序验收和正式发布另行记录。</p>
 </section>
 <section class="wrap section" id="model">
 <h2>三种资源承诺</h2>
