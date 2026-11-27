@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Quota OS 是一款以资源配额为核心的 ARM64 操作系统。">
 <title>Quota OS — 以资源配额为核心的操作系统</title>
-<link rel="stylesheet" href="site.css?v=edition-overview">
+<link rel="stylesheet" href="site.css?v=edition-shots">
 <script src="site.js?v=quota-brand" defer></script>
 <link rel="icon" href="favicon.png?v=quota-brand" type="image/png" sizes="32x32">
 <link rel="icon" href="quota-mark.svg" type="image/svg+xml" sizes="any">
@@ -37,16 +37,13 @@
 <section class="wrap section" id="editions">
 <h2>四个发行版，共用一个内核</h2><p>CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。GUI 增加 LVGL 原生桌面，Web UI 在此基础上增加由 Blink、V8 和 Node.js 组成的三级 WAP 运行时。 Touch UI 提供 900 × 1600 竖屏、全屏应用和底部手势栏。</p>
 <p>四个发行版均支持运行由 C 代码编译的 Quota OS 命令行可执行文件。在 CLI 版，通过串口进入 Shell 运行程序；在 GUI、Web UI 和 Touch UI 版，从桌面打开 Shell 运行程序。</p>
-<h3>发行版示例</h3><div class="edition-pair edition-examples"><div><figure><pre class="cli-transcript" tabindex="0"><code>Quota OS CLI 016 | ARM64 | 4096 KiB RAM
-
-quota&gt; run Test
-Test: EL0 completed
-
-quota&gt; run Test t2
-Test: EL0 completed
-
-quota&gt; events
-period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI · Mac 上运行 QEMU 的串口实录 · <a href="tests/cli-layout/4M.log">完整串口日志</a></figcaption></figure></div><div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="GUI · 二级任务准入"></a><figcaption>GUI · 二级任务准入</figcaption></figure></div><div><figure><a class="capture" href="screenshots/web-ui-todo.png"><img loading="lazy" src="screenshots/web-ui-todo.png" width="1280" height="800" alt="Web UI · Todo 任务清单"></a><figcaption>Web UI · Todo 任务清单</figcaption></figure></div></div>
+<h3 id="edition-screenshots">发行版实拍</h3>
+<div class="edition-pair edition-shots">
+<div><figure><a class="capture" href="screenshots/cli-shell.png"><img loading="lazy" src="screenshots/cli-shell.png" width="1600" height="1000" alt="CLI · 串口运行 Test"></a><figcaption>CLI · 串口运行 Test</figcaption></figure></div>
+<div><figure><a class="capture" href="screenshots/c-lvgl-admission.png"><img loading="lazy" src="screenshots/c-lvgl-admission.png" width="1280" height="800" alt="GUI · 二级任务准入"></a><figcaption>GUI · 二级任务准入</figcaption></figure></div>
+<div><figure><a class="capture" href="screenshots/web-ui-todo-styled.png"><img loading="lazy" src="screenshots/web-ui-todo-styled.png" width="1600" height="900" alt="Web UI · Todo 任务清单"></a><figcaption>Web UI · Todo 任务清单</figcaption></figure></div>
+<div><figure><a class="capture" href="screenshots/touch-ui-home.png"><img loading="lazy" src="screenshots/touch-ui-home.png" width="900" height="1600" alt="Touch UI · 竖屏主屏"></a><figcaption>Touch UI · 竖屏主屏</figcaption></figure></div>
+</div>
 </section>
 <section class="wrap section" id="compare">
 <h2>系统对比</h2><p>同样是预留 CPU 时间，给一组线程分配最低份额、给单个线程设置周期预算、为整个分区排定时间窗，解决的是不同的问题。下表从分配对象和运行规则比较五种做法。</p>
