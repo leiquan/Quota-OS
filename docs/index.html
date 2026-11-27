@@ -11,7 +11,7 @@
 <link rel="icon" href="quota-mark.svg" type="image/svg+xml" sizes="any">
 </head>
 <body>
-<header class="wrap bar"><a class="brand" href="./"><img src="quota-mark.svg" width="30" height="30" alt="">Quota OS</a><nav aria-label="Main navigation"><a href="#editions">Editions</a><a href="#model">Features</a><a href="#compare">Compare</a><a href="#evidence">Test</a><a href="#dev">Dev</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="zh.html" lang="zh-CN">中文</a></nav></header>
+<header class="wrap bar"><a class="brand" href="./"><img src="quota-mark.svg" width="30" height="30" alt="">Quota OS</a><nav aria-label="Main navigation"><a href="#editions">Editions</a><a href="#model">Features</a><a href="#compare">Compare</a><a href="#evidence">Test</a><a href="https://github.com/leiquan/Quota-OS">Code ↗</a><a class="language" href="zh.html" lang="zh-CN">中文</a></nav></header>
 <main>
 <section class="wrap hero" id="home">
 <div class="hero-copy"><p class="eyebrow">ARM64 / RESOURCE-PARTITIONED OS</p>
@@ -79,40 +79,6 @@ cd Quota-OS
 bash tools/run-files.sh</code></pre>
 <p><a href="https://github.com/leiquan/Quota-OS#readme">Read the README and test records ↗</a></p>
 <p>To run the 900 × 1600 portrait edition, follow the <a href="https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui">Touch UI source build and setup guide</a>.</p>
-</section>
-<section class="wrap section" id="dev">
-<h2>Develop applications</h2>
-<div class="dev-grid">
-<article id="native-dev"><h3>Native C applications</h3>
-<ol>
-<li><strong>Open Notes.</strong> In an empty document, select <strong>C Example</strong> or paste the code below.</li>
-<li><strong>Save the source.</strong> Choose <strong>Save As...</strong>, enter <code>demo.c</code> and press Enter. Wait for the save confirmation, then open Apps → Shell.</li>
-<li><strong>Check the filename.</strong> Run <code>ls</code> and confirm <code>demo.c</code> is listed. If you chose another filename, run <code>cc</code> to see the matching compile command.</li>
-<li><strong>Compile and run.</strong> Enter the two commands below one at a time. Wait for <code>Compiled demo.c to hello.cap</code> before running the program. It should print <code>Hello, Quota OS!</code>.</li>
-</ol>
-<pre><code>int main(void) {
-    puts("Hello, Quota OS!");
-    return 0;
-}</code></pre>
-<pre><code>cc demo.c -o hello.cap
-./hello.cap</code></pre>
-<p>The built-in compiler supports the C subset shown here. Keep the example structure and omit headers. Shell launches it in Tier 3. If compilation fails, check the source and saved filename in Notes.</p>
-<div class="showcase"><div class="gallery" tabindex="0" aria-label="Save demo.c in Notes"><figure><a class="capture" href="screenshots/dev-source.png"><img src="screenshots/dev-source.png?v=desktop" width="1280" height="800" loading="lazy" alt="Save demo.c in Notes"></a><figcaption>Save demo.c in Notes</figcaption></figure><figure><a class="capture" href="screenshots/dev-compile.png"><img src="screenshots/dev-compile.png?v=desktop" width="1280" height="800" loading="lazy" alt="Compile demo.c in Shell"></a><figcaption>Compile demo.c in Shell</figcaption></figure><figure><a class="capture" href="screenshots/dev-run.png"><img src="screenshots/dev-run.png?v=desktop" width="1280" height="800" loading="lazy" alt="Run hello in EL0"></a><figcaption>Run hello in EL0</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="Previous screenshot">←</button><button data-step="1" aria-label="Next screenshot">→</button><div class="indicators"></div><output>1 / 3</output><button type="button" class="playback"></button></div></div></article><article id="web-ui">
-<h3>Web UI · WAP</h3>
-<p>Web UI keeps the native desktop and runs WAP apps in the Tier 3 pool. Blink renders HTML and CSS. V8 runs page JavaScript, and an optional Node.js process handles background work. The two processes use one system V8 build.</p>
-<ol>
-<li>Open Apps → ZIP, export <code>todo.wap</code>, and open <strong>Todo</strong> from Files.</li>
-<li>Use Add to create a task, check it off, filter with Open only, or use Delete to remove it.</li>
-<li>Wait for <code>Saved</code>, exit QEMU, then reboot with the same image and disk. Reopen Todo and verify the list and completion state.</li>
-<li>Edit the files under <code>examples/todo/</code>. Repackage and replace the embedded <code>todo.wap</code>, then rebuild the image.</li>
-</ol>
-<p>When checking a WAP, look for <code>app.json</code> and <code>app.html</code> at the ZIP root, with <code>app.js</code> when needed. Use ZIP store mode and the <code>.wap</code> extension. If the task is missing after reboot, confirm that the first run displayed <code>Saved</code> and that both boots used the same data disk.</p>
-<p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">Build and boot</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo">Demo source</a> · <a href="screenshots/web-ui-todo.png">Demo screenshot</a> · <a href="tests/frame-intervals/web.json">Frame timing results</a></p>
-<div class="showcase"><figure><a class="capture" href="screenshots/web-ui-todo.png"><img src="screenshots/web-ui-todo.png" width="1280" height="800" loading="lazy" alt="Web UI · Todo task list"></a><figcaption>Web UI · Todo task list</figcaption></figure></div></article></div>
-<h3>Build the desktop from source</h3>
-<p>On macOS with Homebrew LLVM and LLD installed, run these commands from the repository root. QEMU ARM64 runs the resulting kernel with two Cortex-A35 vCPUs and 64 MiB of RAM.</p>
-<pre><code>bash tools/build-lvgl-macos.sh
-QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh</code></pre>
 </section>
 </main>
 <footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/GUI/LICENSE">Apache 2.0</a></footer>
