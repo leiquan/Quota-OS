@@ -11,6 +11,9 @@ CLI runs the ARM64 quota kernel and a PL011 serial shell on QEMU virt (one Corte
 CLI, GUI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the serial console and supports a separately launched EL0 Test application. GUI adds the native LVGL desktop. Web UI extends that desktop with Tier 3 WAP applications powered by Blink, V8 and Node.js. Touch UI provides a 900 × 1600 portrait desktop with full-screen applications and a bottom gesture bar.
 
 四个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。GUI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。Touch UI 提供 900 × 1600 竖屏、全屏应用和底部手势栏。
+All four editions support command-line executables compiled from C for Quota OS. In CLI, run them from the shell over the serial console. In GUI, Web UI and Touch UI, open Shell from the desktop to run them.
+
+四个发行版均支持运行由 C 代码编译的 Quota OS 命令行可执行文件。在 CLI 版，通过串口进入 Shell 运行程序；在 GUI、Web UI 和 Touch UI 版，从桌面打开 Shell 运行程序。
 
 | Edition · 发行版 | vCPU | Default guest RAM · 默认虚拟机内存 |
 |---|---:|---:|
