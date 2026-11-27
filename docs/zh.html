@@ -11,7 +11,7 @@
 <link rel="icon" href="quota-mark.svg" type="image/svg+xml" sizes="any">
 </head>
 <body>
-<header class="wrap bar"><a class="brand" href="./"><img src="quota-mark.svg" width="30" height="30" alt="">Quota OS</a><nav aria-label="主导航"><a href="#editions">发行版</a><a href="#model">特性</a><a href="#compare">对比</a><a href="#evidence">测试</a><a href="#dev">开发</a><a href="https://github.com/leiquan/Quota-OS">源码 ↗</a><a class="language" href="index.html" hreflang="en">英文版</a></nav></header>
+<header class="wrap bar"><a class="brand" href="./"><img src="quota-mark.svg" width="30" height="30" alt="">Quota OS</a><nav aria-label="主导航"><a href="#editions">发行版</a><a href="#model">特性</a><a href="#compare">对比</a><a href="#evidence">测试</a><a href="https://github.com/leiquan/Quota-OS">源码 ↗</a><a class="language" href="index.html" hreflang="en">英文版</a></nav></header>
 <main>
 <section class="wrap hero" id="home">
 <div class="hero-copy"><p class="eyebrow">面向 ARM64 的资源配额操作系统</p>
@@ -82,40 +82,6 @@ cd Quota-OS
 bash tools/run-files.sh</code></pre>
 <p><a href="https://github.com/leiquan/Quota-OS#readme">查看 README 和完整测试记录 ↗</a></p>
 <p>运行 900 × 1600 竖屏版，请按 <a href="https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui">Touch UI 构建与启动指南</a>从源码构建。</p>
-</section>
-<section class="wrap section" id="dev">
-<h2>开发应用</h2>
-<div class="dev-grid">
-<article id="native-dev"><h3>原生 C 应用</h3>
-<ol>
-<li><strong>打开 Notes。</strong>在空白文档点击 <strong>C Example</strong>，或粘贴下面的代码。</li>
-<li><strong>保存源码。</strong>选择 <strong>Save As...</strong>，输入 <code>demo.c</code> 并按回车。等到显示已保存，再打开 Apps → Shell。</li>
-<li><strong>核对文件。</strong>输入 <code>ls</code>，确认列表里有 <code>demo.c</code>。如果用了别的文件名，先输入 <code>cc</code> 查看对应的编译命令。</li>
-<li><strong>编译并运行。</strong>依次输入下方两条命令，每条按一次回车。先确认 Shell 显示 <code>Compiled demo.c to hello.cap</code>，再运行。成功时输出 <code>Hello, Quota OS!</code>。</li>
-</ol>
-<pre><code>int main(void) {
-    puts("Hello, Quota OS!");
-    return 0;
-}</code></pre>
-<pre><code>cc demo.c -o hello.cap
-./hello.cap</code></pre>
-<p>当前内置编译器支持上面这种 C 子集。保留示例结构，暂时省略头文件。Shell 将程序按三级启动。若编译失败，回 Notes 核对代码和保存的文件名。</p>
-<div class="showcase"><div class="gallery" tabindex="0" aria-label="在便笺中保存 demo.c"><figure><a class="capture" href="screenshots/dev-source.png"><img src="screenshots/dev-source.png?v=desktop" width="1280" height="800" loading="lazy" alt="在便笺中保存 demo.c"></a><figcaption>在便笺中保存 demo.c</figcaption></figure><figure><a class="capture" href="screenshots/dev-compile.png"><img src="screenshots/dev-compile.png?v=desktop" width="1280" height="800" loading="lazy" alt="在终端中编译 demo.c"></a><figcaption>在终端中编译 demo.c</figcaption></figure><figure><a class="capture" href="screenshots/dev-run.png"><img src="screenshots/dev-run.png?v=desktop" width="1280" height="800" loading="lazy" alt="用户态运行结果"></a><figcaption>用户态运行结果</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><button data-step="1" aria-label="下一张">→</button><div class="indicators"></div><output>1 / 3</output><button type="button" class="playback"></button></div></div></article><article id="web-ui">
-<h3>Web UI · WAP</h3>
-<p>Web UI 保留原生桌面，WAP 应用在三级共享池内运行。Blink 渲染 HTML 和 CSS，V8 执行页面 JavaScript，可选的 Node.js 进程处理后台逻辑。页面与后台使用同一套系统 V8 构建。</p>
-<ol>
-<li>打开 Apps → ZIP，导出 <code>todo.wap</code>，再从 Files 双击打开 <strong>Todo</strong>。</li>
-<li>用 Add 添加任务，勾选完成，用 Open only 筛选，或用 Delete 删除。</li>
-<li>等到 <code>Saved</code> 后退出 QEMU。用同一镜像和数据盘重启，再打开 Todo，核对任务与完成状态。</li>
-<li>从 <code>examples/todo/</code> 的三份源码改起。重打包并替换内置的 <code>todo.wap</code> 后，重新构建镜像。</li>
-</ol>
-<p>核对 WAP 包时，确认 <code>app.json</code> 和 <code>app.html</code> 位于 ZIP 根目录，按需加入 <code>app.js</code>。ZIP 使用存储模式，扩展名为 <code>.wap</code>。如果冷启动后读不到原文，确认首次保存显示了 <code>Saved</code>，且第二次使用同一数据盘。</p>
-<p><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建">构建与启动</a> · <a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo">示例源码</a> · <a href="screenshots/web-ui-todo.png">示例截图</a> · <a href="tests/frame-intervals/web.json">帧间隔结果</a></p>
-<div class="showcase"><figure><a class="capture" href="screenshots/web-ui-todo.png"><img src="screenshots/web-ui-todo.png" width="1280" height="800" loading="lazy" alt="Web UI · Todo 任务清单"></a><figcaption>Web UI · Todo 任务清单</figcaption></figure></div></article></div>
-<h3>从源码构建桌面</h3>
-<p>在装好 Homebrew LLVM 和 LLD 的 macOS 上，从仓库根目录执行以下命令。QEMU 使用双核 Cortex-A35 和 64 MiB 内存运行构建出的内核。</p>
-<pre><code>bash tools/build-lvgl-macos.sh
-QUOTA_KERNEL=build/quotaos-lvgl.bin bash tools/run-files.sh</code></pre>
 </section>
 </main>
 <footer class="wrap bar"><span>Quota OS</span><a href="https://github.com/leiquan/Quota-OS/blob/GUI/LICENSE">Apache 2.0</a></footer>
