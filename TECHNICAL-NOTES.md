@@ -1,10 +1,9 @@
 # Quota OS（版本 016）
 
-三个图形版默认向 QEMU 配置两个虚拟 CPU（`-smp 2`）。用 `QUOTA_CPUS=1` 可复现单核配置。每版按自己的默认内存，用同一镜像对比单核与双核的交互延迟，记录第二核执行的任务。三级满载时按原始时钟验证 GPS Speed 10 ms、Flight Camera 40 ms，检查漏帧、超时和二级欠配额。双核调度和交互收益按各版独立验收结果记录。
+## 当前默认启动配置
 
-GUI uses 64 MiB. Web UI and Touch UI each use 512 MiB of QEMU RAM by default. CLI uses 4 MiB. Web UI loads its runtime from a separate read-only disk. Historical results below retain their original RAM settings.
+CLI 单核 4 MiB，GUI 双核 64 MiB，Web UI 与 Touch UI 均为双核 512 MiB。普通启动与 macOS 入口一致。文中复现实验的命令使用当时的镜像、CPU 和内存；各版当前启动命令见 [README](README.md)。
 
-GUI 默认使用 64 MiB，Web UI 和 Touch UI 默认使用 512 MiB QEMU 内存（`-m 512M`），CLI 为 4 MiB。Web UI 从独立只读卷加载 Blink、V8 和 Node.js。下方历史测试保留各自的内存配置。
 
 ## Touch UI 竖屏版
 
@@ -14,7 +13,7 @@ GUI 默认使用 64 MiB，Web UI 和 Touch UI 默认使用 512 MiB QEMU 内存�
 
 A microkernel with fixed Tier-1 slots, admitted Tier-2 minimum reservations, and best-effort Tier-3 work. Real-time guarantees require bounded interrupt latency and execution costs.
 
-AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中断。还是原型：单核。EL0 应用有独立页表；不带启动参数时的 LVGL 仍是一个内核任务。没有生产级认证。
+AArch64，跑在 QEMU `virt` 上，用真实的 ARM 通用定时器和 GIC 中断。早期原型采用单核。EL0 应用有独立页表；不带启动参数时的 LVGL 仍是一个内核任务。没有生产级认证。
 
 License: [Apache-2.0](LICENSE)
 
