@@ -22,8 +22,8 @@ CLI uses one vCPU. All three graphical editions use two, including on macOS. / C
 | Edition · 发行版 | Environment · 环境 | Default QEMU RAM · 默认内存 | Evidence · 验收 |
 |---|---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | Serial console · 串口 | 4 MiB | [Standalone Test and cold readback](tests/cli-4m/) |
-| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Frame timing](tests/frame-intervals/base.json) |
-| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 512 MiB | [Earlier 1 GiB frame timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
+| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Historical single-core timing](tests/frame-intervals/base.json) |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 512 MiB | [Historical single-core, 1 GiB timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
 | [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 900 × 1600 portrait LVGL · 竖屏触控界面 | 512 MiB | [QEMU touch verification · 模拟器触控验证](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui) |
 
 ## Web UI development · Web UI 开发
@@ -32,7 +32,7 @@ Web UI adds a Tier 3 WAP runtime to the native desktop. The package root contain
 
 Web UI 在原生桌面上增加三级 WAP 运行时。包根目录的 `app.json` 声明三级，`app.html` 提供页面、样式和浏览器端 JS，可选的 `app.js` 提供 Node.js 后台逻辑。Blink 渲染界面，Todo 通过本地消息接口保存和读回任务。
 
-The earlier 1 GiB QEMU profile has separate evidence for WAP cold readback and guest framebuffer timing. / 早期 1 GiB QEMU 配置下，WAP 冷启动读回和虚拟机帧缓冲提交分别有验收记录。
+The earlier single-core, 1 GiB QEMU profile has separate evidence for WAP cold readback and guest framebuffer timing. / 早期单核、1 GiB QEMU 配置下，WAP 冷启动读回和虚拟机帧缓冲提交分别有验收记录。
 
 [Build and boot · 构建与启动](https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建) · [Demo source · 示例源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo) · [Cold readback · 冷启动读回](screenshots/web-node-cold.png) · [Frame timing · 帧间隔](tests/frame-intervals/web.json)
 

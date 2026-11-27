@@ -68,15 +68,18 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <p class="table-note">下方历史测试在单核 ARM64 QEMU 中记录调度周期和来宾帧缓冲提交。各系统在同一硬件上的<span class="keep-together">显示延迟</span>仍待测量。</p>
 </section>
 <section class="wrap section" id="evidence">
-<h2>历史实测：单核下的桌面忙等与仪表帧间隔</h2>
-<p>本次实验使用单核 ARM64 QEMU，GUI 配置 64 MiB，Web UI 配置 1 GiB，各冷启动 100 次。当前 Web UI 默认使用双核、512 MiB。每轮让三级任务忙等 10 秒，同时施加内存和磁盘压力，记录 GPS Speed 和 Flight Camera 每次写完来宾帧缓冲的时刻。</p>
-<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">当次测试配置</th><th scope="col">通过轮数</th><th scope="col">GPS Speed 帧数 / 最大间隔</th><th scope="col">Flight Camera 帧数 / 最大间隔</th></tr></thead><tbody><tr><th scope="row">GUI · 64 MiB</th><td>100 / 100</td><td>100,359 / 10.000 ms</td><td>25,091 / 40.000 ms</td></tr><tr><th scope="row">Web UI · 1 GiB</th><td>100 / 100</td><td>100,755 / 10.000 ms</td><td>25,184 / 40.000 ms</td></tr></tbody></table></div>
+<h2>仪表帧间隔与测试配置</h2>
+<p>当前 GUI 默认双核、64 MiB，Web UI 和 Touch UI 默认双核、512 MiB。GPS Speed 的最大提交间隔目标为 10 ms，Flight Camera 为 40 ms。现有两组 100 轮记录均来自单核镜像，双核配置的同工况成绩尚待公布。</p>
+<details><summary>查看历史单核测试：配置、逐轮结果与截图</summary>
+<p>GUI 和 Web UI 各冷启动 100 次。每轮让三级任务忙等 10 秒，同时施加内存和磁盘压力，以 QEMU 虚拟时钟记录每次来宾帧缓冲提交。</p>
+<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">当次测试配置</th><th scope="col">通过轮数</th><th scope="col">GPS Speed 帧数 / 最大间隔</th><th scope="col">Flight Camera 帧数 / 最大间隔</th></tr></thead><tbody><tr><th scope="row">GUI · 单核 · 64 MiB</th><td>100 / 100</td><td>100,359 / 10.000 ms</td><td>25,091 / 40.000 ms</td></tr><tr><th scope="row">Web UI · 单核 · 1 GiB</th><td>100 / 100</td><td>100,755 / 10.000 ms</td><td>25,184 / 40.000 ms</td></tr></tbody></table></div>
 <div class="table-note">
 <p>按 QEMU icount 虚拟时钟的原始 tick 核对，200 轮中，相邻提交间隔均在各自门限内（<span class="keep-together">10 ms</span> 和 <span class="keep-together">40 ms</span>）。两版均无帧提交超时、二级预算欠付或三级总池超限。</p>
 <p>计时以写完来宾帧缓冲为终点。宿主窗口呈现延迟和物理屏幕刷新延迟仍待测量。</p>
 </div>
 <div class="evidence-grid"><figure><a class="capture" href="screenshots/base-frame-pass.png"><img loading="lazy" width="1280" height="800" src="screenshots/base-frame-pass.png" alt="GUI 第 1 轮：严格帧间隔检查通过"></a><figcaption>GUI 第 1 轮：严格帧间隔检查通过。 <a href="tests/frame-intervals/base-001.log">本轮串口日志</a> · <a href="tests/frame-intervals/base.json">100 轮记录</a></figcaption></figure><figure><a class="capture" href="screenshots/web-frame-pass.png"><img loading="lazy" width="1280" height="800" src="screenshots/web-frame-pass.png" alt="Web UI 第 1 轮：严格帧间隔检查通过"></a><figcaption>Web UI 第 1 轮：严格帧间隔检查通过。 <a href="tests/frame-intervals/web-001.log">本轮串口日志</a> · <a href="tests/frame-intervals/web.json">100 轮记录</a></figcaption></figure></div>
-<h3 id="music-pressure">Music Player 空闲与受压实测</h3>
+</details>
+<h3 id="music-pressure">Music Player 历史单核压力测试</h3>
 <p>空闲时，Music Player 用三级剩余算力尽快提交。三级 CPU、内存、磁盘同时受压后，两版的整段平均分别降到 204.5 FPS 和 198.9 FPS。两版均记录到一级零遗漏、二级零欠配额，GPS Speed 和 Flight Camera 最大提交间隔为 10 ms 和 40 ms。</p>
 <div class="evidence-grid"><figure><a class="capture" href="screenshots/music-pressure-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-ui.png" alt="GUI · 左：空闲 480 FPS。右：受压采样 80 FPS。"></a><figcaption>GUI · 左：空闲 480 FPS。右：受压采样 80 FPS。</figcaption></figure><figure><a class="capture" href="screenshots/music-pressure-web-ui.png"><img loading="lazy" width="748" height="140" src="screenshots/music-pressure-web-ui.png" alt="Web UI · 左：空闲 448 FPS。右：受压采样 197 FPS。"></a><figcaption>Web UI · 左：空闲 448 FPS。右：受压采样 197 FPS。</figcaption></figure></div>
 <p>FPS 为来宾提交速率。<a href="https://github.com/leiquan/Quota-OS/tree/Web-UI/docs/tests/music-pressure">完整结果与复现步骤</a> · <a href="tests/music-pressure/ui.log">GUI 日志</a> · <a href="tests/music-pressure/web-ui.log">Web UI 日志</a></p>

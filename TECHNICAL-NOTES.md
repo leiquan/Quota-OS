@@ -4,6 +4,8 @@
 
 CLI 单核 4 MiB，GUI 双核 64 MiB，Web UI 与 Touch UI 均为双核 512 MiB。普通启动与 macOS 入口一致。文中复现实验的命令使用当时的镜像、CPU 和内存；各版当前启动命令见 [README](README.md)。
 
+已归档的两组 100 轮帧间隔记录采用单核 GUI（64 MiB）和单核 Web UI（1 GiB）。逐轮数据记录的是来宾帧缓冲提交；当前双核默认配置需要单独验收。[GUI 逐轮数据](docs/tests/frame-intervals/base.json) · [Web UI 逐轮数据](docs/tests/frame-intervals/web.json)
+
 ## Touch UI 竖屏版
 
 [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) 与 CLI、UI、Web UI 共用 ARM64 配额内核，提供 900 × 1600 LVGL 竖屏和全屏应用。底部 Bar 支持单次返回、双次回主屏并保留应用现场。当前触控证据来自 QEMU 虚拟平板，实体屏和多点触控待验证。[输入链路与验证范围](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui)
