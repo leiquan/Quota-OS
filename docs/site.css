@@ -78,7 +78,7 @@ figcaption,.edition-pair p { font-size: .94rem; line-height: 1.6; padding: 3px 4
 .controls output { min-width: 4ch; margin-inline: 4px; text-align: center; font-variant-numeric: tabular-nums; }
 .controls output,.platform dt { color: var(--muted); font-size: .82rem; }
 .platform-title,.platform { grid-column: 1/-1; }
-.platform-title { margin: clamp(32px, 5vw, 64px) 0 12px; font-size: 1.05rem; }
+.platform-title { margin: clamp(32px, 5vw, 64px) 0 12px; }
 .platform { grid-template-columns: .75fr 1.3fr .6fr .95fr 1.15fr 1.65fr; border: 1px solid var(--line); border-bottom: 0; padding: 16px clamp(12px, 2vw, 24px); background: var(--surface); }
 .platform dd { margin: 4px 0 0; font-size: .93rem; }
 .platform div:first-child dd { font-weight: 660; }
