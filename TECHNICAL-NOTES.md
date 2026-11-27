@@ -4,6 +4,8 @@
 
 CLI 单核 4 MiB，GUI 双核 64 MiB，Web UI 与 Touch UI 均为双核 512 MiB。普通启动与 macOS 入口一致。文中复现实验的命令使用当时的镜像、CPU 和内存；各版当前启动命令见 [README](README.md)。
 
+已归档的两组 100 轮帧间隔记录采用单核 GUI（64 MiB）和单核 Web UI（1 GiB）。逐轮数据记录的是来宾帧缓冲提交；当前双核默认配置需要单独验收。[GUI 逐轮数据](docs/tests/frame-intervals/base.json) · [Web UI 逐轮数据](docs/tests/frame-intervals/web.json)
+
 ## Touch UI
 
 ### 策略与输入链路
