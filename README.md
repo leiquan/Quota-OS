@@ -63,7 +63,7 @@ bash tools/run-macos-gui.sh build/quotaos-lvgl.bin
 | 底部 Bar 双击或连续向上滑两次 | 回主屏，保留当前应用现场 |
 | 移动或按下 QEMU 鼠标 | 圆形指针跟随，按下时变蓝 |
 
-`run-files.sh` 以 `apps-video` 启动模拟版 GPS Speed、Flight Camera 和 Music Player，并为 Notes 创建数据盘。macOS 普通启动模式会将这三个演示图标置灰。
+普通和 macOS 启动入口默认使用 2 vCPU、512 MiB，并为 Notes 和 ext4 根目录各建一块盘。默认启动原生 LVGL。已准备 Touch 运行时卷时，可用 `bash tools/run-web-node-volume.sh` 启用来宾 Web 运行时。四版命令、镜像哈希和原始串口日志见[发布验收归档](docs/tests/release-2026-11-27/README.md)。
 
 QEMU 虚拟平板已覆盖四角坐标、单双手势和切回 Notes 后草稿及对话框的恢复。多触点事件解析、实体触摸屏驱动、校准和端到端延迟仍待验证。
 

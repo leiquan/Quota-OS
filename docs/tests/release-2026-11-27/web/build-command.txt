@@ -1,0 +1,6 @@
+In the isolated Web UI branch at 88dbca8:
+export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+env -u EXTRA_CFLAGS -u QUOTA_DESKTOP_SMP QUOTA_LLVM_BIN=/opt/homebrew/opt/llvm/bin QUOTA_LLD=/opt/homebrew/bin/ld.lld bash tools/build-lvgl-guest.sh
+The standard Linux WAP volume build enables the metered EL0 CPU1 worker.
+Cold tracing was not defined. A one-vCPU guest retains the existing CPU0
+checksum fallback. Both standard root and application disks are separate.

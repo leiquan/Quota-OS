@@ -1,0 +1,34 @@
+[
+  [
+    {
+      "thread-id": 13983,
+      "qom-type": "cortex-a35-arm-cpu",
+      "props": {
+        "core-id": 0,
+        "thread-id": 0,
+        "socket-id": 0,
+        "cluster-id": 0
+      },
+      "qom-path": "/machine/unattached/device[0]",
+      "cpu-index": 0,
+      "target": "aarch64"
+    },
+    {
+      "thread-id": 13983,
+      "qom-type": "cortex-a35-arm-cpu",
+      "props": {
+        "core-id": 1,
+        "thread-id": 0,
+        "socket-id": 0,
+        "cluster-id": 0
+      },
+      "qom-path": "/machine/unattached/device[1]",
+      "cpu-index": 1,
+      "target": "aarch64"
+    }
+  ],
+  {
+    "base-memory": 536870912,
+    "plugged-memory": 0
+  }
+]

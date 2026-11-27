@@ -1,0 +1,36 @@
+{
+  "worker": {
+    "index": 0,
+    "affinity": 1,
+    "period": 27458,
+    "first": 17167737705,
+    "last": 17167753352,
+    "ticks": 15647,
+    "grant": 62500,
+    "overlap": 15647,
+    "iterations": 0,
+    "compare": 17167768955,
+    "trap": 17167753349
+  },
+  "wave": {
+    "period": 27458,
+    "cpu0_t3": 423600,
+    "remote": 15647,
+    "total": 439247,
+    "cap": 446747,
+    "period_end": 17168125000,
+    "dropped": 0,
+    "finished": 1
+  },
+  "todo_generation": 2,
+  "bytes": 18,
+  "fnv": 2473460266,
+  "window": {
+    "begin": 16973797152,
+    "end": 17602816699,
+    "speed": 1007,
+    "camera": 251,
+    "prev_speed": 16973205542,
+    "prev_camera": 16973770415
+  }
+}

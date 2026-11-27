@@ -1,0 +1,136 @@
+{
+  "passed": true,
+  "errors": [],
+  "violation_count": 0,
+  "frame_window": {
+    "begin": 23964583521,
+    "end": 25900637738,
+    "speed": 3097,
+    "camera": 774,
+    "prev_speed": 23964463526,
+    "prev_camera": 23964406813
+  },
+  "streams": {
+    "speed": {
+      "frames": 3097,
+      "limit_ticks": 625000,
+      "max_gap_ticks": 625000,
+      "max_latency_ticks": 26026
+    },
+    "camera": {
+      "frames": 774,
+      "limit_ticks": 2500000,
+      "max_gap_ticks": 2500000,
+      "max_latency_ticks": 31813
+    }
+  },
+  "tick_hz": 62500000,
+  "periods": 3097,
+  "remote_periods": 1,
+  "health": {
+    "speed_deadlines": 0,
+    "camera_missed": 0,
+    "tier2_shortfalls": 0,
+    "tier3_over": 0
+  },
+  "remote_leases": [
+    {
+      "worker": {
+        "index": 0,
+        "affinity": 1,
+        "period": 38294,
+        "first": 23965767461,
+        "last": 23965814379,
+        "ticks": 46918,
+        "grant": 62500,
+        "overlap": 46918,
+        "iterations": 5835,
+        "compare": 23965798711,
+        "trap": 23965814333
+      },
+      "wave": {
+        "period": 38294,
+        "cpu0_t3": 285628,
+        "remote": 46918,
+        "total": 332546,
+        "cap": 340036,
+        "period_end": 23966250000,
+        "dropped": 0,
+        "finished": 1
+      }
+    }
+  ],
+  "memory": {
+    "concurrent_memory_sweeps": 2950,
+    "bytes_per_sweep": 65536
+  },
+  "physical_ops": {
+    "8": 1,
+    "0": 107,
+    "1": 87,
+    "4": 35
+  },
+  "input_steps": 3,
+  "page_frames": 4,
+  "stage_counts": {
+    "0": 6,
+    "1": 4,
+    "2": 4
+  },
+  "overlapping_scroll": [
+    {
+      "generation": 12,
+      "begin": 23965258703,
+      "display": 24464642094,
+      "disk_ops": {
+        "8": 1,
+        "0": 34,
+        "1": 22,
+        "4": 9
+      }
+    },
+    {
+      "generation": 13,
+      "begin": 23965258703,
+      "display": 24613332564,
+      "disk_ops": {
+        "8": 1,
+        "0": 47,
+        "1": 22,
+        "4": 9
+      }
+    },
+    {
+      "generation": 14,
+      "begin": 23965258703,
+      "display": 24772621671,
+      "disk_ops": {
+        "8": 1,
+        "0": 54,
+        "1": 34,
+        "4": 13
+      }
+    },
+    {
+      "generation": 15,
+      "begin": 23965258703,
+      "display": 24868392391,
+      "disk_ops": {
+        "8": 1,
+        "0": 55,
+        "1": 44,
+        "4": 18
+      }
+    }
+  ],
+  "visual": {
+    "in_window": [
+      25,
+      24
+    ],
+    "final": [
+      72,
+      26
+    ]
+  }
+}

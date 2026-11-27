@@ -1,0 +1,14 @@
+[
+  "/bin/bash",
+  "tools/run-web-node-volume.sh",
+  "-display",
+  "none",
+  "-qmp",
+  "stdio",
+  "-append",
+  "apps-touch-ext4",
+  "-set",
+  "drive.root.throttling.iops-total=25",
+  "-icount",
+  "shift=4,sleep=off"
+]

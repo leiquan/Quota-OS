@@ -1,0 +1,36 @@
+{
+  "runtime_disk_reads": {
+    "runtime_reads_before": 25890,
+    "runtime_reads_after": 26135,
+    "require_runtime_reads": false
+  },
+  "pressure": {
+    "periods": 1006,
+    "cpu_peak_us": 3677,
+    "memory_reserved_kib": 217704,
+    "memory_available_kib": 0,
+    "working_set_kib": 72,
+    "disk_submitted": 471,
+    "disk_completed": 470
+  },
+  "load": {
+    "t1_misses": 0,
+    "t2_short": 0,
+    "t2_over": 0,
+    "t3_over": 0,
+    "t3_throttled": 1006
+  },
+  "periods": 1005,
+  "streams": {
+    "speed": {
+      "frames": 1007,
+      "max_gap_ticks": 625000,
+      "max_latency_ticks": 18042
+    },
+    "camera": {
+      "frames": 251,
+      "max_gap_ticks": 2500000,
+      "max_latency_ticks": 20415
+    }
+  }
+}

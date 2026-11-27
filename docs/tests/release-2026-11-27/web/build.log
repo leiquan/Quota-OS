@@ -1,0 +1,15 @@
+banner parent 88dbca8
+linked   925248 bytes
+00000000433c1590 B __image_end
+000000004013b638 T lvgl_demo_run
+0000000040161908 r lvgl_demo_run.accent
+00000000401618f0 r lvgl_demo_run.captions
+0000000040161914 r lvgl_demo_run.catalog
+00000000433afbd8 b lvgl_demo_run.d
+0000000040161818 r lvgl_demo_run.info_names
+00000000401617c8 r lvgl_demo_run.outer_wave
+00000000433afcc0 b lvgl_demo_run.previous_disk_status
+00000000433af818 b lvgl_demo_run.shown
+00000000433afd28 b lvgl_demo_run.tasks_at
+00000000433af9f8 b lvgl_demo_run.text
+00000000401618d8 r lvgl_demo_run.tiers

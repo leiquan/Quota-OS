@@ -1,0 +1,7 @@
+{
+  "display_max_gap": 625000,
+  "speed_late_gaps": 0,
+  "video_late_gaps": 0,
+  "video_max_gap": 2500000,
+  "video_missed": 0
+}

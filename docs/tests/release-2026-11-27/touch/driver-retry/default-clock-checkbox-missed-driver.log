@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/Users/leiquan/.codex/worktrees/touch-wap-timing-sync/quota-os/build/release-evidence/touch/check.py", line 239, in <module>
+    if current_record()[1]==[[marker,True]]:
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/leiquan/.codex/worktrees/touch-wap-timing-sync/quota-os/build/release-evidence/touch/check.py", line 64, in until
+    raise TimeoutError(label)
+TimeoutError: cold Todo readback and checkbox

@@ -1,0 +1,25 @@
+admin | Set password: 
+admin | Confirm password: 
+Passwords do not match.
+admin | Set password: 
+admin | Confirm password: 
+admin | Password: 
+Quota OS CLI 016 | ARM64 | 4096 KiB RAM
+Common commands: ls, mem, tasks, run test.c. Type help for all commands.
+quota> tasks
+timer-server tier=1 jobs=28 misses=0
+idle tier=0 jobs=0 misses=0
+shell tier=3 jobs=0 misses=0
+quota> write admin-session-note
+Saved
+quota> logout
+[2J[Hadmin | Password: 
+Incorrect password.
+admin | Password: 
+Quota OS CLI 016 | ARM64 | 4096 KiB RAM
+Common commands: ls, mem, tasks, run test.c. Type help for all commands.
+quota> cat Note.txt
+admin-session-note
+quota> events
+period=881 tier1_misses=0 tier2_short=0 tier3_over=0
+quota> 

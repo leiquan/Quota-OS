@@ -1,0 +1,177 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM window 0x40000000-0x80000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 4 pool 65536 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x4017d000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (86699a5)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x48000000 physical RAM span 512 MB (probed)
+[boot] DTB at 0x48000000
+[boot] DTB snapshot 8116 bytes (header said 1048576)
+[boot] DTB memory 536870912 bytes
+[boot] system reserve 350 us/period, 59392 KB;
+       tier-1 1550 us/period, 13316 KB; guard 100 us/period
+[boot] system reserve grew from 16384 KB to 59392 KB to hold the image and framebuffer; tier-1 declarations unchanged
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 6 own colors, padding 73852 KB
+[proc] shared-color frames 65520, 262080 KiB physical capacity
+[boot] kernel image+bss 52817 KB of the 59392 KB system reserve
+[boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
+[boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
+[smp] workers=1 discovered=2
+[clock-probe] loops=16389,16389,16389 instructions_per_tick=1
+[boot] clock: icount (counter driven by instruction count)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 396/400 us, stop 7/20 us (measured/declared)
+[dev] sim-blk: job 1991/2000 us, stop 1770/2000 us (measured/declared)
+[dev] sim-cam: job 291/300 us, stop 8/30 us (measured/declared)
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 display-vsync and timer-server bound to their slots
+[boot] slot table from tick 31875000, period 625000 ticks, guard 1250 ticks
+[boot] shell task running
+[fb] reserved 5760000 bytes at 0x4347a000 inside the system reserve
+[fb] ramfb published 900x1600 stride 3600 at 0x4347a000 from fw_cfg 0x9020000
+[map] pid=5 handle=0x10001 gen=1 asid=1 ttbr=0x10000410eb000 draw_pa=0x4c508000
+[map] pte code=0x4c506fc3 stack=0x6000004c507f43 draw=0x6000004c508f43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x4c506fc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4c506fc3 ap_el0=1
+[apps] dashboard tier=1 slot=0; music tier=3 EL0; video=1
+[lvgl] autostart on the Tier-3 shell task
+[lvgl] this task does not mask IRQs and it is not a tier-1 slot.
+[lvgl] one kernel task. It is not an EL0 process. Three-tier hardware isolation is not claimed.
+[admit] lvgl heap 256 KB draw 168 KB framebuffer 5625 KB, fixed, pool expand 0
+[admit] oversubscription probe 1
+REFUSED: device does not meet minimum requirements
+  minimum memory 4294967295 KB > 377728 KB for apps
+  (RAM 524288 KB - system reserve - tier-1 - color padding)
+No app can be closed to make room: this device is too small.
+[admit] lvgl-demo accepted 425 KB. cpu_min is 0. The shell stays tier 3.
+[fb] ramfb published 900x1600 stride 3600 at 0x4347a000 from fw_cfg 0x9020000
+[input] virtio-mmio nodes 32 queue cap 32
+[input] keyboard "QEMU Virtio Keyboard" base 0xa003400 queue 8 abs 0 range x 0..0 y 0..0
+[input] pointer "QEMU Virtio Tablet" base 0xa003e00 queue 8 abs 1 range x 0..32767 y 0..32767
+[lvgl] upstream 9.3.0 heap 262144 draw 172800
+[desktop] ready: fullscreen apps and bottom navigation bar
+[desktop] size 900x1600
+[lvgl] tests box 390,452 120x79
+[lvgl] activity box 12,95 136x38
+[lvgl] launcher box 127,1446 120x67
+[lvgl] cover box 447,95 136x38
+[lvgl] back box 28,320 440x38
+[lvgl] clear box 28,1452 112x56
+[menu] serial 6 10 13 14 15 16 18 stay on the coverage page
+[session] state=0 t1_misses=0 t2_short=0 frames=96,24 long=0,0
+[lvgl] ready
+[files] mounted bytes=0 checksum=0
+[session] state=1 t1_misses=0 t2_short=0 frames=194,49 long=0,0
+[lvgl] fb commit key 7323 us n=1 (not panel light)
+[apps] during 100 periods: dashboard_frames=99 misses=0 video_frames=0 music_submits=444
+[apps] FAIL
+QA DONE
+[lvgl] fb commit key 8759 us n=2 (not panel light)
+[lvgl] fb commit key 8890 us n=3 (not panel light)
+[lvgl] fb commit key 8110 us n=4 (not panel light)
+[lvgl] fb commit key 7597 us n=5 (not panel light)
+[lvgl] fb commit key 9282 us n=6 (not panel light)
+[lvgl] fb commit key 7858 us n=7 (not panel light)
+[lvgl] fb commit key 9543 us n=8 (not panel light)
+[lvgl] fb commit key 8835 us n=9 (not panel light)
+[lvgl] fb commit key 8740 us n=10 (not panel light)
+[lvgl] fb commit key 76114 us n=11 (not panel light)
+[session] state=2 t1_misses=0 t2_short=0 frames=1362,309 long=0,0
+[lvgl] fb commit key 7712 us n=12 (not panel light)
+[lvgl] fb commit key 7541 us n=13 (not panel light)
+[lvgl] fb commit key 8166 us n=14 (not panel light)
+[lvgl] fb commit key 8427 us n=15 (not panel light)
+[lvgl] fb commit key 8557 us n=16 (not panel light)
+[lvgl] fb commit key 8064 us n=16 (not panel light)
+[lvgl] fb commit key 9181 us n=16 (not panel light)
+[lvgl] fb commit key 8950 us n=16 (not panel light)
+[lvgl] fb commit key 9023 us n=16 (not panel light)
+[lvgl] fb commit key 9639 us n=16 (not panel light)
+[lvgl] fb commit key 74788 us n=16 (not panel light)
+[session] state=3 t1_misses=0 t2_short=0 frames=2589,616 long=0,0
+[session] state=4 t1_misses=0 t2_short=0 frames=2612,621 long=0,0
+[lvgl] fb commit key 8150 us n=16 (not panel light)
+[lvgl] fb commit key 8997 us n=16 (not panel light)
+[lvgl] fb commit key 9128 us n=16 (not panel light)
+[lvgl] fb commit key 8896 us n=16 (not panel light)
+[lvgl] fb commit key 8897 us n=16 (not panel light)
+[lvgl] fb commit key 8558 us n=16 (not panel light)
+[lvgl] fb commit key 9181 us n=16 (not panel light)
+[lvgl] fb commit key 9313 us n=16 (not panel light)
+[lvgl] fb commit key 9513 us n=16 (not panel light)
+[lvgl] fb commit key 9532 us n=16 (not panel light)
+[lvgl] fb commit key 75252 us n=16 (not panel light)
+[session] state=5 t1_misses=0 t2_short=0 frames=3833,926 long=0,0
+[files] default todo.wap queued
+[files] verified slot=6 generation=1 bytes=3853 checksum=3138848325
+[input] raw ptr type 3 code 0 value 1713
+[input] raw ptr type 3 code 1 value 1926
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 46,93 down 0
+[input] raw ptr type 1 code 272 value 1
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 15157 us n=1 (not panel light)
+[system] context tier=0 start=0
+[input] raw ptr type 1 code 272 value 0
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 46,93 down 0
+[input] raw ptr type 3 code 0 value 1713
+[input] raw ptr type 3 code 1 value 1926
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 46,93 down 0
+[input] raw ptr type 1 code 272 value 1
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 5023 us n=2 (not panel light)
+[lvgl] pointer 46,93 down 0
+[files] todo.wap removal queued
+[worker] index=0 affinity=1 period=4636 first=2929773349 last=2929789062 ticks=15713 grant=62500 overlap=15713 iterations=0 compare=2929804599 trap=2929789038
+[wave] period=4636 cpu0_t3=423151 remote=15713 total=438864 cap=446361 period_end=2930000000 dropped=0 finished=1
+[smp] periods=3 cpu0_over=0 assigned=1 worst_period=0 excess=0
+[record-hash] cpu=1 bytes=0 fnv=118251589
+[files] verified slot=6 generation=2 bytes=0 checksum=118251589
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 3643 us n=3 (not panel light)
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 13613 us n=4 (not panel light)
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 3523 us n=5 (not panel light)
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 3810 us n=6 (not panel light)
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 8827 us n=7 (not panel light)
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 3091 us n=8 (not panel light)
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 3090 us n=9 (not panel light)
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 3821 us n=10 (not panel light)
+[lvgl] pointer 46,93 down 0

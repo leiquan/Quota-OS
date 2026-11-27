@@ -1,0 +1,21 @@
+[
+  {
+    "boot": 1,
+    "pid": 77837,
+    "ram_bytes": 536870912,
+    "prelaunch_runtime_read_bytes": 0,
+    "generation": 2,
+    "tier1_miss_max": 0,
+    "tier2_short_max": 0
+  },
+  {
+    "boot": 2,
+    "pid": 80624,
+    "ram_bytes": 536870912,
+    "prelaunch_runtime_read_bytes": 0,
+    "generation": 4,
+    "tier1_miss_max": 0,
+    "tier2_short_max": 0,
+    "cold_trace_count": 0
+  }
+]

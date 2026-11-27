@@ -1,0 +1,30 @@
+{
+  "hz": 62500000,
+  "periods": 1007,
+  "streams": {
+    "speed": {
+      "frames": 1009,
+      "max_gap_ticks": 625000
+    },
+    "camera": {
+      "frames": 252,
+      "max_gap_ticks": 2500000
+    }
+  },
+  "health": {
+    "t1_misses": 0,
+    "t2_short": 0,
+    "t2_over": 0,
+    "t3_over": 0,
+    "t3_throttled": 122
+  },
+  "pressure": {
+    "periods": 1008,
+    "cpu_peak_us": 3543,
+    "memory_reserved_kib": 24491,
+    "memory_available_kib": 0,
+    "working_set_kib": 72,
+    "disk_submitted": 83,
+    "disk_completed": 82
+  }
+}

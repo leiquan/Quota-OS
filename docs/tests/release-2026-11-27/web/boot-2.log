@@ -1,0 +1,787 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM window 0x40000000-0x80000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 4 pool 65536 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x4017b000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (88dbca8)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x48000000 physical RAM span 512 MB (probed)
+[boot] DTB at 0x48000000
+[boot] DTB snapshot 8112 bytes (header said 1048576)
+[boot] DTB memory 536870912 bytes
+[boot] system reserve 350 us/period, 59392 KB;
+       tier-1 1550 us/period, 13316 KB; guard 100 us/period
+[boot] system reserve grew from 16384 KB to 59392 KB to hold the image and framebuffer; tier-1 declarations unchanged
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 6 own colors, padding 73852 KB
+[proc] shared-color frames 65520, 262080 KiB physical capacity
+[boot] kernel image+bss 52485 KB of the 59392 KB system reserve
+[boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
+[boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
+[smp] workers=1 discovered=2
+[clock-probe] loops=2048,2049,2049 instructions_per_tick=8
+[boot] clock: icount (counter driven by instruction count)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 396/400 us, stop 7/20 us (measured/declared)
+[dev] sim-blk: job 1991/2000 us, stop 1769/2000 us (measured/declared)
+[dev] sim-cam: job 291/300 us, stop 7/30 us (measured/declared)
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 display-vsync and timer-server bound to their slots
+[boot] slot table from tick 6250000, period 625000 ticks, guard 1250 ticks
+[boot] shell task running
+[fb] reserved 5760000 bytes at 0x4347a000 inside the system reserve
+[fb] ramfb published 1600x900 stride 6400 at 0x4347a000 from fw_cfg 0x9020000
+[map] pid=5 handle=0x10001 gen=1 asid=1 ttbr=0x100004109c000 draw_pa=0x4c508000
+[map] pte code=0x4c506fc3 stack=0x6000004c507f43 draw=0x6000004c508f43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x4c506fc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x0 ap_el0=0
+[apps] dashboard tier=1 slot=0; music tier=3 EL0; video=1
+[lvgl] autostart on the Tier-3 shell task
+[lvgl] this task does not mask IRQs and it is not a tier-1 slot.
+[lvgl] one kernel task. It is not an EL0 process. Three-tier hardware isolation is not claimed.
+[admit] lvgl heap 320 KB draw 300 KB framebuffer 5625 KB, fixed, pool expand 0
+[admit] oversubscription probe 1
+REFUSED: device does not meet minimum requirements
+  minimum memory 4294967295 KB > 377728 KB for apps
+  (RAM 524288 KB - system reserve - tier-1 - color padding)
+No app can be closed to make room: this device is too small.
+[admit] lvgl-demo accepted 620 KB. cpu_min is 0. The shell stays tier 3.
+[fb] ramfb published 1600x900 stride 6400 at 0x4347a000 from fw_cfg 0x9020000
+[input] virtio-mmio nodes 32 queue cap 32
+[input] keyboard "QEMU Virtio Keyboard" base 0xa003400 queue 8 abs 0 range x 0..0 y 0..0
+[input] pointer "QEMU Virtio Tablet" base 0xa003600 queue 8 abs 1 range x 0..32767 y 0..32767
+[lvgl] upstream 9.3.0 heap 327680 draw 307200
+[desktop] ready: windows, drag title bars, close/minimize, dock restore
+[desktop] size 1600x900
+[lvgl] tests box 345,419 120x79
+[lvgl] activity box 101,180 136x38
+[lvgl] launcher box 543,810 120x67
+[lvgl] cover box 746,0 108x40
+[lvgl] back box 339,486 440x38
+[lvgl] clear box 289,522 112x40
+[menu] serial 6 10 13 14 15 16 18 stay on the coverage page
+[lvgl] ready
+[session] state=0 t1_misses=0 t2_short=0 frames=11,2 long=0,0
+[files] mounted bytes=0 checksum=0
+[session] state=4 t1_misses=0 t2_short=0 frames=30,7 long=0,0
+[lvgl] fb commit key 12843 us n=1 (not panel light)
+[lvgl] fb commit key 1035 us n=2 (not panel light)
+[lvgl] fb commit key 735 us n=3 (not panel light)
+[lvgl] fb commit key 742 us n=4 (not panel light)
+[lvgl] fb commit key 764 us n=5 (not panel light)
+[lvgl] fb commit key 775 us n=6 (not panel light)
+[lvgl] fb commit key 792 us n=7 (not panel light)
+[lvgl] fb commit key 817 us n=8 (not panel light)
+[lvgl] fb commit key 824 us n=9 (not panel light)
+[lvgl] fb commit key 1262 us n=10 (not panel light)
+[lvgl] fb commit key 932 us n=11 (not panel light)
+[lvgl] fb commit key 880 us n=12 (not panel light)
+[apps] during 100 periods: dashboard_frames=100 misses=0 video_frames=0 music_submits=500
+[apps] PASS
+QA DONE
+[lvgl] fb commit key 8611 us n=13 (not panel light)
+[session] state=5 t1_misses=0 t2_short=0 frames=149,11 long=0,0
+[system-status-frame] generation=1 release=69312500 sample=69312599 commit=112055329 busy=52005532 window=62500000 reserved_kib=147212 total_kib=524288 tasks=6 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[system-status-frame] generation=2 release=131812500 sample=131812599 commit=137981349 busy=52021309 window=62500000 reserved_kib=147212 total_kib=524288 tasks=6 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[input] raw ptr type 3 code 0 value 922
+[input] raw ptr type 3 code 1 value 5030
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 44,138 down 0
+[input] raw ptr type 1 code 272 value 1
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 44,138 down 1
+[lvgl] fb commit click 32949 us n=1 (not panel light)
+[input] raw ptr type 1 code 272 value 0
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 44,138 down 0
+[menu] button 240
+[input] raw ptr type 3 code 0 value 922
+[input] raw ptr type 3 code 1 value 5030
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 44,138 down 0
+[input] raw ptr type 1 code 272 value 1
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 44,138 down 1
+[lvgl] fb commit click 1085 us n=2 (not panel light)
+[lvgl] pointer 44,138 down 0
+[menu] button 240
+[wap] launch entries tier=3 ui=app.html bytes=1420 backend=app.js bytes=297
+[wap] page process handle=-1
+[system-status-frame] generation=3 release=194312500 sample=194312599 commit=199725372 busy=52021478 window=62500000 reserved_kib=147292 total_kib=524288 tasks=6 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[runtime-volume] index ready: 303 files, 374099968 bytes, 16 cache pages, Tier 3 charge=80 KiB
+[wap-volume] ELF quota-blink bytes=74240 entry=1ae00 loads=4 text=ae00 sample=d280001d
+[wap-volume] ELF libv8.so bytes=54948352 entry=0 loads=4 text=ae7b00 sample=d0014a20
+[wap-volume] ELF node bytes=23106072 entry=e64d10 loads=4 text=e54d10 sample=d280001d
+[wap-volume] interpreter ready bytes=201416 entry=1001a340
+[wap-volume] runtime catalog ready files=303
+[map] pid=7 handle=0x10002 gen=1 asid=2 ttbr=0x200004109d000 draw_pa=0x4c51b000
+[map] pte code=0x4c519fc3 stack=0x0 draw=0x6000004c51bf43 ap_el0=1/0/1
+[map] walk kern=0x0 pte=0x4c519fc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4c519fc3 ap_el0=1
+[map] pid=8 handle=0x10003 gen=1 asid=3 draw_pa=0x4c887000
+[wap] launched pair frontend=65538 backend=65539 ipc_fd=3
+[wap] opened runtime library libbase_i18n.so
+[wap] opened runtime library libnode_deps_uv.so
+[wap] opened runtime library libv8.so
+[wap] opened runtime library libgin.so
+[wap] opened runtime library libui_base.so
+[wap] opened runtime library libmojo_core_embedder.so
+[wap] opened runtime library libbase.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_raw_ptr.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_base.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_core.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_shim.so
+[wap] opened runtime library libthird_party_abseil-cpp_absl.so
+[wap] opened runtime library libskia.so
+[system-status-frame] generation=4 release=256812500 sample=256812600 commit=262412626 busy=51921024 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libcc_paint.so
+[wap] opened runtime library libmojo_public_cpp_bindings.so
+[wap] opened runtime library libmojo_public_cpp_bindings_bindings_base.so
+[wap] opened runtime library libmojo_public_system.so
+[wap] opened runtime library libblink_core.so
+[wap] opened runtime library libthird_party_abseil-cpp_absl.so
+[wap] opened runtime library libv8_libplatform.so
+[wap] opened runtime library libthird_party_icu_icui18n.so
+[system-status-frame] generation=5 release=319312500 sample=319312600 commit=324841763 busy=49980990 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libicuuc.so
+[wap] opened runtime library libnode_deps_cares.so
+[wap] opened runtime library libnode_deps_nghttp2.so
+[wap] opened runtime library libchrome_zlib.so
+[wap] opened runtime library libc++.so
+[wap] opened runtime library libdl.so.2
+[wap] opened runtime library libpthread.so.0
+[wap] opened runtime library libm.so.6
+[wap] opened runtime library libc.so.6
+[wap] opened runtime library libv8_libbase.so
+[wap] opened runtime library libthird_party_perfetto_libperfetto.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_shim.so
+[wap] opened runtime library libgcc_s.so.1
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_base.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_core.so
+[wap] unsupported Linux syscall=99 pc=0x1000f838
+[wap] unsupported Linux syscall=293 pc=0x1000f8dc
+[wap] opened runtime library liburl.so
+[wap] opened runtime library libmojom_platform_shared.so
+[system-status-frame] generation=6 release=381812500 sample=381812600 commit=387324871 busy=50415547 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libblink_common.so
+[wap] opened runtime library libblink_platform_wtf.so
+[wap] opened runtime library libblink_platform.so
+[system-status-frame] generation=7 release=444312500 sample=444312600 commit=449828791 busy=50136368 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libv8.so
+[system-status-frame] generation=8 release=506812500 sample=506812600 commit=512328534 busy=50286854 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libblink_controller.so
+[wap] opened runtime library libc++.so
+[wap] opened runtime library libpthread.so.0
+[wap] opened runtime library libc.so.6
+[system-status-frame] generation=9 release=569312500 sample=569312600 commit=574831806 busy=50208953 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libthird_party_icu_icui18n.so
+[wap] opened runtime library libicuuc.so
+[wap] opened runtime library libui_base_features.so
+[wap] opened runtime library libui_base_ui_data_pack.so
+[wap] opened runtime library libui_color.so
+[wap] opened runtime library libui_gfx.so
+[wap] opened runtime library libui_gfx_geometry.so
+[wap] opened runtime library libui_base_file_info.so
+[wap] opened runtime library libui_events_events_base.so
+[wap] opened runtime library libui_events_platform.so
+[wap] opened runtime library libnet.so
+[system-status-frame] generation=10 release=631812500 sample=631812600 commit=637415991 busy=49927103 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libchrome_zlib.so
+[wap] opened runtime library libui_base_data_exchange.so
+[wap] opened runtime library libui_base_clipboard_types.so
+[wap] opened runtime library libui_display.so
+[wap] opened runtime library libui_events.so
+[wap] opened runtime library libui_events_devices.so
+[wap] opened runtime library libui_lottie.so
+[wap] opened runtime library libthird_party_perfetto_libperfetto.so
+[wap] opened runtime library libui_gfx_codec.so
+[system-status-frame] generation=11 release=694312500 sample=694312600 commit=699913960 busy=50036978 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libui_base_data_transfer_policy.so
+[wap] opened runtime library libmojo_core_embedder_internal.so
+[wap] opened runtime library libmojo_cpp_platform.so
+[wap] opened runtime library libmojo_core_embedder_features.so
+[wap] opened runtime library libthird_party_boringssl.so
+[wap] opened runtime library libdl.so.2
+[wap] opened runtime library libm.so.6
+[wap] opened runtime library libgcc_s.so.1
+[wap] opened runtime library libskia_skia_switches.so
+[wap] opened runtime library libthird_party_fontconfig.so
+[wap] opened runtime library libthird_party_harfbuzz-ng.so
+[system-status-frame] generation=12 release=756812500 sample=756812600 commit=762334163 busy=49939998 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libdawn_proc.so
+[wap] opened runtime library libthird_party_freetype.so
+[wap] opened runtime library libexpat.so.1
+[wap] opened runtime library libcc_base.so
+[wap] opened runtime library libcc_debug.so
+[wap] opened runtime library libui_gfx_color_space.so
+[wap] opened runtime library libui_gfx_geometry_geometry_skia.so
+[wap] opened runtime library libui_gfx_gfx_skia.so
+[wap] opened runtime library libui_gfx_animation.so
+[wap] opened runtime library libgpu_mailbox.so
+[wap] opened runtime library libipc_message_support.so
+[wap] opened runtime library libmojo_public_system_cpp.so
+[wap] opened runtime library libmojo_mojom_bindings.so
+[system-status-frame] generation=13 release=819312500 sample=819312600 commit=824835912 busy=49932114 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libmojo_mojom_bindings_shared.so
+[wap] opened runtime library libcc.so
+[wap] opened runtime library libui_accessibility_ax_base.so
+[wap] opened runtime library libui_base_cursor_base.so
+[wap] opened runtime library libcomponents_attribution_reporting.so
+[wap] opened runtime library libperformance_manager_public_mojom_blink.so
+[wap] opened runtime library libservices_metrics_public_cpp_metrics_cpp.so
+[wap] opened runtime library libnetwork_cpp.so
+[wap] opened runtime library libstorage_common.so
+[system-status-frame] generation=14 release=881812500 sample=881812600 commit=887337554 busy=49944363 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libprinting_metafile.so
+[wap] opened runtime library libthird_party_protobuf_protobuf_lite.so
+[wap] opened runtime library libnetwork_cpp_base.so
+[wap] opened runtime library libcrcrypto.so
+[wap] opened runtime library libnet_third_party_quiche.so
+[wap] opened runtime library libmojo_base_mojom_shared.so
+[wap] opened runtime library liburl_mojom_traits.so
+[wap] opened runtime library libmojo_base_shared_typemap_traits.so
+[wap] opened runtime library libmojo_base_lib.so
+[wap] opened runtime library libmojo_base_typemap_traits.so
+[wap] opened runtime library libservices_network_public_cpp_cookies_mojom_support.so
+[system-status-frame] generation=15 release=944312500 sample=944312600 commit=949840288 busy=49935981 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libservices_network_public_cpp_cross_origin_embedder_policy.so
+[wap] opened runtime library libservices_network_public_cpp_document_isolation_policy.so
+[wap] opened runtime library libservices_network_public_cpp_fetch_retry_options.so
+[wap] opened runtime library libservices_network_public_cpp_integrity_metadata_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_integrity_policy.so
+[wap] opened runtime library libservices_network_public_cpp_ip_address_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_network_param_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_flags_and_switches.so
+[wap] opened runtime library libservices_network_public_cpp_storage_access_api_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_web_platform.so
+[wap] opened runtime library libservices_network_public_cpp_is_potentially_trustworthy.so
+[wap] opened runtime library libthird_party_webrtc_overrides_webrtc_component.so
+[system-status-frame] generation=16 release=1006812500 sample=1006812600 commit=1012413167 busy=50048636 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libcolor_scheme_mojo_bindings_shared.so
+[wap] opened runtime library libmojom_core_shared.so
+[wap] opened runtime library libandroid_mojo_bindings_shared.so
+[wap] opened runtime library libmojom_mhtml_load_result_shared.so
+[wap] opened runtime library libscript_type_mojom_shared.so
+[wap] opened runtime library libweb_feature_mojo_bindings_mojom_shared.so
+[wap] opened runtime library libgpu_common_interfaces_shared.so
+[wap] opened runtime library libgl_mojom_shared.so
+[wap] opened runtime library libvulkan_interface_shared.so
+[wap] opened runtime library libtokens_mojom_shared.so
+[wap] opened runtime library libfingerprinting_protection_shared.so
+[wap] opened runtime library libservice_worker_storage_mojom_shared.so
+[wap] opened runtime library libstorage_key_shared.so
+[wap] opened runtime library libmojo_public_cpp_bindings_wtf_support.so
+[wap] opened runtime library libthird_party_blink_common_privacy_budget.so
+[wap] opened runtime library libskia_shared_typemap_traits.so
+[system-status-frame] generation=17 release=1069312500 sample=1069312600 commit=1074850304 busy=49991065 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libthird_party_liburlpattern.so
+[wap] opened runtime library libgfx_native_types_shared_mojom_traits.so
+[wap] opened runtime library libui_gfx_color_utils.so
+[wap] opened runtime library libgfx_shared_mojom_traits.so
+[wap] opened runtime library libdisplay_shared_mojom_traits.so
+[wap] opened runtime library libmedia.so
+[wap] opened runtime library libgpu_command_buffer_client.so
+[wap] opened runtime library libviz_shared_image_format.so
+[wap] opened runtime library libgpu.so
+[wap] opened runtime library libgpu_command_buffer_common.so
+[system-status-frame] generation=18 release=1131812500 sample=1131812600 commit=1137349953 busy=50050954 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libviz_common.so
+[wap] opened runtime library libthird_party_blink_public_mojom_tokens_tokens_traits.so
+[wap] opened runtime library libcc_ipc.so
+[wap] opened runtime library libcc_shared_mojom_traits.so
+[wap] opened runtime library libui_base_ime_types.so
+[wap] opened runtime library libui_events_ipc.so
+[wap] opened runtime library libgl_mojom_blink.so
+[wap] opened runtime library libcc_animation.so
+[wap] opened runtime library libui_gfx_animation_keyframe.so
+[wap] opened runtime library libblink_histogram.so
+[wap] opened runtime library libimage_decoders.so
+[wap] opened runtime library libmiracle_parameter_common.so
+[wap] opened runtime library libthird_party_inspector_protocol_crdtp.so
+[wap] opened runtime library libui_native_theme.so
+[system-status-frame] generation=19 release=1194312500 sample=1194312600 commit=1199934187 busy=50010693 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libcontent_extraction_shared.so
+[wap] opened runtime library libservices_network_public_cpp_schemeful_site_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_shared_storage_support.so
+[wap] opened runtime library libservices_network_public_cpp_host_resolver_mojom_support.so
+[wap] opened runtime library liborigin_trial_feature_shared.so
+[wap] opened runtime library liborigin_trial_state_shared.so
+[wap] opened runtime library libquota_shared.so
+[wap] opened runtime library libusb_shared.so
+[wap] opened runtime library libui_accessibility_ax_mojom_shared.so
+[wap] opened runtime library libui_base_dragdrop_mojom_shared.so
+[wap] opened runtime library libgfx_ipc_geometry.so
+[wap] opened runtime library libmedia_session_base_cpp.so
+[wap] opened runtime library libmedia_capture_capture_base.so
+[wap] opened runtime library libmojom_modules_shared.so
+[wap] opened runtime library libdevice_fido.so
+[wap] opened runtime library liblatency_shared_mojom_traits.so
+[wap] opened runtime library libservice_worker_storage_mojom.so
+[system-status-frame] generation=20 release=1256812500 sample=1256812600 commit=1262354007 busy=49993290 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libime_shared_mojom_traits.so
+[wap] opened runtime library libmedia_capture_mojom_video_capture_mojom_support.so
+[wap] opened runtime library libweb_bluetooth_mojo_bindings_shared.so
+[wap] opened runtime library libnative_theme_features.so
+[wap] opened runtime library libcc_mojo_embedder.so
+[wap] opened runtime library libcomponents_input.so
+[wap] opened runtime library libcomponents_language_detection_core.so
+[wap] opened runtime library libcomponents_viz_client.so
+[wap] opened runtime library libdevice_vr_service_mojo_bindings_blink.so
+[wap] opened runtime library libmedia_capture_capture_switches.so
+[wap] opened runtime library libmedia_webrtc.so
+[system-status-frame] generation=21 release=1319312500 sample=1319312600 commit=1324935677 busy=49945932 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libui_base_prediction.so
+[wap] opened runtime library libcc_layer_selection_bound.so
+[wap] opened runtime library libgpu_command_buffer_common_gles2_utils.so
+[wap] opened runtime library libblink_gpu_mojom_shared.so
+[wap] opened runtime library libgpu_config.so
+[wap] opened runtime library libcomponents_attribution_reporting_registration_header_error_mojom_traits.so
+[wap] opened runtime library libcomponents_attribution_reporting_registration_mojom_traits.so
+[wap] opened runtime library libgpu_gles2.so
+[wap] opened runtime library libblink_embedded_frame_sink_mojo_bindings_shared.so
+[wap] opened runtime library libcomponents_performance_manager_scenario_api.so
+[wap] opened runtime library libdawn_wire.so
+[system-status-frame] generation=22 release=1381812500 sample=1381812600 commit=1387353909 busy=49989653 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libgpu_ipc_client.so
+[wap] opened runtime library libgpu_command_buffer_client_gles2_implementation.so
+[wap] opened runtime library libgpu_raster.so
+[wap] opened runtime library libgpu_webgpu.so
+[wap] opened runtime library libv8_libbase.so
+[wap] opened runtime library libblink_modules.so
+[wap] unsupported Linux syscall=167 pc=0x1422e3cc
+[system-status-frame] generation=23 release=1444312500 sample=1444312600 commit=1449857143 busy=50084992 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libui_color_color_provider_key.so
+[wap] opened runtime library libui_gfx_gfx_switches.so
+[wap] opened runtime library libui_gfx_range.so
+[wap] opened runtime library libui_linux_linux_ui.so
+[wap] opened runtime library libcomponents_unexportable_keys.so
+[wap] opened runtime library libsql.so
+[wap] opened runtime library libnet_third_party_uri_template.so
+[wap] opened runtime library libnspr4.so
+[wap] opened runtime library libnss3.so
+[system-status-frame] generation=24 release=1506812500 sample=1506812600 commit=1512448612 busy=50108320 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libsmime3.so
+[wap] opened runtime library libcomponents_device_event_log.so
+[wap] opened runtime library libdisplay_util.so
+[wap] opened runtime library libui_events_gesture_detection.so
+[wap] opened runtime library libevents_ozone_layout.so
+[wap] opened runtime library libui_events_velocity_tracker.so
+[wap] opened runtime library libcomponents_prefs.so
+[wap] opened runtime library libui_accessibility_ax_features_mojom_shared.so
+[wap] opened runtime library libcomponents_aggregation_service.so
+[wap] opened runtime library libcomponents_attribution_reporting_is_origin_suitable.so
+[wap] opened runtime library libperformance_manager_public_mojom_shared.so
+[wap] opened runtime library libui_accessibility_accessibility_internal.so
+[system-status-frame] generation=25 release=1569312500 sample=1569312600 commit=1574860261 busy=49924071 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libservices_network_public_cpp_crash_keys.so
+[wap] opened runtime library libipc.so
+[wap] opened runtime library libcomponents_cbor.so
+[wap] opened runtime library libnssutil3.so
+[wap] opened runtime library liburl_ipc_url_ipc.so
+[wap] opened runtime library libgio-2.0.so.0
+[wap] opened runtime library libglib-2.0.so.0
+[wap] opened runtime library icudtl.dat
+[wap] opened runtime library libgobject-2.0.so.0
+[wap] opened runtime library libgbm.so.1
+[wap] opened runtime library libdrm.so.2
+[system-status-frame] generation=26 release=1631812500 sample=1631812600 commit=1637360158 busy=49915474 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libffmpeg.so
+[wap] opened runtime library libcomponents_leveldb_proto.so
+[wap] opened runtime library libdevice_udev_linux.so
+[wap] opened runtime library libasound.so.2
+[wap] opened runtime library libgpu_command_buffer_client_internal.so
+[wap] opened runtime library libui_ozone.so
+[wap] opened runtime library libgfx_ipc.so
+[wap] opened runtime library libgpu_channel_mojom_shared.so
+[wap] opened runtime library libshared_image_pool_client_interface_shared.so
+[wap] opened runtime library libgl_mojom.so
+[wap] opened runtime library libvulkan_wrapper.so
+[wap] opened runtime library libui_color_mixers.so
+[wap] opened runtime library libdevice_bluetooth.so
+[wap] opened runtime library libcomponents_apdu.so
+[system-status-frame] generation=27 release=1694312500 sample=1694312600 commit=1699932717 busy=50089690 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libservices_data_decoder_public_cpp_service_provider.so
+[wap] opened runtime library libcomponents_optimization_guide_core_features.so
+[wap] opened runtime library libdevice_vr_service_mojo_bindings_shared.so
+[wap] opened runtime library libdevice_xr_common_mojo_bindings_blink.so
+[wap] opened runtime library libdevice_vr_public_typemaps.so
+[wap] opened runtime library libdevice_xr_common_mojo_bindings_shared.so
+[wap] opened runtime library libgamepad_mojom_shared.so
+[wap] opened runtime library libgamepad_shared_typemap_traits.so
+[wap] opened runtime library libui_gl_gl_enums.so
+[wap] opened runtime library libgl_wrapper.so
+[wap] opened runtime library libgl_init.so
+[wap] opened runtime library libwebnn_mojom_features_shared.so
+[wap] opened runtime library libdawn_native.so
+[system-status-frame] generation=28 release=1756812500 sample=1756812600 commit=1762361325 busy=49614495 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libgpu_command_buffer_service.so
+[wap] opened runtime library libcomponents_persistent_cache.so
+[wap] opened runtime library libui_ozone_ozone_base.so
+[wap] opened runtime library libdawn_platform.so
+[wap] opened runtime library libmedia_capture_capture_lib.so
+[wap] opened runtime library libgamepad_mojom_blink.so
+[wap] opened runtime library libservices_device_public_cpp_device_features.so
+[wap] opened runtime library libservices_webnn_public_cpp.so
+[wap] opened runtime library libwebnn_mojom_blink.so
+[system-status-frame] generation=29 release=1819312500 sample=1819312600 commit=1824859851 busy=49670812 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libwebnn_mojom_shared.so
+[wap] opened runtime library libatomic.so
+[wap] opened runtime library libdisplay_types.so
+[wap] opened runtime library libthird_party_sqlite_chromium_sqlite3.so
+[wap] opened runtime library libplc4.so
+[wap] opened runtime library libplds4.so
+[wap] opened runtime library libxkbcommon.so.0
+[wap] opened runtime library libipc_mojom.so
+[wap] opened runtime library libgmodule-2.0.so.0
+[wap] opened runtime library libz.so.1
+[wap] opened runtime library libmount.so.1
+[system-status-frame] generation=30 release=1881812500 sample=1881812600 commit=1887501720 busy=49594288 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libselinux.so.1
+[wap] opened runtime library libatomic.so.1
+[wap] opened runtime library libpcre2-8.so.0
+[wap] opened runtime library libffi.so.8
+[wap] opened runtime library libthird_party_leveldatabase.so
+[wap] opened runtime library libudev.so.1
+[wap] opened runtime library libui_platform_window.so
+[wap] opened runtime library libui_base_ime.so
+[wap] opened runtime library libui_color_dynamic_color.so
+[wap] opened runtime library libcomponents_dbus.so
+[wap] opened runtime library libdbus.so
+[system-status-frame] generation=31 release=1944312500 sample=1944312600 commit=1949861997 busy=49583848 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libgoogle_apis.so
+[wap] opened runtime library libgfx_ipc_color.so
+[wap] opened runtime library libservices_webnn_public_mojom_webnn_mojom_traits.so
+[wap] opened runtime library libipc_mojom_shared.so
+[wap] opened runtime library libblkid.so.1
+[wap] opened runtime library libstorage_service_filesystem_support.so
+[wap] opened runtime library libcap.so.2
+[wap] opened runtime library libdbus-1.so.3
+[wap] opened runtime library libgfx_ipc_buffer_types.so
+[wap] opened runtime library libstorage_service_filesystem_mojom.so
+[wap] opened runtime library libsystemd.so.0
+[wap] opened runtime library libstorage_service_filesystem_mojom_shared.so
+[system-status-frame] generation=32 release=2006812500 sample=2006812600 commit=2012502521 busy=49601258 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[wap] opened runtime library libstorage_service_typemap_traits.so
+[wap] unsupported Linux syscall=99 pc=0x1000f838
+[wap] unsupported Linux syscall=293 pc=0x1000f8dc
+[system-status-frame] generation=33 release=2069312500 sample=2069312600 commit=2074862950 busy=49466505 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=97
+[system-status-frame] generation=34 release=2131812500 sample=2131812600 commit=2137363520 busy=49434650 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=35 release=2194312500 sample=2194312600 commit=2200005183 busy=49433002 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=36 release=2256812500 sample=2256812600 commit=2262367345 busy=49436276 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=37 release=2319312500 sample=2319312600 commit=2324866486 busy=49434847 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=38 release=2381812500 sample=2381812600 commit=2387510097 busy=49433769 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library snapshot_blob.bin
+[system-status-frame] generation=39 release=2444312500 sample=2444312600 commit=2449869279 busy=49577729 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=40 release=2506812500 sample=2506812600 commit=2512367978 busy=49440043 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=41 release=2569312500 sample=2569312600 commit=2574868844 busy=49438337 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=42 release=2631812500 sample=2631812600 commit=2637369875 busy=49435566 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=43 release=2694312500 sample=2694312600 commit=2699902863 busy=49419340 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] unsupported Linux syscall=29 pc=0x14224c3c
+[wap] unsupported Linux syscall=29 pc=0x14224c3c
+[wap] unsupported Linux syscall=29 pc=0x14224c3c
+[system-status-frame] generation=44 release=2756812500 sample=2756812600 commit=2762417685 busy=49375504 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=45 release=2819312500 sample=2819312600 commit=2824919297 busy=49363838 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=46 release=2881812500 sample=2881812600 commit=2887534653 busy=49372886 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=47 release=2944312500 sample=2944312600 commit=2950027228 busy=49357915 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=48 release=3006812500 sample=3006812600 commit=3012536726 busy=49366419 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=49 release=3069312500 sample=3069312600 commit=3075038237 busy=49359144 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=50 release=3131812500 sample=3131812600 commit=3137531545 busy=49356105 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] unsupported Linux syscall=114 pc=0x141fdce0
+[wap] unsupported Linux syscall=425 pc=0x1422b6e8
+[system-status-frame] generation=51 release=3194312500 sample=3194312600 commit=3199933948 busy=49370779 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=52 release=3256812500 sample=3256812600 commit=3262540864 busy=49488606 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=53 release=3319312500 sample=3319312600 commit=3325050245 busy=50016610 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=54 release=3381812500 sample=3381812600 commit=3387445379 busy=49765566 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=55 release=3444312500 sample=3444312600 commit=3449946981 busy=49366789 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=56 release=3506812500 sample=3506812600 commit=3512509486 busy=49387788 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=57 release=3569312500 sample=3569312600 commit=3575094874 busy=49378046 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=58 release=3631812500 sample=3631812600 commit=3637604852 busy=49386085 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=59 release=3694312500 sample=3694312600 commit=3700014883 busy=49380880 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=60 release=3756812500 sample=3756812600 commit=3762516059 busy=49381273 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=61 release=3819312500 sample=3819312600 commit=3825019950 busy=49381259 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=62 release=3881812500 sample=3881812600 commit=3887522491 busy=49381432 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=63 release=3944312500 sample=3944312600 commit=3950038870 busy=49388744 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=64 release=4006812500 sample=4006812600 commit=4012539894 busy=49394794 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=65 release=4069312500 sample=4069312600 commit=4075042925 busy=49386898 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=66 release=4131812500 sample=4131812600 commit=4137600035 busy=49375559 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=67 release=4194312500 sample=4194312600 commit=4200102699 busy=49372698 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=68 release=4256812500 sample=4256812600 commit=4262612370 busy=49474154 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=69 release=4319312500 sample=4319312600 commit=4325171500 busy=49361719 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=70 release=4381812500 sample=4381812600 commit=4387677973 busy=49392819 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=71 release=4444312500 sample=4444312600 commit=4450256415 busy=49371255 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=72 release=4506812500 sample=4506812600 commit=4512759364 busy=49365752 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=73 release=4569312500 sample=4569312600 commit=4575261190 busy=49393361 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=74 release=4631812500 sample=4631812600 commit=4637763815 busy=49373581 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=75 release=4694312500 sample=4694312600 commit=4700411935 busy=49361392 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=76 release=4756812500 sample=4756812600 commit=4762768110 busy=49366194 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=77 release=4819312500 sample=4819312600 commit=4825193621 busy=49369916 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=78 release=4881812500 sample=4881812600 commit=4887696395 busy=49364319 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=79 release=4944312500 sample=4944312600 commit=4950199271 busy=49362024 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=80 release=5006812500 sample=5006812600 commit=5012701606 busy=49354617 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=81 release=5069312500 sample=5069312600 commit=5075204274 busy=49357274 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=82 release=5131812500 sample=5131812600 commit=5137706300 busy=49366892 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=83 release=5194312500 sample=5194312600 commit=5200209155 busy=49364829 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=84 release=5256812500 sample=5256812600 commit=5262711594 busy=49357131 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=85 release=5319312500 sample=5319312600 commit=5325213850 busy=49360220 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=86 release=5381812500 sample=5381812600 commit=5387715655 busy=49355102 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=87 release=5444312500 sample=5444312600 commit=5450238334 busy=49356568 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=88 release=5506812500 sample=5506812600 commit=5512740215 busy=49371706 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=89 release=5569312500 sample=5569312600 commit=5575243518 busy=49362617 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=90 release=5631812500 sample=5631812600 commit=5637801997 busy=49341596 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=91 release=5694312500 sample=5694312600 commit=5700295394 busy=49356211 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=92 release=5756812500 sample=5756812600 commit=5762749356 busy=49369801 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=93 release=5819312500 sample=5819312600 commit=5825251304 busy=49374418 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=94 release=5881812500 sample=5881812600 commit=5887810986 busy=49358083 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=95 release=5944312500 sample=5944312600 commit=5950314752 busy=49368869 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=96 release=6006812500 sample=6006812600 commit=6012849801 busy=49351681 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=97 release=6069312500 sample=6069312600 commit=6075331629 busy=49347123 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=98 release=6131812500 sample=6131812600 commit=6137896964 busy=49347857 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=99 release=6194312500 sample=6194312600 commit=6200373404 busy=49356622 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=100 release=6256812500 sample=6256812600 commit=6262927890 busy=49354991 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=101 release=6319312500 sample=6319312600 commit=6325816029 busy=49374427 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=102 release=6381812500 sample=6381812600 commit=6388048021 busy=49399665 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=103 release=6444312500 sample=6444312600 commit=6450568352 busy=49363401 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=104 release=6506812500 sample=6506812600 commit=6512982317 busy=49375441 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=105 release=6569312500 sample=6569312600 commit=6575628254 busy=49361718 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=106 release=6631812500 sample=6631812600 commit=6637989091 busy=49332868 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap-volume] pid=7 page_ins=8192 clean=6621 evicted=0 resident=9002 high=0 free=38389
+[system-status-frame] generation=107 release=6694312500 sample=6694312600 commit=6700772767 busy=49394374 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=108 release=6756812500 sample=6756812600 commit=6763167619 busy=49338369 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=109 release=6819312500 sample=6819312600 commit=6825736552 busy=49398366 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=110 release=6881812500 sample=6881812600 commit=6888249460 busy=49383122 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=111 release=6944312500 sample=6944312600 commit=6950899437 busy=49379783 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library preload.cjs
+[wap] opened runtime library /app/app.js
+[system-status-frame] generation=112 release=7006812500 sample=7006812600 commit=7013265157 busy=49393886 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=113 release=7069312500 sample=7069312600 commit=7075892938 busy=49437723 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=114 release=7131812500 sample=7131812600 commit=7138380447 busy=49820956 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=115 release=7194312500 sample=7194312600 commit=7200804663 busy=49908196 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=116 release=7256812500 sample=7256812600 commit=7263306728 busy=49897045 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=117 release=7319312500 sample=7319312600 commit=7325808522 busy=49896690 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=118 release=7381812500 sample=7381812600 commit=7388337089 busy=49889523 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=119 release=7444312500 sample=7444312600 commit=7450838458 busy=49897262 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=120 release=7506812500 sample=7506812600 commit=7513338293 busy=49901779 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=121 release=7569312500 sample=7569312600 commit=7575881526 busy=49882833 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=122 release=7631812500 sample=7631812600 commit=7638381654 busy=49914327 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=123 release=7694312500 sample=7694312600 commit=7700940050 busy=49950367 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=124 release=7756812500 sample=7756812600 commit=7763441290 busy=49944978 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=125 release=7819312500 sample=7819312600 commit=7825886299 busy=49919915 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=126 release=7881812500 sample=7881812600 commit=7888388228 busy=49919021 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=127 release=7944312500 sample=7944312600 commit=7950890181 busy=49900857 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=128 release=8006812500 sample=8006812600 commit=8013391842 busy=49896751 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=129 release=8069312500 sample=8069312600 commit=8075893204 busy=49893782 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=130 release=8131812500 sample=8131812600 commit=8138394289 busy=49897141 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=131 release=8194312500 sample=8194312600 commit=8200895583 busy=49896599 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=132 release=8256812500 sample=8256812600 commit=8263397514 busy=49896950 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=133 release=8319312500 sample=8319312600 commit=8325897961 busy=49899659 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=134 release=8381812500 sample=8381812600 commit=8388372605 busy=49886987 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=135 release=8444312500 sample=8444312600 commit=8450871504 busy=49849397 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=136 release=8506812500 sample=8506812600 commit=8513373644 busy=49941918 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=137 release=8569312500 sample=8569312600 commit=8575875206 busy=49950460 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=138 release=8631812500 sample=8631812600 commit=8638376245 busy=49924457 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=139 release=8694312500 sample=8694312600 commit=8700877130 busy=49920592 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=140 release=8756812500 sample=8756812600 commit=8763378023 busy=49901337 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=141 release=8819312500 sample=8819312600 commit=8825879446 busy=49895052 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=142 release=8881812500 sample=8881812600 commit=8888380710 busy=49892870 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=143 release=8944312500 sample=8944312600 commit=8950950034 busy=49869094 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=144 release=9006812500 sample=9006812600 commit=9013534572 busy=49787938 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[system-status-frame] generation=145 release=9069312500 sample=9069312600 commit=9076044424 busy=49921222 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=146 release=9131812500 sample=9131812600 commit=9138468322 busy=49905442 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[system-status-frame] generation=147 release=9194312500 sample=9194312600 commit=9200975606 busy=49881018 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=148 release=9256812500 sample=9256812600 commit=9263477118 busy=49899522 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=149 release=9319312500 sample=9319312600 commit=9325978420 busy=49903529 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=150 release=9381812500 sample=9381812600 commit=9388479426 busy=49899718 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=151 release=9444312500 sample=9444312600 commit=9450980829 busy=49899296 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap-volume] libv8 executable shared pid=7 asid=2 va=1afd7000 peer_pid=8 peer_asid=3 peer_va=13617000 offset=54095872 pa=5db7c000
+[wap-volume] pid=7 page_ins=16384 clean=13809 evicted=0 resident=17198 high=133 free=30131
+[system-status-frame] generation=152 release=9506812500 sample=9506812600 commit=9513482889 busy=49911419 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=153 release=9569312500 sample=9569312600 commit=9575983935 busy=49899572 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library /dev/quota-window
+[wap] opened runtime library icudtl.dat
+[system-status-frame] generation=154 release=9631812500 sample=9631812600 commit=9638461286 busy=49958913 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library snapshot_blob.bin
+[system-status-frame] generation=155 release=9694312500 sample=9694312600 commit=9700962926 busy=49934078 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] [1126/202950.653955:ERROR:base/threading/platform_thread_linux.cc:212] prctl(PR_SET_NAME): Function not implemented (38)
+
+[system-status-frame] generation=156 release=9756812500 sample=9756812600 commit=9763464293 busy=49939826 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library /dev/urandom
+[wap] [1126/202951.813940:ERROR:base/threading/platform_thread_linux.cc:212] prctl(PR_SET_NAME): Function not implemented (38)
+
+[system-status-frame] generation=157 release=9819312500 sample=9819312600 commit=9825964221 busy=49942983 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=158 release=9881812500 sample=9881812600 commit=9888467012 busy=49924621 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library blink_resources.pak
+[system-status-frame] generation=159 release=9944312500 sample=9944312600 commit=9950997333 busy=49910101 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=160 release=10006812500 sample=10006812600 commit=10013498694 busy=49915055 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=161 release=10069312500 sample=10069312600 commit=10076020599 busy=49906432 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=162 release=10131812500 sample=10131812600 commit=10138522393 busy=49895344 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=163 release=10194312500 sample=10194312600 commit=10201023695 busy=49901630 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=164 release=10256812500 sample=10256812600 commit=10263524345 busy=49898595 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=165 release=10319312500 sample=10319312600 commit=10326026146 busy=49903276 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=166 release=10381812500 sample=10381812600 commit=10388535219 busy=49909317 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=167 release=10444312500 sample=10444312600 commit=10451086618 busy=49914705 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=168 release=10506812500 sample=10506812600 commit=10513588036 busy=49903582 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=169 release=10569312500 sample=10569312600 commit=10576088274 busy=49901051 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=170 release=10631812500 sample=10631812600 commit=10638526331 busy=49876150 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=171 release=10694312500 sample=10694312600 commit=10700986264 busy=49865884 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=172 release=10756812500 sample=10756812600 commit=10763565173 busy=49900715 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=173 release=10819312500 sample=10819312600 commit=10825988144 busy=50092855 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=174 release=10881812500 sample=10881812600 commit=10888488818 busy=49908649 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=175 release=10944312500 sample=10944312600 commit=10950991827 busy=49901206 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=176 release=11006812500 sample=11006812600 commit=11013492928 busy=49954524 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=177 release=11069312500 sample=11069312600 commit=11075993689 busy=49954363 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=178 release=11131812500 sample=11131812600 commit=11138541001 busy=49978984 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=179 release=11194312500 sample=11194312600 commit=11201042575 busy=49982171 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=180 release=11256812500 sample=11256812600 commit=11263601230 busy=49950298 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=181 release=11319312500 sample=11319312600 commit=11319860122 busy=50020963 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=182 release=11381812500 sample=11381812600 commit=11382410066 busy=49933194 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=183 release=11444312500 sample=11444312600 commit=11445012192 busy=49890817 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=184 release=11506812500 sample=11506812600 commit=11507503284 busy=49900812 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=185 release=11569312500 sample=11569312600 commit=11569902008 busy=49897246 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=186 release=11631812500 sample=11631812600 commit=11632402503 busy=49894063 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=187 release=11694312500 sample=11694312600 commit=11694902906 busy=49897815 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=188 release=11756812500 sample=11756812600 commit=11757403372 busy=49899087 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=189 release=11819312500 sample=11819312600 commit=11819904156 busy=49894239 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=190 release=11881812500 sample=11881812600 commit=11882404998 busy=49897454 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=191 release=11944312500 sample=11944312600 commit=11944906268 busy=49895446 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=192 release=12006812500 sample=12006812600 commit=12007405997 busy=49898531 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=193 release=12069312500 sample=12069312600 commit=12069906777 busy=49898321 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=194 release=12131812500 sample=12131812600 commit=12132407490 busy=49895667 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=195 release=12194312500 sample=12194312600 commit=12194909606 busy=49899337 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=196 release=12256812500 sample=12256812600 commit=12257354681 busy=49881761 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=197 release=12319312500 sample=12319312600 commit=12319855692 busy=49900203 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=198 release=12381812500 sample=12381812600 commit=12382356541 busy=49899327 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=199 release=12444312500 sample=12444312600 commit=12444857203 busy=49897933 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=200 release=12506812500 sample=12506812600 commit=12507357778 busy=49898675 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=201 release=12569312500 sample=12569312600 commit=12570023252 busy=49902220 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=202 release=12631812500 sample=12631812600 commit=12632447802 busy=49897369 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=203 release=12694312500 sample=12694312600 commit=12695024829 busy=49893649 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap-volume] pid=7 page_ins=24576 clean=13241 evicted=8748 resident=16902 high=2555 free=29059
+[system-status-frame] generation=204 release=12756812500 sample=12756812600 commit=12757526797 busy=49900753 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=205 release=12819312500 sample=12819312600 commit=12820026228 busy=49899296 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=206 release=12881812500 sample=12881812600 commit=12882415020 busy=49898376 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=207 release=12944312500 sample=12944312600 commit=12944915200 busy=49899641 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=208 release=13006812500 sample=13006812600 commit=13007362028 busy=49880314 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=209 release=13069312500 sample=13069312600 commit=13069863050 busy=49897502 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=210 release=13131812500 sample=13131812600 commit=13132363508 busy=49900321 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=211 release=13194312500 sample=13194312600 commit=13194917758 busy=49899548 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=212 release=13256812500 sample=13256812600 commit=13257420789 busy=49901530 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=213 release=13319312500 sample=13319312600 commit=13319918840 busy=49901086 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=214 release=13381812500 sample=13381812600 commit=13382419724 busy=49900465 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=215 release=13444312500 sample=13444312600 commit=13444922203 busy=49904519 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=216 release=13506812500 sample=13506812600 commit=13507422263 busy=49900410 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=217 release=13569312500 sample=13569312600 commit=13569921232 busy=49897753 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=218 release=13631812500 sample=13631812600 commit=13632421794 busy=49900235 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=219 release=13694312500 sample=13694312600 commit=13694867822 busy=49896114 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=220 release=13756812500 sample=13756812600 commit=13757422902 busy=49881940 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=221 release=13819312500 sample=13819312600 commit=13819925799 busy=49903534 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=222 release=13881812500 sample=13881812600 commit=13882424196 busy=49901244 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=223 release=13944312500 sample=13944312600 commit=13944925863 busy=49900957 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library /app/app.html
+[system-status-frame] generation=224 release=14006812500 sample=14006812600 commit=14007425301 busy=49904967 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=225 release=14069312500 sample=14069312600 commit=14069926278 busy=49904877 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=226 release=14131812500 sample=14131812600 commit=14132428390 busy=49910152 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library page-preload.js
+[system-status-frame] generation=227 release=14194312500 sample=14194312600 commit=14194926589 busy=49935718 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=228 release=14256812500 sample=14256812600 commit=14257401262 busy=49905697 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=229 release=14319312500 sample=14319312600 commit=14320018914 busy=49755632 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=230 release=14381812500 sample=14381812600 commit=14382549352 busy=49879005 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=231 release=14444312500 sample=14444312600 commit=14445111224 busy=49946208 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=232 release=14506812500 sample=14506812600 commit=14507524451 busy=49905037 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=233 release=14569312500 sample=14569312600 commit=14570025446 busy=49901188 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=234 release=14631812500 sample=14631812600 commit=14632526713 busy=49904328 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=235 release=14694312500 sample=14694312600 commit=14695029709 busy=49915482 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=236 release=14756812500 sample=14756812600 commit=14757556517 busy=49904645 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=237 release=14819312500 sample=14819312600 commit=14820053678 busy=49902892 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=238 release=14881812500 sample=14881812600 commit=14882554990 busy=49913952 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] [1126/203113.693943:ERROR:base/threading/platform_thread_linux.cc:212] prctl(PR_SET_NAME): Function not implemented (38)
+
+[system-status-frame] generation=239 release=14944312500 sample=14944312600 commit=14945055856 busy=49967127 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=240 release=15006812500 sample=15006812600 commit=15007611438 busy=49868384 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=241 release=15069312500 sample=15069312600 commit=15070112957 busy=49897382 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] [1126/203116.844964:ERROR:base/threading/platform_thread_linux.cc:212] prctl(PR_SET_NAME): Function not implemented (38)
+
+[system-status-frame] generation=242 release=15131812500 sample=15131812600 commit=15132614882 busy=49909817 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=243 release=15194312500 sample=15194312600 commit=15195114312 busy=49913916 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=244 release=15256812500 sample=15256812600 commit=15257631776 busy=49927992 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=245 release=15319312500 sample=15319312600 commit=15320132856 busy=49896357 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library fonts.conf
+[wap] opened runtime library /usr/lib/quota-runtime/fonts
+[wap] opened runtime library /usr/lib/quota-runtime/fonts
+[wap] opened runtime library /usr/lib/quota-runtime/fonts
+[wap] opened runtime library fonts/System-Regular.ttf
+[system-status-frame] generation=246 release=15381812500 sample=15381812600 commit=15382633972 busy=49931860 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library fonts/System-Regular.ttf
+[wap] opened runtime library fonts/System-Regular.ttf
+[wap] 
+Fontconfig error: No writable cache directories
+
+[wap] 	/tmp/fontconfig
+
+[wap] opened runtime library fonts/System-Regular.ttf
+[system-status-frame] generation=247 release=15444312500 sample=15444312600 commit=15445134197 busy=49935426 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=248 release=15506812500 sample=15506812600 commit=15507635878 busy=49900617 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] opened runtime library fonts/System-Regular.ttf
+[system-status-frame] generation=249 release=15569312500 sample=15569312600 commit=15570137525 busy=49897057 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=250 release=15631812500 sample=15631812600 commit=15632638568 busy=49902889 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=251 release=15694312500 sample=15694312600 commit=15695139417 busy=49899885 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=252 release=15756812500 sample=15756812600 commit=15757641149 busy=49903167 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=253 release=15819312500 sample=15819312600 commit=15820142398 busy=49901259 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=254 release=15881812500 sample=15881812600 commit=15882703001 busy=49899343 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=255 release=15944312500 sample=15944312600 commit=15945205044 busy=49898671 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=256 release=16006812500 sample=16006812600 commit=16007705539 busy=49900196 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] page frame complete handle=65538 generation=1
+[system-status-frame] generation=257 release=16069312500 sample=16069312600 commit=16070206678 busy=50404689 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] page frame complete handle=65538 generation=2
+[wap] page frame complete handle=65538 generation=3
+[system-status-frame] generation=258 release=16131812500 sample=16131812600 commit=16132650385 busy=50510507 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] page frame complete handle=65538 generation=4
+[system-status-frame] generation=259 release=16194312500 sample=16194312600 commit=16195884685 busy=50247861 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=260 release=16256812500 sample=16256812600 commit=16258412071 busy=49910011 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] page frame complete handle=65538 generation=5
+[system-status-frame] generation=261 release=16319312500 sample=16319312600 commit=16320979988 busy=50335046 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] page frame complete handle=65538 generation=6
+[wap] page frame complete handle=65538 generation=7
+[system-status-frame] generation=262 release=16381812500 sample=16381812600 commit=16383486892 busy=50556549 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap-volume] libv8 executable shared pid=8 asid=3 va=10e58000 peer_pid=7 peer_asid=2 peer_va=18818000 offset=12419072 pa=55cca000
+[wap] opened runtime library /app/data/note.txt
+[system-status-frame] generation=263 release=16444312500 sample=16444312600 commit=16445961419 busy=49823901 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=264 release=16506812500 sample=16506812600 commit=16508480334 busy=49836591 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap-volume] pid=7 page_ins=32768 clean=12166 evicted=17998 resident=16083 high=3374 free=29386
+[system-status-frame] generation=265 release=16569312500 sample=16569312600 commit=16570997203 busy=49893300 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=266 release=16631812500 sample=16631812600 commit=16633572134 busy=49876253 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[wap] page frame complete handle=65538 generation=8
+[system-status-frame] generation=267 release=16694312500 sample=16694312600 commit=16696609977 busy=50239490 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[lvgl] pointer 193,276 down 0
+[wap] page frame complete handle=65538 generation=9
+[lvgl] pointer 193,276 down 1
+[lvgl] fb commit click 5607 us n=3 (not panel light)
+[lvgl] pointer 193,276 down 0
+[system-status-frame] generation=268 release=16756812500 sample=16756812600 commit=16759507209 busy=50269994 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[system-status-frame] generation=269 release=16819312500 sample=16819312600 commit=16822017314 busy=49879275 window=62500000 reserved_kib=306568 total_kib=524288 tasks=8 t1_misses=0 t2_short=0 sample_misses=0 peak_ticks=98
+[worker] index=0 affinity=1 period=26917 first=16829533647 last=16829549283 ticks=15636 grant=62500 overlap=15636 iterations=0 compare=16829564897 trap=16829549280
+[wave] period=26917 cpu0_t3=449923 remote=15636 total=465559 cap=473059 period_end=16830000000 dropped=0 finished=1
+[smp] periods=1 cpu0_over=0 assigned=1 worst_period=0 excess=0
+[record-hash] cpu=1 bytes=0 fnv=101473970
+[files] verified slot=3 generation=3 bytes=0 checksum=101473970
+[wap] opened runtime library /app/data/note.txt
+[worker] index=0 affinity=1 period=26921 first=16831972034 last=16831987680 ticks=15646 grant=62500 overlap=15646 iterations=0 compare=16832003284 trap=16831987677
+[wave] period=26921 cpu0_t3=449913 remote=15646 total=465559 cap=473059 period_end=16832500000 dropped=0 finished=1
+[smp] periods=1 cpu0_over=0 assigned=1 worst_period=0 excess=0
+[record-hash] cpu=1 bytes=17 fnv=1792606189
+[files] verified slot=3 generation=4 bytes=17 checksum=1792606189
+[wap] backend disk flush generation=4 bytes=17 pid=8

@@ -1,0 +1,553 @@
+[mmu] tables ready
+[mmu] identity map on, EL1. RAM window 0x40000000-0x80000000, devices 0x08000000-0x0c000000
+[mmu] kernel map is EL1-only. EL0 apps get a separate TTBR0. This is not a certification.
+[mmu] protect none-fault=1 read=1 write-fault=1 rw=1
+[proc] EL0 table maps the app pages plus one EL1-only gate page at 0x40081000. It does not map the kernel RAM block, devices, or the framebuffer.
+[proc] permission-only sharing of the kernel L2 is not what this table does.
+[proc] EL0 slots 4 pool 65536 draw 4096 queue 3/8 freq 2/period. target 20000 us is a goal, not a measured bound.
+[proc] kernel ttbr 0x4017d000. Handle is sampled before the task can run. Reap time is CNTVCT, not the IRQ period counter.
+
+Quota OS microkernel
+Version: 016 (86699a5)
+基于三级资源声明的微内核，
+一级固定时间槽，二级按最低资源准入，三级使用剩余资源；实时性需验证。
+[boot] EL1 SPSel=1 SCTLR_EL1.M=1
+[boot] x0=0x48000000 physical RAM span 512 MB (probed)
+[boot] DTB at 0x48000000
+[boot] DTB snapshot 8112 bytes (header said 1048576)
+[boot] DTB memory 536870912 bytes
+[boot] system reserve 350 us/period, 59392 KB;
+       tier-1 1550 us/period, 13316 KB; guard 100 us/period
+[boot] system reserve grew from 16384 KB to 59392 KB to hold the image and framebuffer; tier-1 declarations unchanged
+[boot] EL1 map is the kernel map. EL0 apps use a separate TTBR0. Tier-1 realtime is not claimed here.
+[boot] cache colors: 32 (model: 2 MB 16-way cache, 4 KB pages);
+       tier-1 pages in 6 own colors, padding 73852 KB
+[proc] shared-color frames 65520, 262080 KiB physical capacity
+[boot] kernel image+bss 52817 KB of the 59392 KB system reserve
+[boot] GICv2 from DTB: distributor 0x8000000, cpu interface 0x8010000
+[boot] CNTFRQ 62500000 Hz (1 tick = 16 ns), virtual timer PPI 27
+[smp] workers=1 discovered=2
+[clock-probe] loops=16389,16389,16389 instructions_per_tick=1
+[boot] clock: icount (counter driven by instruction count)
+[boot] simulated device IRQ line: EL1 physical timer, PPI 30
+[boot] calibration stage; realtime services not admitted yet
+[dev] 3 new simulated devices start in Tier 3; verifying
+      (8 jobs, 8 aborts each, boot only; realtime services not started)
+[dev] sim-dma: job 396/400 us, stop 7/20 us (measured/declared)
+[dev] sim-blk: job 1991/2000 us, stop 1770/2000 us (measured/declared)
+[dev] sim-cam: job 291/300 us, stop 8/30 us (measured/declared)
+[boot] calibration complete; admitting realtime services
+[boot] tier-1 display-vsync and timer-server bound to their slots
+[boot] slot table from tick 31875000, period 625000 ticks, guard 1250 ticks
+[boot] shell task running
+[fb] reserved 5760000 bytes at 0x4347a000 inside the system reserve
+[fb] ramfb published 900x1600 stride 3600 at 0x4347a000 from fw_cfg 0x9020000
+[map] pid=5 handle=0x10001 gen=1 asid=1 ttbr=0x10000410eb000 draw_pa=0x4c508000
+[map] pte code=0x4c506fc3 stack=0x6000004c507f43 draw=0x6000004c508f43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x4c506fc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4c506fc3 ap_el0=1
+[apps] dashboard tier=1 slot=0; music tier=3 EL0; video=1
+[lvgl] autostart on the Tier-3 shell task
+[lvgl] this task does not mask IRQs and it is not a tier-1 slot.
+[lvgl] one kernel task. It is not an EL0 process. Three-tier hardware isolation is not claimed.
+[admit] lvgl heap 256 KB draw 168 KB framebuffer 5625 KB, fixed, pool expand 0
+[admit] oversubscription probe 1
+REFUSED: device does not meet minimum requirements
+  minimum memory 4294967295 KB > 377728 KB for apps
+  (RAM 524288 KB - system reserve - tier-1 - color padding)
+No app can be closed to make room: this device is too small.
+[admit] lvgl-demo accepted 425 KB. cpu_min is 0. The shell stays tier 3.
+[fb] ramfb published 900x1600 stride 3600 at 0x4347a000 from fw_cfg 0x9020000
+[input] virtio-mmio nodes 32 queue cap 32
+[input] keyboard "QEMU Virtio Keyboard" base 0xa003400 queue 8 abs 0 range x 0..0 y 0..0
+[input] pointer "QEMU Virtio Tablet" base 0xa003e00 queue 8 abs 1 range x 0..32767 y 0..32767
+[lvgl] upstream 9.3.0 heap 262144 draw 172800
+[desktop] ready: fullscreen apps and bottom navigation bar
+[desktop] size 900x1600
+[lvgl] tests box 390,452 120x79
+[lvgl] activity box 12,95 136x38
+[lvgl] launcher box 127,1446 120x67
+[lvgl] cover box 447,95 136x38
+[lvgl] back box 28,320 440x38
+[lvgl] clear box 28,1452 112x56
+[menu] serial 6 10 13 14 15 16 18 stay on the coverage page
+[session] state=0 t1_misses=0 t2_short=0 frames=96,24 long=0,0
+[lvgl] ready
+[files] mounted bytes=0 checksum=0
+[session] state=1 t1_misses=0 t2_short=0 frames=195,49 long=0,0
+[lvgl] fb commit key 7338 us n=1 (not panel light)
+[lvgl] fb commit key 7175 us n=2 (not panel light)
+[apps] during 100 periods: dashboard_frames=99 misses=0 video_frames=0 music_submits=449
+[apps] FAIL
+QA DONE
+[lvgl] fb commit key 7349 us n=3 (not panel light)
+[lvgl] fb commit key 8124 us n=4 (not panel light)
+[lvgl] fb commit key 7606 us n=5 (not panel light)
+[lvgl] fb commit key 7741 us n=6 (not panel light)
+[lvgl] fb commit key 7872 us n=7 (not panel light)
+[lvgl] fb commit key 8492 us n=8 (not panel light)
+[lvgl] fb commit key 9731 us n=9 (not panel light)
+[lvgl] fb commit key 9857 us n=10 (not panel light)
+[lvgl] fb commit key 76128 us n=11 (not panel light)
+[session] state=2 t1_misses=0 t2_short=0 frames=962,209 long=0,0
+[lvgl] fb commit key 7058 us n=12 (not panel light)
+[lvgl] fb commit key 8079 us n=13 (not panel light)
+[lvgl] fb commit key 8205 us n=14 (not panel light)
+[lvgl] fb commit key 7812 us n=15 (not panel light)
+[lvgl] fb commit key 8567 us n=16 (not panel light)
+[lvgl] fb commit key 8637 us n=16 (not panel light)
+[lvgl] fb commit key 8767 us n=16 (not panel light)
+[lvgl] fb commit key 9029 us n=16 (not panel light)
+[lvgl] fb commit key 8960 us n=16 (not panel light)
+[lvgl] fb commit key 9150 us n=16 (not panel light)
+[lvgl] fb commit key 74774 us n=16 (not panel light)
+[session] state=3 t1_misses=0 t2_short=0 frames=1642,379 long=0,0
+[session] state=4 t1_misses=0 t2_short=0 frames=1665,384 long=0,0
+[lvgl] fb commit key 7249 us n=16 (not panel light)
+[lvgl] fb commit key 8542 us n=16 (not panel light)
+[lvgl] fb commit key 7686 us n=16 (not panel light)
+[lvgl] fb commit key 8311 us n=16 (not panel light)
+[lvgl] fb commit key 8571 us n=16 (not panel light)
+[lvgl] fb commit key 9491 us n=16 (not panel light)
+[lvgl] fb commit key 9191 us n=16 (not panel light)
+[lvgl] fb commit key 8902 us n=16 (not panel light)
+[lvgl] fb commit key 9992 us n=16 (not panel light)
+[lvgl] fb commit key 9291 us n=16 (not panel light)
+[lvgl] fb commit key 74727 us n=16 (not panel light)
+[session] state=5 t1_misses=0 t2_short=0 frames=2377,562 long=0,0
+[files] default todo.wap queued
+[files] verified slot=6 generation=1 bytes=3853 checksum=3138848325
+[input] raw ptr type 3 code 0 value 1713
+[input] raw ptr type 3 code 1 value 1926
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 46,93 down 0
+[input] raw ptr type 1 code 272 value 1
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 46,93 down 1
+[lvgl] fb commit click 15368 us n=1 (not panel light)
+[input] raw ptr type 1 code 272 value 0
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 46,93 down 0
+[menu] button 240
+[wap] launch entries tier=3 ui=app.html bytes=3252 backend=app.js bytes=297
+[wap] page process handle=-1
+[runtime-volume] index ready: 303 files, 374104064 bytes, 16 cache pages, Tier 3 charge=80 KiB
+[wap-volume] ELF quota-blink bytes=74240 entry=1ae00 loads=4 text=ae00 sample=d280001d
+[wap-volume] ELF libv8.so bytes=54948352 entry=0 loads=4 text=ae7b00 sample=d0014a20
+[wap-volume] ELF node bytes=23106072 entry=e64d10 loads=4 text=e54d10 sample=d280001d
+[wap-volume] interpreter ready bytes=201416 entry=1001a340
+[wap-volume] runtime catalog ready files=303
+[map] pid=7 handle=0x10002 gen=1 asid=2 ttbr=0x20000410ec000 draw_pa=0x4c51b000
+[map] pte code=0x4c519fc3 stack=0x0 draw=0x6000004c51bf43 ap_el0=1/0/1
+[map] walk kern=0x0 pte=0x4c519fc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4c519fc3 ap_el0=1
+[map] pid=8 handle=0x10003 gen=1 asid=3 draw_pa=0x4c887000
+[wap] launched pair frontend=65538 backend=65539 ipc_fd=3
+[wap] opened runtime library libbase_i18n.so
+[wap] opened runtime library libnode_deps_uv.so
+[wap] opened runtime library libv8.so
+[wap] opened runtime library libgin.so
+[wap] opened runtime library libui_base.so
+[wap] opened runtime library libmojo_core_embedder.so
+[wap] opened runtime library libbase.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_raw_ptr.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_base.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_core.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_shim.so
+[wap] opened runtime library libthird_party_abseil-cpp_absl.so
+[wap] opened runtime library libskia.so
+[wap] opened runtime library libcc_paint.so
+[wap] opened runtime library libmojo_public_cpp_bindings.so
+[wap] opened runtime library libmojo_public_cpp_bindings_bindings_base.so
+[wap] opened runtime library libmojo_public_system.so
+[wap] opened runtime library libblink_core.so
+[wap] opened runtime library libthird_party_abseil-cpp_absl.so
+[wap] opened runtime library libv8_libplatform.so
+[wap] opened runtime library libthird_party_icu_icui18n.so
+[wap] opened runtime library libicuuc.so
+[wap] opened runtime library libnode_deps_cares.so
+[wap] opened runtime library libnode_deps_nghttp2.so
+[wap] opened runtime library libchrome_zlib.so
+[wap] opened runtime library libc++.so
+[wap] opened runtime library libdl.so.2
+[wap] opened runtime library libpthread.so.0
+[wap] opened runtime library libm.so.6
+[wap] opened runtime library libc.so.6
+[wap] opened runtime library libv8_libbase.so
+[wap] opened runtime library libthird_party_perfetto_libperfetto.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_shim.so
+[wap] opened runtime library libgcc_s.so.1
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_base.so
+[wap] opened runtime library libbase_allocator_partition_allocator_src_partition_alloc_allocator_core.so
+[wap] unsupported Linux syscall=99 pc=0x1000f838
+[wap] unsupported Linux syscall=293 pc=0x1000f8dc
+[wap] opened runtime library liburl.so
+[wap] opened runtime library libmojom_platform_shared.so
+[wap] opened runtime library libblink_common.so
+[wap] opened runtime library libblink_platform_wtf.so
+[wap] opened runtime library libblink_platform.so
+[wap] opened runtime library libv8.so
+[wap] opened runtime library libblink_controller.so
+[wap] opened runtime library libc++.so
+[wap] opened runtime library libpthread.so.0
+[wap] opened runtime library libc.so.6
+[wap] opened runtime library libthird_party_icu_icui18n.so
+[wap] opened runtime library libicuuc.so
+[wap] opened runtime library libui_base_features.so
+[wap] opened runtime library libui_base_ui_data_pack.so
+[wap] opened runtime library libui_color.so
+[wap] opened runtime library libui_gfx.so
+[wap] opened runtime library libui_gfx_geometry.so
+[wap] opened runtime library libui_base_file_info.so
+[wap] opened runtime library libui_events_events_base.so
+[wap] opened runtime library libui_events_platform.so
+[wap] opened runtime library libnet.so
+[wap] opened runtime library libchrome_zlib.so
+[wap] opened runtime library libui_base_data_exchange.so
+[wap] opened runtime library libui_base_clipboard_types.so
+[wap] opened runtime library libui_display.so
+[wap] opened runtime library libui_events.so
+[wap] opened runtime library libui_events_devices.so
+[wap] opened runtime library libui_lottie.so
+[wap] opened runtime library libthird_party_perfetto_libperfetto.so
+[wap] opened runtime library libui_gfx_codec.so
+[wap] opened runtime library libui_base_data_transfer_policy.so
+[wap] opened runtime library libmojo_core_embedder_internal.so
+[wap] opened runtime library libmojo_cpp_platform.so
+[wap] opened runtime library libmojo_core_embedder_features.so
+[wap] opened runtime library libthird_party_boringssl.so
+[wap] opened runtime library libdl.so.2
+[wap] opened runtime library libm.so.6
+[wap] opened runtime library libgcc_s.so.1
+[wap] opened runtime library libskia_skia_switches.so
+[wap] opened runtime library libthird_party_fontconfig.so
+[wap] opened runtime library libthird_party_harfbuzz-ng.so
+[wap] opened runtime library libdawn_proc.so
+[wap] opened runtime library libthird_party_freetype.so
+[wap] opened runtime library libexpat.so.1
+[wap] opened runtime library libcc_base.so
+[wap] opened runtime library libcc_debug.so
+[wap] opened runtime library libui_gfx_color_space.so
+[wap] opened runtime library libui_gfx_geometry_geometry_skia.so
+[wap] opened runtime library libui_gfx_gfx_skia.so
+[wap] opened runtime library libui_gfx_animation.so
+[wap] opened runtime library libgpu_mailbox.so
+[wap] opened runtime library libipc_message_support.so
+[wap] opened runtime library libmojo_public_system_cpp.so
+[wap] unsupported Linux syscall=167 pc=0x1422e3cc
+[wap] opened runtime library libmojo_mojom_bindings.so
+[wap] opened runtime library libmojo_mojom_bindings_shared.so
+[wap] opened runtime library libcc.so
+[wap] opened runtime library libui_accessibility_ax_base.so
+[wap] opened runtime library libui_base_cursor_base.so
+[wap] opened runtime library libcomponents_attribution_reporting.so
+[wap] opened runtime library libperformance_manager_public_mojom_blink.so
+[wap] opened runtime library libservices_metrics_public_cpp_metrics_cpp.so
+[wap] opened runtime library libnetwork_cpp.so
+[wap] opened runtime library libstorage_common.so
+[wap] opened runtime library libprinting_metafile.so
+[wap] opened runtime library libthird_party_protobuf_protobuf_lite.so
+[wap] opened runtime library libnetwork_cpp_base.so
+[wap] opened runtime library libcrcrypto.so
+[wap] opened runtime library libnet_third_party_quiche.so
+[wap] opened runtime library icudtl.dat
+[wap] opened runtime library libmojo_base_mojom_shared.so
+[wap] opened runtime library liburl_mojom_traits.so
+[wap] opened runtime library libmojo_base_shared_typemap_traits.so
+[wap] opened runtime library libmojo_base_lib.so
+[wap] opened runtime library libmojo_base_typemap_traits.so
+[wap] opened runtime library libservices_network_public_cpp_cookies_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_cross_origin_embedder_policy.so
+[wap] opened runtime library libservices_network_public_cpp_document_isolation_policy.so
+[wap] opened runtime library libservices_network_public_cpp_fetch_retry_options.so
+[wap] opened runtime library libservices_network_public_cpp_integrity_metadata_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_integrity_policy.so
+[wap] opened runtime library libservices_network_public_cpp_ip_address_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_network_param_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_flags_and_switches.so
+[wap] opened runtime library libservices_network_public_cpp_storage_access_api_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_web_platform.so
+[wap] opened runtime library libservices_network_public_cpp_is_potentially_trustworthy.so
+[wap] opened runtime library libthird_party_webrtc_overrides_webrtc_component.so
+[wap] opened runtime library libcolor_scheme_mojo_bindings_shared.so
+[wap] opened runtime library libmojom_core_shared.so
+[wap] opened runtime library libandroid_mojo_bindings_shared.so
+[wap] opened runtime library libmojom_mhtml_load_result_shared.so
+[wap] opened runtime library libscript_type_mojom_shared.so
+[wap] opened runtime library libweb_feature_mojo_bindings_mojom_shared.so
+[wap] opened runtime library libgpu_common_interfaces_shared.so
+[wap] opened runtime library libgl_mojom_shared.so
+[wap] opened runtime library libvulkan_interface_shared.so
+[wap] opened runtime library libtokens_mojom_shared.so
+[wap] opened runtime library libfingerprinting_protection_shared.so
+[wap] opened runtime library libservice_worker_storage_mojom_shared.so
+[wap] opened runtime library libstorage_key_shared.so
+[wap] opened runtime library libmojo_public_cpp_bindings_wtf_support.so
+[wap] opened runtime library libthird_party_blink_common_privacy_budget.so
+[wap] opened runtime library libskia_shared_typemap_traits.so
+[wap] opened runtime library libthird_party_liburlpattern.so
+[wap] opened runtime library libgfx_native_types_shared_mojom_traits.so
+[wap] opened runtime library libui_gfx_color_utils.so
+[wap] opened runtime library libgfx_shared_mojom_traits.so
+[wap] opened runtime library libdisplay_shared_mojom_traits.so
+[wap] opened runtime library libmedia.so
+[wap] opened runtime library libgpu_command_buffer_client.so
+[wap] opened runtime library libviz_shared_image_format.so
+[wap] opened runtime library libgpu.so
+[wap] opened runtime library libgpu_command_buffer_common.so
+[wap] opened runtime library libviz_common.so
+[wap] opened runtime library libthird_party_blink_public_mojom_tokens_tokens_traits.so
+[wap] opened runtime library libcc_ipc.so
+[wap] opened runtime library libcc_shared_mojom_traits.so
+[wap] opened runtime library libui_base_ime_types.so
+[wap] opened runtime library libui_events_ipc.so
+[wap] opened runtime library libgl_mojom_blink.so
+[wap] opened runtime library libcc_animation.so
+[wap] opened runtime library libui_gfx_animation_keyframe.so
+[wap] opened runtime library libblink_histogram.so
+[wap] opened runtime library libimage_decoders.so
+[wap] opened runtime library libmiracle_parameter_common.so
+[wap] opened runtime library libthird_party_inspector_protocol_crdtp.so
+[wap] opened runtime library libui_native_theme.so
+[wap] opened runtime library libcontent_extraction_shared.so
+[wap] opened runtime library libservices_network_public_cpp_schemeful_site_mojom_support.so
+[wap] opened runtime library libservices_network_public_cpp_shared_storage_support.so
+[wap] opened runtime library libservices_network_public_cpp_host_resolver_mojom_support.so
+[wap] opened runtime library liborigin_trial_feature_shared.so
+[wap] opened runtime library liborigin_trial_state_shared.so
+[wap] opened runtime library libquota_shared.so
+[wap] opened runtime library libusb_shared.so
+[wap] opened runtime library libui_accessibility_ax_mojom_shared.so
+[wap] opened runtime library libui_base_dragdrop_mojom_shared.so
+[wap] opened runtime library libgfx_ipc_geometry.so
+[wap] opened runtime library libmedia_session_base_cpp.so
+[wap] opened runtime library libmedia_capture_capture_base.so
+[wap] opened runtime library libmojom_modules_shared.so
+[wap] opened runtime library libdevice_fido.so
+[wap] opened runtime library liblatency_shared_mojom_traits.so
+[wap] opened runtime library libservice_worker_storage_mojom.so
+[wap] opened runtime library libime_shared_mojom_traits.so
+[wap] opened runtime library libmedia_capture_mojom_video_capture_mojom_support.so
+[wap] opened runtime library libweb_bluetooth_mojo_bindings_shared.so
+[wap] opened runtime library libnative_theme_features.so
+[wap] opened runtime library libcc_mojo_embedder.so
+[wap] opened runtime library libcomponents_input.so
+[wap] opened runtime library libcomponents_language_detection_core.so
+[wap] opened runtime library libcomponents_viz_client.so
+[wap] opened runtime library libdevice_vr_service_mojo_bindings_blink.so
+[wap] opened runtime library libmedia_capture_capture_switches.so
+[wap] opened runtime library libmedia_webrtc.so
+[wap] opened runtime library libui_base_prediction.so
+[wap] opened runtime library libcc_layer_selection_bound.so
+[wap] opened runtime library libgpu_command_buffer_common_gles2_utils.so
+[wap] opened runtime library libblink_gpu_mojom_shared.so
+[wap] opened runtime library libgpu_config.so
+[wap] opened runtime library libcomponents_attribution_reporting_registration_header_error_mojom_traits.so
+[wap] opened runtime library libcomponents_attribution_reporting_registration_mojom_traits.so
+[wap] opened runtime library libgpu_gles2.so
+[wap] opened runtime library libblink_embedded_frame_sink_mojo_bindings_shared.so
+[wap] opened runtime library libcomponents_performance_manager_scenario_api.so
+[wap] opened runtime library libdawn_wire.so
+[wap] opened runtime library snapshot_blob.bin
+[wap] opened runtime library libgpu_ipc_client.so
+[wap] opened runtime library libgpu_command_buffer_client_gles2_implementation.so
+[wap] opened runtime library libgpu_raster.so
+[wap] opened runtime library libgpu_webgpu.so
+[wap] opened runtime library libv8_libbase.so
+[wap] opened runtime library libblink_modules.so
+[wap] opened runtime library libui_color_color_provider_key.so
+[wap] opened runtime library libui_gfx_gfx_switches.so
+[wap] opened runtime library libui_gfx_range.so
+[wap] opened runtime library libui_linux_linux_ui.so
+[wap] opened runtime library libcomponents_unexportable_keys.so
+[wap] opened runtime library libsql.so
+[wap] opened runtime library libnet_third_party_uri_template.so
+[wap] opened runtime library libnspr4.so
+[wap] opened runtime library libnss3.so
+[wap] opened runtime library libsmime3.so
+[wap] opened runtime library libcomponents_device_event_log.so
+[wap] opened runtime library libdisplay_util.so
+[wap] opened runtime library libui_events_gesture_detection.so
+[wap] unsupported Linux syscall=29 pc=0x14224c3c
+[wap] unsupported Linux syscall=29 pc=0x14224c3c
+[wap] unsupported Linux syscall=29 pc=0x14224c3c
+[wap] opened runtime library libevents_ozone_layout.so
+[wap] opened runtime library libui_events_velocity_tracker.so
+[wap] opened runtime library libcomponents_prefs.so
+[wap] opened runtime library libui_accessibility_ax_features_mojom_shared.so
+[wap] opened runtime library libcomponents_aggregation_service.so
+[wap] opened runtime library libcomponents_attribution_reporting_is_origin_suitable.so
+[wap] opened runtime library libperformance_manager_public_mojom_shared.so
+[wap] opened runtime library libui_accessibility_accessibility_internal.so
+[wap] opened runtime library libservices_network_public_cpp_crash_keys.so
+[wap] opened runtime library libipc.so
+[wap] opened runtime library libcomponents_cbor.so
+[wap] opened runtime library libnssutil3.so
+[wap] opened runtime library liburl_ipc_url_ipc.so
+[wap] opened runtime library libgio-2.0.so.0
+[wap] opened runtime library libglib-2.0.so.0
+[wap] opened runtime library libgobject-2.0.so.0
+[wap] opened runtime library libgbm.so.1
+[wap] opened runtime library libdrm.so.2
+[wap] opened runtime library libffmpeg.so
+[wap] opened runtime library libcomponents_leveldb_proto.so
+[wap] opened runtime library libdevice_udev_linux.so
+[wap] opened runtime library libasound.so.2
+[wap] opened runtime library libgpu_command_buffer_client_internal.so
+[wap] unsupported Linux syscall=114 pc=0x141fdce0
+[wap] opened runtime library libui_ozone.so
+[wap] unsupported Linux syscall=425 pc=0x1422b6e8
+[wap] opened runtime library libgfx_ipc.so
+[wap] opened runtime library libgpu_channel_mojom_shared.so
+[wap] opened runtime library libshared_image_pool_client_interface_shared.so
+[wap] opened runtime library libgl_mojom.so
+[wap] opened runtime library libvulkan_wrapper.so
+[wap] opened runtime library libui_color_mixers.so
+[wap] opened runtime library libdevice_bluetooth.so
+[wap] opened runtime library libcomponents_apdu.so
+[wap] opened runtime library libservices_data_decoder_public_cpp_service_provider.so
+[wap] opened runtime library libcomponents_optimization_guide_core_features.so
+[wap] opened runtime library libdevice_vr_service_mojo_bindings_shared.so
+[wap] opened runtime library libdevice_xr_common_mojo_bindings_blink.so
+[wap] opened runtime library libdevice_vr_public_typemaps.so
+[wap] opened runtime library libdevice_xr_common_mojo_bindings_shared.so
+[wap] opened runtime library libgamepad_mojom_shared.so
+[wap] opened runtime library libgamepad_shared_typemap_traits.so
+[wap] opened runtime library libui_gl_gl_enums.so
+[wap] opened runtime library libgl_wrapper.so
+[wap] opened runtime library libgl_init.so
+[wap] opened runtime library libwebnn_mojom_features_shared.so
+[wap] opened runtime library libdawn_native.so
+[wap] opened runtime library libgpu_command_buffer_service.so
+[wap] opened runtime library libcomponents_persistent_cache.so
+[wap] opened runtime library libui_ozone_ozone_base.so
+[wap] opened runtime library libdawn_platform.so
+[wap] opened runtime library libmedia_capture_capture_lib.so
+[wap] opened runtime library libgamepad_mojom_blink.so
+[wap] opened runtime library libservices_device_public_cpp_device_features.so
+[wap] opened runtime library libservices_webnn_public_cpp.so
+[wap] opened runtime library libwebnn_mojom_blink.so
+[wap] opened runtime library libwebnn_mojom_shared.so
+[wap] opened runtime library libatomic.so
+[wap] opened runtime library libdisplay_types.so
+[wap] opened runtime library libthird_party_sqlite_chromium_sqlite3.so
+[wap] opened runtime library libplc4.so
+[wap] opened runtime library libplds4.so
+[wap] opened runtime library libxkbcommon.so.0
+[wap] opened runtime library libipc_mojom.so
+[wap] opened runtime library libgmodule-2.0.so.0
+[wap] opened runtime library libz.so.1
+[wap] opened runtime library libmount.so.1
+[wap] opened runtime library libselinux.so.1
+[wap] opened runtime library libatomic.so.1
+[wap] opened runtime library libpcre2-8.so.0
+[wap] opened runtime library libffi.so.8
+[wap] opened runtime library libthird_party_leveldatabase.so
+[wap] opened runtime library libudev.so.1
+[wap] opened runtime library libui_platform_window.so
+[wap] opened runtime library libui_base_ime.so
+[wap] opened runtime library libui_color_dynamic_color.so
+[wap] opened runtime library libcomponents_dbus.so
+[wap] opened runtime library libdbus.so
+[wap] opened runtime library libgoogle_apis.so
+[wap] opened runtime library libgfx_ipc_color.so
+[wap] opened runtime library libservices_webnn_public_mojom_webnn_mojom_traits.so
+[wap] opened runtime library libipc_mojom_shared.so
+[wap] opened runtime library libblkid.so.1
+[wap] opened runtime library libstorage_service_filesystem_support.so
+[wap] opened runtime library libcap.so.2
+[wap] opened runtime library libdbus-1.so.3
+[wap] opened runtime library libgfx_ipc_buffer_types.so
+[wap] opened runtime library libstorage_service_filesystem_mojom.so
+[wap] opened runtime library libsystemd.so.0
+[wap] opened runtime library libstorage_service_filesystem_mojom_shared.so
+[wap] opened runtime library libstorage_service_typemap_traits.so
+[wap] unsupported Linux syscall=99 pc=0x1000f838
+[wap] unsupported Linux syscall=293 pc=0x1000f8dc
+[wap-volume] pid=7 page_ins=8192 clean=6621 evicted=0 resident=9002 high=0 free=38388
+[wap] opened runtime library preload.cjs
+[wap] opened runtime library /app/app.js
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap] unsupported Linux syscall=167 pc=0x1b3ee3cc
+[wap-volume] libv8 executable shared pid=7 asid=2 va=1afd7000 peer_pid=8 peer_asid=3 peer_va=13617000 offset=54095872 pa=529d3000
+[wap-volume] pid=7 page_ins=16384 clean=13809 evicted=0 resident=17198 high=131 free=30088
+[wap] opened runtime library /dev/quota-window
+[wap] opened runtime library icudtl.dat
+[wap] opened runtime library snapshot_blob.bin
+[wap] [1127/064119.531807:ERROR:base/threading/platform_thread_linux.cc:212] prctl(PR_SET_NAME): Function not implemented (38)
+
+[wap] opened runtime library /dev/urandom
+[wap] [1127/064120.888398:ERROR:base/threading/platform_thread_linux.cc:212] prctl(PR_SET_NAME): Function not implemented (38)
+
+[wap] opened runtime library blink_resources.pak
+[wap-volume] pid=7 page_ins=24576 clean=13244 evicted=8745 resident=16905 high=2552 free=29060
+[wap] opened runtime library /app/app.html
+[wap] opened runtime library page-preload.js
+[wap] [1127/064301.161819:ERROR:base/threading/platform_thread_linux.cc:212] prctl(PR_SET_NAME): Function not implemented (38)
+
+[wap] [1127/064305.407381:ERROR:base/threading/platform_thread_linux.cc:212] prctl(PR_SET_NAME): Function not implemented (38)
+
+[wap] opened runtime library fonts.conf
+[wap] opened runtime library /usr/lib/quota-runtime/fonts
+[wap] opened runtime library /usr/lib/quota-runtime/fonts
+[wap] opened runtime library /usr/lib/quota-runtime/fonts
+[wap] opened runtime library fonts/System-Regular.ttf
+[wap] opened runtime library fonts/System-Regular.ttf
+[wap] opened runtime library fonts/System-Regular.ttf
+[wap] 
+Fontconfig error: No writable cache directories
+
+[wap] 	/tmp/fontconfig
+
+[wap] opened runtime library fonts/System-Regular.ttf
+[wap] opened runtime library fonts/System-Regular.ttf
+[wap] page frame complete handle=65538 generation=1
+[input] raw ptr type 3 code 0 value 30981
+[input] raw ptr type 3 code 1 value 10246
+[input] raw ptr type 0 code 0 value 0
+[lvgl] pointer 849,499 down 0
+[wap] page frame complete handle=65538 generation=2
+[wap] page frame complete handle=65538 generation=3
+[wap] page frame complete handle=65538 generation=4
+[wap] page frame complete handle=65538 generation=5
+[wap] page frame complete handle=65538 generation=6
+[wap] page frame complete handle=65538 generation=7
+[wap] page frame complete handle=65538 generation=8
+[wap-volume] pid=7 page_ins=32768 clean=12230 evicted=17934 resident=16147 high=3310 free=29256
+[wap-volume] libv8 executable shared pid=8 asid=3 va=10e58000 peer_pid=7 peer_asid=2 peer_va=18818000 offset=12419072 pa=56d2c000
+[wap] page frame complete handle=65538 generation=9
+[wap] page frame complete handle=65538 generation=10
+[wap] page frame complete handle=65538 generation=11
+[input] raw ptr type 3 code 0 value 16985
+[input] raw ptr type 3 code 1 value 3791
+[lvgl] pointer 466,184 down 0
+[lvgl] pointer 466,184 down 1
+[lvgl] fb commit click 48085 us n=2 (not panel light)
+[lvgl] pointer 466,184 down 0
+[wap] page frame complete handle=65538 generation=12
+[lvgl] fb commit key 710468 us n=16 (not panel light)
+[wap] page frame complete handle=65538 generation=13
+[lvgl] fb commit key 725752 us n=16 (not panel light)
+[wap] page frame complete handle=65538 generation=14
+[lvgl] fb commit key 841781 us n=16 (not panel light)
+[wap] page frame complete handle=65538 generation=15
+[lvgl] fb commit key 788120 us n=16 (not panel light)
+[lvgl] pointer 606,184 down 0
+[lvgl] pointer 606,184 down 1
+[lvgl] fb commit click 45728 us n=3 (not panel light)
+[lvgl] pointer 606,184 down 0
+[wap] page frame complete handle=65538 generation=16
+[worker] index=0 affinity=1 period=37745 first=23622741999 last=23622757712 ticks=15713 grant=62500 overlap=15713 iterations=0 compare=23622773249 trap=23622757688
+[wave] period=37745 cpu0_t3=316833 remote=15713 total=332546 cap=340036 period_end=23623125000 dropped=0 finished=1
+[smp] periods=1 cpu0_over=0 assigned=1 worst_period=0 excess=0
+[record-hash] cpu=1 bytes=0 fnv=67918732
+[files] verified slot=3 generation=1 bytes=0 checksum=67918732
+[wap] opened runtime library /app/data/note.txt
+[worker] index=0 affinity=1 period=37749 first=23625100706 last=23625116519 ticks=15813 grant=62500 overlap=15813 iterations=0 compare=23625131956 trap=23625116495
+[wave] period=37749 cpu0_t3=316726 remote=15813 total=332539 cap=340036 period_end=23625625000 dropped=0 finished=1
+[smp] periods=1 cpu0_over=0 assigned=1 worst_period=0 excess=0
+[record-hash] cpu=1 bytes=20 fnv=287976497
+[files] verified slot=3 generation=2 bytes=20 checksum=287976497
+[wap] backend disk flush generation=2 bytes=20 pid=8

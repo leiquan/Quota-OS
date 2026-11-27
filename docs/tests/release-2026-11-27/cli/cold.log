@@ -1,0 +1,48 @@
+admin | Password: 
+Enter 1 to 64 password bytes.
+admin | Password: 
+Incorrect password.
+admin | Password: 
+Quota OS CLI 016 | ARM64 | 4096 KiB RAM
+Common commands: ls, mem, tasks, run test.c. Type help for all commands.
+quota> cat Note.txt
+admin-session-note
+quota> run Test t2
+[map] pid=3 handle=0x10001 gen=1 asid=1 ttbr=0x100004014a000 draw_pa=0x4013c000
+[map] pte code=0x4013afc3 stack=0x6000004013bf43 draw=0x6000004013cf43 ap_el0=1/1/1
+[map] walk kern=0x0 pte=0x4013afc3 ap_el0=1 dev pte=0x0 ap_el0=0 fb pte=0x4013afc3 ap_el0=1
+[quota] period=847 grant=0 used=0 minimum=25000
+[quota] period=848 grant=50000 used=49998 minimum=25000
+[quota] period=849 grant=50000 used=49998 minimum=25000
+[quota] period=850 grant=50000 used=49998 minimum=25000
+[quota] period=851 grant=50000 used=49998 minimum=25000
+[quota] period=852 grant=50000 used=49998 minimum=25000
+[quota] period=853 grant=50000 used=49998 minimum=25000
+[quota] period=854 grant=50000 used=49998 minimum=25000
+[quota] period=855 grant=50000 used=49998 minimum=25000
+[quota] period=856 grant=50000 used=49998 minimum=25000
+[quota] period=857 grant=50000 used=49998 minimum=25000
+[quota] period=858 grant=50000 used=49998 minimum=25000
+[quota] period=859 grant=50000 used=49998 minimum=25000
+[quota] period=860 grant=50000 used=49998 minimum=25000
+[quota] period=861 grant=50000 used=49998 minimum=25000
+[quota] period=862 grant=50000 used=49998 minimum=25000
+[quota] period=863 grant=50000 used=49998 minimum=25000
+[quota] period=864 grant=50000 used=49998 minimum=25000
+[quota] period=865 grant=50000 used=49998 minimum=25000
+[quota] period=866 grant=50000 used=49998 minimum=25000
+[quota] period=867 grant=50000 used=49998 minimum=25000
+[quota] period=868 grant=50000 used=49998 minimum=25000
+[quota] period=869 grant=50000 used=49998 minimum=25000
+[quota] period=870 grant=50000 used=49998 minimum=25000
+[quota] period=871 grant=50000 used=49998 minimum=25000
+[quota] period=872 grant=50000 used=49998 minimum=25000
+[quota] period=873 grant=50000 used=49998 minimum=25000
+[quota] period=874 grant=50000 used=49998 minimum=25000
+[quota] period=875 grant=50000 used=49998 minimum=25000
+[quota] period=876 grant=50000 used=49998 minimum=25000
+[quota] period=877 grant=50000 used=49998 minimum=25000
+Test: EL0 completed
+quota> events
+period=877 tier1_misses=0 tier2_short=0 tier3_over=0
+quota> 

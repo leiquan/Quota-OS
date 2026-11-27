@@ -1,0 +1,10 @@
+[
+  "/bin/bash",
+  "tools/run-web-node-volume.sh",
+  "-display",
+  "none",
+  "-qmp",
+  "stdio",
+  "-icount",
+  "shift=4,sleep=off"
+]
