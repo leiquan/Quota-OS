@@ -16,16 +16,16 @@ CLI, GUI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the ser
 
 四个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。GUI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。Touch UI 提供 900 × 1600 竖屏、全屏应用和底部手势栏。
 
-| Edition · 发行版 | Default QEMU RAM · 默认内存 | ARM64 boot image · 启动镜像 |
-|---|---|---|
-| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 72.3 KiB |
-| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | 64 MiB | 685.4 KiB |
-| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 1 GiB | 357.5 MiB |
-| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 64 MiB demo · 128 MiB macOS launcher | Build from source · 源码构建 |
+| Edition · 发行版 | vCPU | Default guest RAM · 默认虚拟机内存 |
+|---|---:|---:|
+| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 1 | 4 MiB |
+| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | 2 | 64 MiB |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 2 | 512 MiB |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI) | 2 | 512 MiB |
 
-The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective GUI and runtime components.
+These defaults also apply on macOS. Web UI loads Blink, V8 and Node.js from a separate read-only runtime volume.
 
-图形版内存值是已验证的 QEMU 启动配置。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 镜像包含共享运行时、动态库、字体和启动数据，示例 `todo.wap` 为 **2,021 字节**。
+普通启动和 macOS 启动采用相同配置。内存列表示分配给整台虚拟机的容量。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
@@ -187,9 +187,9 @@ The compiler emits ARM64 instructions inside Quota OS. The program runs in Tier 
 
 ## Verification
 
-The default single-core Cortex-A35 / 64 MiB image passed 100 QEMU `icount` cold boots with the Tier 3 desktop in a busy loop. In every 100-period sample, the guest recorded 100 speedometer commits and 25 dashcam commits, with zero speedometer deadline misses and zero Tier 3 pool crossings. The maximum speedometer commit gap was 10,013 microseconds in each run. This measures guest framebuffer commits. Host presentation and physical scanout remain unverified. [All 100 serial logs and results](docs/tests/cortex-a35/frame-regression.tar.gz)
+The earlier single-core Cortex-A35 / 64 MiB image passed 100 QEMU `icount` cold boots with the Tier 3 desktop in a busy loop. In every 100-period sample, the guest recorded 100 speedometer commits and 25 dashcam commits, with zero speedometer deadline misses and zero Tier 3 pool crossings. The maximum speedometer commit gap was 10,013 microseconds in each run. This measures guest framebuffer commits. Host presentation and physical scanout remain unverified. [All 100 serial logs and results](docs/tests/cortex-a35/frame-regression.tar.gz)
 
-The default Cortex-A35 / 64 MiB guest passed three desktop-stall boots and three ordinary boots in each demo mode. The five System Test scenarios passed through tablet input. Notes saved on the throttled disk and reopened through Files after a cold boot. In the third desktop-stall run, the speedometer committed 100 frames and the dashcam committed 25 over 100 periods, with zero speedometer deadline misses and zero Tier 3 pool crossings. The QEMU CPU model and RAM changed while the virtual instruction budget remained at `icount shift=4`. [Desktop stall](docs/tests/cortex-a35/03-apps-desktop-stall.log) · [System tests](docs/tests/cortex-a35/ui.log) · [Files](docs/tests/cortex-a35/files.log)
+The earlier Cortex-A35 / 64 MiB guest passed three desktop-stall boots and three ordinary boots in each demo mode. The five System Test scenarios passed through tablet input. Notes saved on the throttled disk and reopened through Files after a cold boot. In the third desktop-stall run, the speedometer committed 100 frames and the dashcam committed 25 over 100 periods, with zero speedometer deadline misses and zero Tier 3 pool crossings. The QEMU CPU model and RAM changed while the virtual instruction budget remained at `icount shift=4`. [Desktop stall](docs/tests/cortex-a35/03-apps-desktop-stall.log) · [System tests](docs/tests/cortex-a35/ui.log) · [Files](docs/tests/cortex-a35/files.log)
 
 The earlier Cortex-A72 / 128 MiB release passed 100 desktop-stall boots, 100 lifecycle boots, and 10 boots each with and without the dashcam. The tablet-input replay verified all five scenarios and cancellation before approval. With disk writes limited to 128 B/s, the two measured saves took 16.321 and 16.083 seconds of guest time. The speedometer recorded zero deadline misses and Files reopened the saved note after a cold boot. [Cold boot logs](docs/tests/adaptive-reserve/cold-boots.tar.gz) · [Approval replay](docs/tests/adaptive-reserve/ui.log) · [Save](docs/tests/adaptive-reserve/save.log) · [Reopen](docs/tests/adaptive-reserve/reopen.log)
 
@@ -221,4 +221,4 @@ Change the heading in the file and launch again to see the new text. This is a s
 
 For the cross-platform transport check use `--page-bytes FILE`; the serial console reports the file length and checksum. Run `python3 tools/webkit-document-check.py` for all five boundary cases. With no argument the launcher boots the separate in-guest JSC and WebCore CSS color test.
 
-公共内核和 LVGL 桌面的改动先提交到 `GUI`。在 `Web-UI` 合并基础版后，分别验证 64 MiB 桌面配额场景和 1 GiB WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-UI` 维护。
+公共内核改动由 CLI 开发维护，各图形版在各自的默认配置下验证。Blink、Node、共享 V8 和 WAP 适配在 `Web-UI` 维护。
