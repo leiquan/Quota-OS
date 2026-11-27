@@ -19,11 +19,11 @@
 <p class="intro">Quota OS 是一款以资源配额为核心的操作系统。内核为关键任务预留执行时间，按容量接纳应用，并将剩余资源交给普通任务共享。</p>
 <p class="actions"><a class="primary" href="#run">运行 Quota OS</a><a href="https://github.com/leiquan/Quota-OS">查看源码 ↗</a></p>
 </div><div class="showcase"><div class="gallery" tabindex="0" aria-label="桌面截图"><figure><a class="capture" href="screenshots/pages-apps.png"><img src="screenshots/pages-apps.png?v=desktop" width="1280" height="800" alt="应用目录"></a><figcaption>应用目录</figcaption></figure><figure><a class="capture" href="screenshots/pages-task.png"><img src="screenshots/pages-task.png?v=desktop" width="1280" height="800" alt="系统任务"></a><figcaption>系统任务</figcaption></figure><figure><a class="capture" href="screenshots/pages-info.png"><img src="screenshots/pages-info.png?v=desktop" width="1280" height="800" alt="系统信息"></a><figcaption>系统信息</figcaption></figure></div><div class="controls" hidden><button data-step="-1" aria-label="上一张">←</button><button data-step="1" aria-label="下一张">→</button><div class="indicators"></div><output>1 / 3</output><button type="button" class="playback"></button></div></div>
-<h3 class="platform-title">演示运行环境</h3><dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/CLI">CLI 版</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（单核）</dd></div><div><dt>内存</dt><dd>4 MiB</dd></div><div><dt>启动镜像</dt><dd>111.5 KiB</dd></div><div><dt>交互与计时</dt><dd>PL011 串口命令行 · QEMU TCG / icount</dd></div></dl>
+<h3 class="platform-title">默认启动配置</h3><dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/CLI">CLI 版</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（单核）</dd></div><div><dt>内存</dt><dd>4 MiB</dd></div><div><dt>启动镜像</dt><dd>111.5 KiB</dd></div><div><dt>交互与计时</dt><dd>PL011 串口命令行 · QEMU TCG / icount</dd></div></dl>
 <dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/GUI">GUI 版</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（双核）</dd></div><div><dt>内存</dt><dd>64 MiB</dd></div><div><dt>启动镜像</dt><dd>780.3 KiB</dd></div><div><dt>交互与计时</dt><dd>1600 × 900 · LVGL / ramfb · QEMU TCG / icount</dd></div></dl>
 <dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/Web-UI">Web UI 版</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（双核）</dd></div><div><dt>内存</dt><dd>512 MiB</dd></div><div><dt>启动镜像</dt><dd>886.5 KiB，另附运行时卷</dd></div><div><dt>交互与计时</dt><dd>1600 × 900 · LVGL / ramfb · QEMU TCG / icount</dd></div></dl>
 <dl class="platform"><div><dt>发行版</dt><dd><a href="https://github.com/leiquan/Quota-OS/tree/Touch-UI">Touch UI</a></dd></div><div><dt>处理器</dt><dd>ARM64 · Cortex-A35（双核）</dd></div><div><dt>内存</dt><dd>512 MiB</dd></div><div><dt>启动镜像</dt><dd>825.0 KiB（LVGL）</dd></div><div><dt>交互与计时</dt><dd>900 × 1600 · LVGL / ramfb · QEMU 虚拟平板</dd></div></dl>
-<p class="platform-note">表中列出目标配置和未压缩的 ARM64 镜像大小。CLI、GUI 和 Web UI 已采用表中的启动配置，Touch UI 的双核配置在做发布验收。前三版均支持用 <code>ls</code> 和 <code>ls /</code> 列出 ext4 根目录，用 <code>cat /文件名</code> 读取当前根盘的文本文件。</p>
+<p class="platform-note">内存列为普通及 macOS 启动时的来宾总内存，镜像列为未压缩启动文件的大小。用 <code>ls</code> 和 <code>ls /</code> 列出 ext4 根目录，用 <code>cat /文件名</code> 读取当前根盘的文本文件。</p>
 </section>
 <section class="wrap section" id="model">
 <h2>三种资源承诺</h2>
@@ -64,12 +64,12 @@ period=38 tier1_misses=0 tier2_short=0 tier3_over=0</code></pre><figcaption>CLI 
 <tr><th scope="row">Linux SCHED_DEADLINE</th><td>申请截止期调度的线程</td><td>线程声明运行预算、相对截止期和周期。内核检查带宽后决定是否准入，按调度截止期安排执行；在默认策略下，预算耗尽的线程须等待补充。 <a href="https://docs.kernel.org/scheduler/sched-deadline.html">Linux 内核调度文档</a></td></tr>
 <tr><th scope="row">VxWorks 653</th><td>预先配置的应用分区</td><td>模块按时间表轮流运行各分区。窗口内由分区调度器按优先级选择任务；窗口结束后，模块切换到表中的下一个分区。 <a href="https://www.windriver.com/resource/safety-critical-software-development-for-integrated-modular-avionics">Wind River 时间分区说明</a></td></tr>
 </tbody></table></div>
-<p class="table-note">Quota OS 的公开测试在单核 ARM64 QEMU 中记录调度周期和来宾帧缓冲提交。各系统在同一硬件上的<span class="keep-together">显示延迟</span>仍待测量。</p>
+<p class="table-note">下方历史测试在单核 ARM64 QEMU 中记录调度周期和来宾帧缓冲提交。各系统在同一硬件上的<span class="keep-together">显示延迟</span>仍待测量。</p>
 </section>
 <section class="wrap section" id="evidence">
-<h2>桌面忙等卡顿时，一二级应用不会卡顿</h2>
-<p>在单核 ARM64 QEMU 中，两版各独立启动 100 次。每轮让三级任务忙等 10 秒，同时施加内存和磁盘压力，记录 GPS Speed 和 Flight Camera 每次写完来宾帧缓冲的时刻。</p>
-<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">发行版</th><th scope="col">通过轮数</th><th scope="col">GPS Speed 帧数 / 最大间隔</th><th scope="col">Flight Camera 帧数 / 最大间隔</th></tr></thead><tbody><tr><th scope="row">GUI · 64 MiB</th><td>100 / 100</td><td>100,359 / 10.000 ms</td><td>25,091 / 40.000 ms</td></tr><tr><th scope="row">Web UI · 1 GiB</th><td>100 / 100</td><td>100,755 / 10.000 ms</td><td>25,184 / 40.000 ms</td></tr></tbody></table></div>
+<h2>历史实测：单核下的桌面忙等与仪表帧间隔</h2>
+<p>本次实验使用单核 ARM64 QEMU，GUI 配置 64 MiB，Web UI 配置 1 GiB，各冷启动 100 次。当前 Web UI 默认使用双核、512 MiB。每轮让三级任务忙等 10 秒，同时施加内存和磁盘压力，记录 GPS Speed 和 Flight Camera 每次写完来宾帧缓冲的时刻。</p>
+<div class="compare-scroll" tabindex="0"><table class="compare-table"><thead><tr><th scope="col">当次测试配置</th><th scope="col">通过轮数</th><th scope="col">GPS Speed 帧数 / 最大间隔</th><th scope="col">Flight Camera 帧数 / 最大间隔</th></tr></thead><tbody><tr><th scope="row">GUI · 64 MiB</th><td>100 / 100</td><td>100,359 / 10.000 ms</td><td>25,091 / 40.000 ms</td></tr><tr><th scope="row">Web UI · 1 GiB</th><td>100 / 100</td><td>100,755 / 10.000 ms</td><td>25,184 / 40.000 ms</td></tr></tbody></table></div>
 <div class="table-note">
 <p>按 QEMU icount 虚拟时钟的原始 tick 核对，200 轮中，相邻提交间隔均在各自门限内（<span class="keep-together">10 ms</span> 和 <span class="keep-together">40 ms</span>）。两版均无帧提交超时、二级预算欠付或三级总池超限。</p>
 <p>计时以写完来宾帧缓冲为终点。宿主窗口呈现延迟和物理屏幕刷新延迟仍待测量。</p>

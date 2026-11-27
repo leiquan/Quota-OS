@@ -29,16 +29,16 @@ CLI, GUI, Web UI and Touch UI share the ARM64 quota kernel. CLI provides the ser
 
 四个版本共用 ARM64 配额内核。CLI 提供串口命令行，Test 作为独立 EL0 应用按需运行。GUI 增加 LVGL 原生桌面，Web UI 在桌面上增加三级 WAP 运行时。Touch UI 提供 900 × 1600 竖屏、全屏应用和底部手势栏。
 
-| Edition · 发行版 | Default QEMU RAM · 默认内存 | ARM64 boot image · 启动镜像 |
-|---|---|---|
-| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 4 MiB | 111.5 KiB |
-| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | 64 MiB | 780.3 KiB |
-| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 512 MiB | 886.5 KiB + runtime volume · 另附运行时卷 |
-| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 512 MiB | 825.0 KiB (LVGL) |
+| Edition · 发行版 | vCPU | Default guest RAM · 默认虚拟机内存 |
+|---|---:|---:|
+| [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | 1 | 4 MiB |
+| [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | 2 | 64 MiB |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | 2 | 512 MiB |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI) | 2 | 512 MiB |
 
-Graphical launchers default to two vCPUs. CLI uses one vCPU. The graphical memory figures describe their listed QEMU launch configurations. CLI passed serial interaction and the standalone EL0 Test in both quota modes at 3 MiB in a short QEMU run. Graphical builds include their respective GUI and runtime components.
+These defaults also apply on macOS. Web UI loads Blink, V8 and Node.js from a separate read-only runtime volume.
 
-三个图形版默认配置两个虚拟 CPU。GUI 默认分配 64 MiB，Web UI 和 Touch UI 默认分配 512 MiB 虚拟机内存。CLI 在 3 MiB 下通过串口交互和独立 EL0 Test 的二三级短程验证。Web UI 从独立只读卷加载运行时、动态库和字体，示例 `todo.wap` 为 **2,021 字节**。
+普通启动和 macOS 启动采用相同配置。内存列表示分配给整台虚拟机的容量。
 
 [Web UI app structure and validation · Web UI 应用结构与验收](docs/README.md#web-ui-development--web-ui-开发) · [Todo / 任务清单示例](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo)
 
@@ -261,4 +261,4 @@ Change the heading in the file and launch again to see the new text. This is a s
 
 For the cross-platform transport check use `--page-bytes FILE`; the serial console reports the file length and checksum. Run `python3 tools/webkit-document-check.py` for all five boundary cases. With no argument the launcher boots the separate in-guest JSC and WebCore CSS color test.
 
-公共内核和 LVGL 桌面的改动先提交到 `GUI`。在 `Web-UI` 合并基础版后，在 512 MiB 下分别验证桌面配额场景和 WAP 保存、冷启动读回。Blink、Node、共享 V8 和 WAP 适配在 `Web-UI` 维护。
+公共内核改动由 CLI 开发维护，各图形版在各自的默认配置下验证。Blink、Node、共享 V8 和 WAP 适配在 `Web-UI` 维护。

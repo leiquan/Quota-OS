@@ -10,19 +10,21 @@ The four editions share this directory. Each branch's top-level README describes
 | Official website · 官网 | [English](index.html) · [简体中文](zh.html) · [CSS](site.css) · [JavaScript](site.js) |
 | Screenshots · 截图 | [screenshots/](screenshots/) |
 | Music Player under pressure · 音乐播放器压力实测 | [Screenshots, data and logs · 实拍、数据与日志](tests/music-pressure/) |
-| Current desktop frame evidence · 桌面帧间隔证据 | [GUI summary](tests/frame-intervals/base.json) · [Web UI summary](tests/frame-intervals/web.json) · [serial logs](tests/frame-intervals/) |
+| Historical single-core frame measurements · 早期单核帧间隔实测 | [GUI summary](tests/frame-intervals/base.json) · [Web UI summary](tests/frame-intervals/web.json) · [serial logs](tests/frame-intervals/) |
 | Quota and persistence evidence · 配额与持久化证据 | [Quota scenarios](tests/quota-scenarios/) · [Cortex-A35 runs](tests/cortex-a35/) · [C workflow](tests/c-workflow/) |
 | Historical notes · 历史技术记录 | [Technical notes](../TECHNICAL-NOTES.md) · [Older acceptance runs](accept-v008/) · [v016 records](v016/) |
 | Earlier WebKit experiments · 早期 WebKit 原型 | [Page experiment](tests/webkit-page/) · [Runtime experiment](tests/webkit-stack/) · [Archived HTML sample](archive/webkit/hello.html) |
 
 ## Edition guides · 各版指南
 
+CLI uses one vCPU. All three graphical editions use two, including on macOS. / CLI 默认单核，三个图形版默认双核，macOS 同样适用。
+
 | Edition · 发行版 | Environment · 环境 | Default QEMU RAM · 默认内存 | Evidence · 验收 |
 |---|---|---|---|
 | [CLI](https://github.com/leiquan/Quota-OS/tree/CLI) | Serial console · 串口 | 4 MiB | [Standalone Test and cold readback](tests/cli-4m/) |
 | [GUI](https://github.com/leiquan/Quota-OS/tree/GUI) | Native LVGL desktop · 原生桌面 | 64 MiB | [Frame timing](tests/frame-intervals/base.json) |
-| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 1 GiB | [Frame timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
-| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 900 × 1600 portrait LVGL · 竖屏触控界面 | 64 MiB demo · 128 MiB macOS launcher | [QEMU touch verification · 模拟器触控验证](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui) |
+| [Web UI](https://github.com/leiquan/Quota-OS/tree/Web-UI) | Native desktop and WAP · 桌面与 WAP | 512 MiB | [Earlier 1 GiB frame timing](tests/frame-intervals/web.json) · [WAP cold readback](screenshots/web-node-cold.png) |
+| [Touch UI](https://github.com/leiquan/Quota-OS/tree/Touch-UI#run-touch-ui) | 900 × 1600 portrait LVGL · 竖屏触控界面 | 512 MiB | [QEMU touch verification · 模拟器触控验证](https://github.com/leiquan/Quota-OS/blob/Touch-UI/TECHNICAL-NOTES.md#touch-ui) |
 
 ## Web UI development · Web UI 开发
 
@@ -30,7 +32,7 @@ Web UI adds a Tier 3 WAP runtime to the native desktop. The package root contain
 
 Web UI 在原生桌面上增加三级 WAP 运行时。包根目录的 `app.json` 声明三级，`app.html` 提供页面、样式和浏览器端 JS，可选的 `app.js` 提供 Node.js 后台逻辑。Blink 渲染界面，Todo 通过本地消息接口保存和读回任务。
 
-The 1 GiB QEMU profile has separate evidence for WAP cold readback and guest framebuffer timing. / 1 GiB QEMU 配置下，WAP 冷启动读回和虚拟机帧缓冲提交分别有验收记录。
+The earlier 1 GiB QEMU profile has separate evidence for WAP cold readback and guest framebuffer timing. / 早期 1 GiB QEMU 配置下，WAP 冷启动读回和虚拟机帧缓冲提交分别有验收记录。
 
 [Build and boot · 构建与启动](https://github.com/leiquan/Quota-OS/tree/Web-UI#启动本地-web-ui-构建) · [Demo source · 示例源码](https://github.com/leiquan/Quota-OS/tree/Web-UI/examples/todo) · [Cold readback · 冷启动读回](screenshots/web-node-cold.png) · [Frame timing · 帧间隔](tests/frame-intervals/web.json)
 
@@ -44,9 +46,9 @@ The standalone Tier 3 WAP supports adding, completing, filtering and deleting ta
 
 ## CLI validation · CLI 验收
 
-The CLI boot image is 72.25 KiB (73,984 bytes). The QEMU default is 4 MiB. Serial interaction and the standalone C Test passed in both quota modes at 3 and 16 MiB in short runs. Saving a note and reading it back after a cold boot passed at 4 and 16 MiB.
+The CLI image in the linked test was 72.25 KiB (73,984 bytes). The QEMU default is 4 MiB. Serial interaction and the standalone C Test passed in both quota modes at 3 and 16 MiB in short runs. Saving a note and reading it back after a cold boot passed at 4 and 16 MiB.
 
-CLI 启动镜像为 72.25 KiB（73,984 字节），QEMU 默认 4 MiB。3 MiB 和 16 MiB 均通过串口交互及独立 C Test 的二三级短程验证。4 MiB 和 16 MiB 下已验证保存及冷启动读回。
+下方测试使用的 CLI 启动镜像为 72.25 KiB（73,984 字节），QEMU 默认 4 MiB。3 MiB 和 16 MiB 均通过串口交互及独立 C Test 的二三级短程验证。4 MiB 和 16 MiB 下已验证保存及冷启动读回。
 
 [CLI build and launch · 构建与启动](https://github.com/leiquan/Quota-OS/tree/CLI) · [Current macOS QEMU serial transcript · 串口实录](tests/cli-layout/4M.log) · [3 MiB](tests/cli-16m/3M.log) · [16 MiB](tests/cli-16m/16M.log) · [4 MiB save](tests/cli-4m/disk-boot-1.log) · [4 MiB cold readback](tests/cli-4m/disk-boot-2.log)
 
